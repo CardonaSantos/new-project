@@ -1,8 +1,8 @@
 # Gastro Core API
 
 Backend gastronómico NestJS 12 + TypeScript ESM + PostgreSQL + Prisma ORM 7.
-Una empresa por base de datos, múltiples sucursales. Sin migraciones ni
-modelos gastronómicos en este primer commit.
+Una empresa por base de datos, múltiples sucursales. El schema gastronómico
+ya está pegado; las migraciones iniciales todavía no se han ejecutado.
 
 ## Requisitos
 - Node.js **24.15+** (o **22.22.3+**); versiones anteriores pueden generar
@@ -31,8 +31,7 @@ Copy-Item .env.example .env
 
 ## Prisma
 
-`prisma/schema.prisma` contiene solo generator y datasource; pega allí el
-esquema **Gastro Core** completo cuando lo revisemos. Mantén el output
+`prisma/schema.prisma` ya contiene el esquema gastronómico. Mantén el output
 `../src/generated/prisma` y ejecuta:
 
 ```bash
@@ -84,3 +83,15 @@ y se sustituyeron por `CoreModule` y una ruta de salud.
 Las skills .agents/.claude/.cursor/.devin fueron generadas por Prisma 8 RC,
 no forman parte del servidor; se eliminaron junto con el postinstall que
 las volvía a instalar.
+
+## Perfiles, Media y comprobantes de pago
+
+- `PerfilUsuario`: 1:1 opcional con `Usuario`, separado del login y roles.
+- `Media`: guardamos el proveedor S3, bucket, clave del objeto, URL opcional, tipo, MIME, tamaño, dimensiones y fechas de carga y eliminación.
+- `ProductoMedia`, `VarianteProductoMedia`, `ArticuloInventarioMedia` y `CategoriaMedia`: relaciones M:N con orden y bandera principal; `PerfilUsuario.avatarMedia` es opcional.
+- Publicar un producto en el menú (`visibleEnMenu=true`) debe exigir desde el caso de uso al menos una imagen confirmada y vigente del producto o de su variante. Prisma no impone por sí solo ese requisito condicional.
+- Para borrar físicamente de Spaces, usar bucket+claveObjeto, comprobar referencias y borrar de forma asíncrona; nunca basarse en URL pública.
+- `IntentoPago` y `Pago` almacenan referencias de transacción, código de autorización y terminal si existen. Pueden asociarse a la `Cuenta` y su `Venta` interna. FEL sigue pendiente y no se agregaron tablas fiscales.
+- `src/generated/prisma/client.ts` se genera, no se comitea. `npm run start:dev` ahora ejecuta la generación primero. Si ves TS2307, ejecuta `npm run prisma:generate` y reinicia el TypeScript Server de VS Code.
+
+No se implementó aún la carga remota, la firma de URLs, los endpoints de Media ni la API de tarjetas: estas tablas solo preparan sus relaciones.

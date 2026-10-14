@@ -1,11 +1,11 @@
-// GASTRO CORE — Prisma 7 / PostgreSQL
-// Replace this entire file with the reviewed Gastro Core schema when ready.
-// Keep the generator output at ../src/generated/prisma and provider postgresql.
-// Do not run migrate dev until the full schema and DATABASE_URL are ready.
+// GASTRO CORE — Prisma ORM 7 / PostgreSQL / NestJS ESM
+// Revisar y validar migraciones antes de aplicarlas en una base de datos.
 
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
+  moduleFormat = "esm"
+  importFileExtension = "js"
 }
 
 datasource db {
@@ -32,6 +32,7 @@ datasource db {
 // [S12] DELIVERY Y CANALES EXTERNOS
 // [S13] RESERVAS Y RECORDATORIOS
 // [S14] AUTOSERVICIO Y EVENTOS TÉCNICOS
+// [S15] PERFIL DE USUARIO Y MULTIMEDIA S3/SPACES
 // ============================================================================
 // CRITERIOS
 // - FEL/CFDI/emisión fiscal: FUERA DE ESTA VERSIÓN expresamente.
@@ -384,6 +385,9 @@ model Usuario {
   liquidacionRepartidoresComoRepartidor LiquidacionRepartidor[]   @relation("LiquidacionRepartidor_repartidor_Usuario")
   reservasComoCreadaPor                 Reserva[]                 @relation("Reserva_creadaPor_Usuario")
   eventoReservasComoUsuario             EventoReserva[]           @relation("EventoReserva_usuario_Usuario")
+
+  perfil PerfilUsuario? @relation("PerfilUsuario_usuario_Usuario")
+  mediosSubidos Media[] @relation("Media_subidaPor_Usuario")
 }
 
 model SesionUsuario {
@@ -483,6 +487,8 @@ model Categoria {
   categoriasComoParent           Categoria[]       @relation("Categoria_parent_Categoria")
   productosComoCategoria         Producto[]        @relation("Producto_categoria_Categoria")
   rutaPreparacionesComoCategoria RutaPreparacion[] @relation("RutaPreparacion_categoria_Categoria")
+
+  medios CategoriaMedia[] @relation("CategoriaMedia_categoria_Categoria")
 }
 
 model Producto {
@@ -493,13 +499,15 @@ model Producto {
   nombre        String
   descripcion   String?
   tipo          TipoProducto @default(PREPARADO)
-  imagenUrl     String?
   activo        Boolean      @default(true)
+  visibleEnMenu Boolean @default(false)
   creadoEn      DateTime     @default(now()) @db.Timestamptz(3)
   actualizadoEn DateTime     @updatedAt @db.Timestamptz(3)
 
   // Relaciones inversas (navegación Prisma)
   varianteProductosComoProducto VarianteProducto[] @relation("VarianteProducto_producto_Producto")
+
+  medios ProductoMedia[] @relation("ProductoMedia_producto_Producto")
 }
 
 model VarianteProducto {
@@ -523,6 +531,8 @@ model VarianteProducto {
   rutaPreparacionesComoVariante          RutaPreparacion[]          @relation("RutaPreparacion_variante_VarianteProducto")
 
   @@unique([productoId, nombre])
+
+  medios VarianteProductoMedia[] @relation("VarianteProductoMedia_variante_VarianteProducto")
 }
 
 model PrecioVariante {
@@ -645,6 +655,8 @@ model ArticuloInventario {
   facturaProveedorLineasComoArticulo          FacturaProveedorLinea[]        @relation("FacturaProveedorLinea_articulo_ArticuloInventario")
   requisicionLineasComoArticulo               RequisicionLinea[]             @relation("RequisicionLinea_articulo_ArticuloInventario")
   transferenciaInventarioLineasComoArticulo   TransferenciaInventarioLinea[] @relation("TransferenciaInventarioLinea_articulo_ArticuloInventario")
+
+  medios ArticuloInventarioMedia[] @relation("ArticuloInventarioMedia_articulo_ArticuloInventario")
 }
 
 model Receta {
@@ -1685,6 +1697,8 @@ model IntentoPago {
   estado            EstadoIntentoPago           @default(PENDIENTE)
   claveIdempotencia String                      @unique
   referenciaExterna String?
+  codigoAutorizacion String?
+  terminalReferencia String?
   respuestaCodigo   String?
   creadoEn          DateTime                    @default(now()) @db.Timestamptz(3)
   actualizadoEn     DateTime                    @updatedAt @db.Timestamptz(3)
@@ -1708,6 +1722,8 @@ model Pago {
   metodo                MetodoPago
   monto                 Decimal      @db.Decimal(18, 2)
   referencia            String?
+  codigoAutorizacion String?
+  terminalReferencia String?
   recibidoPorRepartidor Boolean      @default(false)
   cobradoEn             DateTime     @default(now()) @db.Timestamptz(3)
 
@@ -2091,4 +2107,124 @@ model OperacionIdempotente {
   creadaEn      DateTime @default(now()) @db.Timestamptz(3)
 
   @@index([expiraEn])
+}
+
+// ============================================================================
+// [S15] PERFIL DE USUARIO Y MULTIMEDIA (DIGITALOCEAN SPACES / S3)
+// ============================================================================
+// El archivo real se guarda en Spaces, no en PostgreSQL.
+// Para borrar se utiliza proveedor + bucket + claveObjeto, NO urlPublica.
+// confirmadaEn valida que terminó la carga; eliminadaEn es soft-delete.
+// Exigir imagen al publicar en el menú corresponde al caso de uso, no a un
+// enum ni a un paso de aprobación. Reutilizar archivos evita duplicación.
+
+enum TipoMedia {
+  IMAGEN
+  VIDEO
+}
+
+model Media {
+  id               String    @id @default(cuid())
+  proveedor        String    @default("DIGITALOCEAN_SPACES")
+  bucket           String    @db.VarChar(255)
+  region           String?   @db.VarChar(64)
+  claveObjeto      String    @db.VarChar(1024)
+  urlPublica       String?   @db.Text
+  tipo             TipoMedia
+  mimeType         String    @db.VarChar(128)
+  nombreOriginal   String?
+  tamanoBytes      BigInt?
+  ancho            Int?
+  alto             Int?
+  duracionSegundos Decimal?  @db.Decimal(12, 3)
+  etag             String?
+  hashContenido    String?
+  subidaPorId      String?
+  subidaPor        Usuario?  @relation("Media_subidaPor_Usuario", fields: [subidaPorId], references: [id], onDelete: SetNull)
+  confirmadaEn     DateTime? @db.Timestamptz(3)
+  eliminadaEn      DateTime? @db.Timestamptz(3)
+  creadoEn         DateTime  @default(now()) @db.Timestamptz(3)
+  actualizadoEn    DateTime  @updatedAt @db.Timestamptz(3)
+
+  perfilesComoAvatar PerfilUsuario[] @relation("PerfilUsuario_avatarMedia_Media")
+  productosComoMedia ProductoMedia[] @relation("ProductoMedia_media_Media")
+  variantesComoMedia VarianteProductoMedia[] @relation("VarianteProductoMedia_media_Media")
+  articulosComoMedia ArticuloInventarioMedia[] @relation("ArticuloInventarioMedia_media_Media")
+  categoriasComoMedia CategoriaMedia[] @relation("CategoriaMedia_media_Media")
+
+  @@unique([proveedor, bucket, claveObjeto])
+  @@index([eliminadaEn])
+  @@index([tipo, creadoEn])
+}
+
+model PerfilUsuario {
+  id            String   @id @default(cuid())
+  usuarioId     String   @unique
+  usuario       Usuario  @relation("PerfilUsuario_usuario_Usuario", fields: [usuarioId], references: [id], onDelete: Cascade)
+  apellidos     String?
+  telefono      String?
+  idioma        String   @default("es-GT")
+  zonaHoraria   String   @default("America/Guatemala")
+  avatarMediaId String?
+  avatarMedia   Media?   @relation("PerfilUsuario_avatarMedia_Media", fields: [avatarMediaId], references: [id], onDelete: SetNull)
+  creadoEn      DateTime @default(now()) @db.Timestamptz(3)
+  actualizadoEn DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([avatarMediaId])
+}
+
+model ProductoMedia {
+  productoId String
+  producto   Producto @relation("ProductoMedia_producto_Producto", fields: [productoId], references: [id], onDelete: Cascade)
+  mediaId    String
+  media      Media    @relation("ProductoMedia_media_Media", fields: [mediaId], references: [id], onDelete: Restrict)
+  principal  Boolean  @default(false)
+  orden      Int      @default(0)
+  creadoEn   DateTime @default(now()) @db.Timestamptz(3)
+
+  @@id([productoId, mediaId])
+  @@index([productoId, principal, orden])
+  @@index([mediaId])
+}
+
+model VarianteProductoMedia {
+  varianteId String
+  variante   VarianteProducto @relation("VarianteProductoMedia_variante_VarianteProducto", fields: [varianteId], references: [id], onDelete: Cascade)
+  mediaId    String
+  media      Media            @relation("VarianteProductoMedia_media_Media", fields: [mediaId], references: [id], onDelete: Restrict)
+  principal  Boolean          @default(false)
+  orden      Int              @default(0)
+  creadoEn   DateTime         @default(now()) @db.Timestamptz(3)
+
+  @@id([varianteId, mediaId])
+  @@index([varianteId, principal, orden])
+  @@index([mediaId])
+}
+
+model ArticuloInventarioMedia {
+  articuloId String
+  articulo   ArticuloInventario @relation("ArticuloInventarioMedia_articulo_ArticuloInventario", fields: [articuloId], references: [id], onDelete: Cascade)
+  mediaId    String
+  media      Media              @relation("ArticuloInventarioMedia_media_Media", fields: [mediaId], references: [id], onDelete: Restrict)
+  principal  Boolean            @default(false)
+  orden      Int                @default(0)
+  creadoEn   DateTime           @default(now()) @db.Timestamptz(3)
+
+  @@id([articuloId, mediaId])
+  @@index([articuloId, principal, orden])
+  @@index([mediaId])
+}
+
+model CategoriaMedia {
+  categoriaId String
+  categoria   Categoria @relation("CategoriaMedia_categoria_Categoria", fields: [categoriaId], references: [id], onDelete: Cascade)
+  mediaId     String
+  media       Media     @relation("CategoriaMedia_media_Media", fields: [mediaId], references: [id], onDelete: Restrict)
+  principal   Boolean   @default(false)
+  orden       Int       @default(0)
+  creadoEn    DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@id([categoriaId, mediaId])
+  @@index([categoriaId, principal, orden])
+  @@index([mediaId])
 }

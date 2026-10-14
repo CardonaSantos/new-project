@@ -1,11 +1,8 @@
-import { Controller, Get } from '@nestjs/common';
-
+import {Controller,Get} from '@nestjs/common';
+import {Public} from '../../auth/presentation/http/decorators/auth.decorators.js';
 @Controller('health')
 export class HealthController {
-  // Liveness only: it intentionally does not require DATABASE_URL.
-  // A future readiness endpoint may check PostgreSQL explicitly.
-  @Get()
-  getHealth(): { status: 'ok'; service: 'gastro-core' } {
-    return { status: 'ok', service: 'gastro-core' };
-  }
+ @Public()
+ @Get()
+ getHealth(){return {status:'ok',service:'gastro-core'};}
 }

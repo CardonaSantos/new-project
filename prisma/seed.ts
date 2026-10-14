@@ -1,0 +1,56 @@
+import 'dotenv/config';
+import {PrismaPg} from '@prisma/adapter-pg';
+import {PrismaClient} from '../src/generated/prisma/client.js';
+import {argon2id,hash} from 'argon2';
+const url=process.env.DIRECT_URL??process.env.DATABASE_URL;
+const password=process.env.BOOTSTRAP_ADMIN_PASSWORD;
+if(!url)throw Error('DATABASE_URL (o DIRECT_URL) requerido para seed');
+if(!password||password.length<12)throw Error('BOOTSTRAP_ADMIN_PASSWORD debe tener al menos 12 caracteres');
+const email=(process.env.BOOTSTRAP_ADMIN_EMAIL??'admin@novasistemas.net').trim().toLowerCase();
+const db=new PrismaClient({adapter:new PrismaPg({connectionString:url})});
+const permissions=[
+ ['users.create','users'],['users.roles.assign','users'],['users.read','users'],['users.deactivate','users'],
+ ['roles.read','roles'],['roles.manage','roles'],
+ ['catalog.read','catalog'],['catalog.manage','catalog'],['orders.read','orders'],['orders.create','orders'],
+ ['orders.manage','orders'],['kitchen.read','kitchen'],['kitchen.manage','kitchen'],
+ ['tables.read','tables'],['tables.manage','tables'],['inventory.read','inventory'],
+ ['inventory.adjust','inventory'],['inventory.transfer','inventory'],['purchases.manage','purchases'],
+ ['cash.open','cash'],['cash.close','cash'],['payments.collect','payments'],
+ ['payments.refund','payments'],['delivery.manage','delivery'],['reservations.manage','reservations'],
+ ['reports.read','reports'],['settings.manage','settings']
+] as const;
+try{
+ await db.$transaction(async(tx)=>{
+  const enterprise=await tx.empresaConfiguracion.findFirst();
+  if(!enterprise)await tx.empresaConfiguracion.create({data:{
+   nombreComercial:process.env.BOOTSTRAP_COMPANY_NAME??'Gastro Core',
+   moneda:'GTQ',zonaHoraria:'America/Guatemala'
+  }});
+  await tx.sucursal.upsert({where:{codigo:'PRINCIPAL'},update:{},create:{
+   codigo:'PRINCIPAL',nombre:'Sucursal principal'
+  }});
+  const rol=await tx.rol.upsert({where:{codigo:'SUPER_ADMIN'},update:{alcance:'GLOBAL',activo:true},create:{
+   codigo:'SUPER_ADMIN',nombre:'Superadministrador',alcance:'GLOBAL'
+  }});
+  for(const [code,modulo] of permissions){
+   const permiso=await tx.permiso.upsert({where:{codigo:code},update:{modulo},create:{codigo:code,modulo}});
+   await tx.rolPermiso.upsert({where:{rolId_permisoId:{rolId:rol.id,permisoId:permiso.id}},
+    update:{},create:{rolId:rol.id,permisoId:permiso.id}});
+  }
+  let admin=await tx.usuario.findUnique({where:{email}});
+  if(admin){
+   const alreadyAdmin=await tx.usuarioRol.findFirst({where:{
+    usuarioId:admin.id,rolId:rol.id,sucursalId:null
+   }});
+   if(!alreadyAdmin)throw Error('El correo de bootstrap ya pertenece a una cuenta sin SUPER_ADMIN global; seed detenido');
+  }else{
+   admin=await tx.usuario.create({data:{
+    email,nombre:'Administrador',hashContrasena:await hash(password,{
+     type:argon2id,memoryCost:19456,timeCost:2,parallelism:1
+    }),debeCambiarContrasena:true,perfil:{create:{}}
+   }});
+   await tx.usuarioRol.create({data:{usuarioId:admin.id,rolId:rol.id,sucursalId:null}});
+  }
+ });
+ process.stdout.write('Seed inicial completado; credenciales no impresas.\n');
+}finally{await db.$disconnect();}

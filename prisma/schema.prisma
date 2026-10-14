@@ -353,6 +353,8 @@ model Usuario {
   hashContrasena      String
   activo              Boolean   @default(true)
   versionAutorizacion Int       @default(1)
+  debeCambiarContrasena Boolean @default(false)
+  contrasenaCambiadaEn DateTime? @db.Timestamptz(3)
   ultimoAccesoEn      DateTime? @db.Timestamptz(3)
   creadoEn            DateTime  @default(now()) @db.Timestamptz(3)
   actualizadoEn       DateTime  @updatedAt @db.Timestamptz(3)
@@ -398,6 +400,10 @@ model SesionUsuario {
   dispositivoId    String?
   dispositivo      Dispositivo? @relation("SesionUsuario_dispositivo_Dispositivo", fields: [dispositivoId], references: [id], onDelete: SetNull)
   expiraEn         DateTime     @db.Timestamptz(3)
+  ultimoUsoEn DateTime? @db.Timestamptz(3)
+  revocacionMotivo String?
+  userAgent String?
+  ipCreacion String?
   revocadaEn       DateTime?    @db.Timestamptz(3)
   creadaEn         DateTime     @default(now()) @db.Timestamptz(3)
 
@@ -406,6 +412,7 @@ model SesionUsuario {
 
 model Rol {
   id          String   @id @default(cuid())
+  alcance     AlcanceRol @default(SUCURSAL)
   codigo      String   @unique
   nombre      String
   descripcion String?
@@ -444,8 +451,8 @@ model UsuarioRol {
   usuario    Usuario  @relation("UsuarioRol_usuario_Usuario", fields: [usuarioId], references: [id], onDelete: Cascade)
   rolId      String
   rol        Rol      @relation("UsuarioRol_rol_Rol", fields: [rolId], references: [id], onDelete: Restrict)
-  sucursalId String
-  sucursal   Sucursal @relation("UsuarioRol_sucursal_Sucursal", fields: [sucursalId], references: [id], onDelete: Restrict)
+  sucursalId String?
+  sucursal   Sucursal? @relation("UsuarioRol_sucursal_Sucursal", fields: [sucursalId], references: [id], onDelete: Restrict)
   creadoEn   DateTime @default(now()) @db.Timestamptz(3)
 
   @@unique([usuarioId, rolId, sucursalId])
@@ -2227,4 +2234,22 @@ model CategoriaMedia {
   @@id([categoriaId, mediaId])
   @@index([categoriaId, principal, orden])
   @@index([mediaId])
+}
+
+
+// [S16] Historial mínimo de intentos fallidos para limitación distribuida.
+model IntentoAcceso {
+  id        String   @id @default(cuid())
+  correoHash String
+  ip        String
+  creadoEn  DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([ip, creadoEn])
+  @@index([correoHash, ip, creadoEn])
+}
+
+// GLOBAL: sucursalId null; SUCURSAL: sucursalId no null. Reforzar con índices/constraints SQL.
+enum AlcanceRol {
+  GLOBAL
+  SUCURSAL
 }

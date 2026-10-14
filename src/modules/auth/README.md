@@ -1,16 +1,9 @@
-# Auth (pending business implementation)
-
-This folder is reserved for the authentication **bounded context**, not a fake login endpoint.
-
-Recommended structure when the user model and permission rules are approved:
-
-- `domain/`: entities and policies; no NestJS/Prisma imports.
-- `application/ports/`: repositories and token/password ports.
-- `application/use-cases/`: sign-in, sign-out, change permission, revoke session.
-- `infrastructure/prisma/`: database adapter implementing ports.
-- `infrastructure/security/`: password hashing and token/session adapters.
-- `http/`: controllers, DTOs, guards and authorization decorators.
-- `auth.module.ts`: dependency-injection wiring.
-
-Enforce authorization on every request in the server, not just in the UI.
-Avoid storing permissions only inside long-lived JWTs; support live revocation.
+# Auth — bounded context
+domain/ policy independiente (se ampliará al introducir casos).
+application/ casos de uso y puertos de identidad, hashing y tokens.
+infrastructure/ adaptador Prisma, Argon2id y JOSE.
+presentation/http/ DTOs, controllers, decorators y guards.
+Los guards APP_GUARD protegen nuevas rutas por defecto. Usar @Public() solo en rutas intencionalmente públicas.
+No usar hashes enviados por la UI: enviar contraseñas sobre HTTPS y aplicar Argon2id en el servidor.
+Refresh: cookie HttpOnly (path /api/v1/auth), SameSite Lax, Secure en producción. JS no lee refresh token.
+Roles GLOBAL se representan con sucursalId null. Revisar índice parcial SQL para evitar duplicados en PostgreSQL.

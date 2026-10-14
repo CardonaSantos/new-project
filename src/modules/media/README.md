@@ -27,6 +27,9 @@ access key de mínimo privilegio R/W/Delete Objects para el bucket.
 - POST /api/media/upload: `multipart/form-data`, campo `file`; `contexto`,
   `sucursalId` opcional, `publico=false` opcional. Imágenes <=10 MB,
   PDF <=20 MB; videos pequeños <=20 MB.
+- POST /api/media/batch: multipart campo `files` con hasta 5 archivos de
+  10 MiB cada uno. Respuesta por elemento con `ok` y `media` o `error`;
+  los éxitos no se deshacen si falla otro archivo.
 - POST /api/media/presign: JSON `{mime,nombre,sizeBytes,contexto,sucursalId,publico}`.
   Solo MP4/WebM; el navegador debe hacer PUT a `uploadUrl` con Content-Type
   exacto y posteriormente POST /api/media/:id/confirm.
@@ -46,7 +49,8 @@ access key de mínimo privilegio R/W/Delete Objects para el bucket.
 
 ## Firma, tamaño y protección
 Se comprueban firmas binaras con file-type; no se aceptan SVG, HTML ni scripts.
-SHA-256 se guarda para multipart recibido por el backend. Video grande va
+SHA-256 se guarda para multipart recibido por el backend. El MIME
+`application/octet-stream` es aceptable si la firma detecta un formato permitido. Video grande va
 directo al bucket mediante URL firmada y no se descarga completamente para
 calcular su hash; se verifica firma inicial y HeadObject. ETag NO es SHA-256.
 No se incluyen bytes en base de datos.

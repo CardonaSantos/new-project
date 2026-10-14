@@ -56,7 +56,7 @@ export class MediaService {
   await this.authorize(user,'media.upload',req.sucursalId);
   if(!req.file?.length)throw new BadRequestException('Archivo requerido');
   const detected=await detectMime(req.file);
-  if(req.declaredMime&&req.declaredMime.toLowerCase()!==detected)
+  if(req.declaredMime&&req.declaredMime.toLowerCase()!=='application/octet-stream'&&req.declaredMime.toLowerCase()!==detected)
    throw new BadRequestException('Tipo MIME declarado no coincide con los bytes del archivo');
   enforceSize(detected,req.file.length,this.settings.maxDirectBytes,this.settings.maxVideoBytes);
   const kind=formats[detected].tipo;

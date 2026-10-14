@@ -13,7 +13,7 @@ export abstract class IdentityRepository {
  abstract touchLogin(userId:string):Promise<void>;
  abstract roles(userId:string):Promise<RoleInfo[]>;
  abstract capabilities(userId:string,sucursalId:string|null):Promise<string[]>;
- abstract createUser(input:{email:string;nombre:string;hash:string}):Promise<{id:string;email:string;nombre:string}>;
+ abstract createUser(input:{actorId:string;email:string;nombre:string;hash:string}):Promise<{id:string;email:string;nombre:string}>;
  abstract assignRole(input:{actorId:string;userId:string;roleId:string;sucursalId:string|null}):Promise<void>;
  abstract loginBlocked(email:string,ip:string):Promise<boolean>;
  abstract loginFailed(email:string,ip:string):Promise<void>;

@@ -12,7 +12,8 @@ export class PermissionsGuard implements CanActivate {
   const req=context.switchToHttp().getRequest<Request&{auth?:Principal}>();
   if(!req.auth)throw new ForbiddenException('Autenticación requerida');
   // Header is a scope selector, NOT proof of authorization.
-  const scope=req.header('x-sucursal-id')??req.params?.['sucursalId']??null;
+  const candidate=req.header('x-sucursal-id')??req.params?.['sucursalId']??null;
+  const scope=typeof candidate==='string'?candidate:null;
   const available=await this.repo.capabilities(req.auth.id,scope);
   if(!required.every(code=>available.includes(code)))throw new ForbiddenException('Permiso insuficiente');
   return true;

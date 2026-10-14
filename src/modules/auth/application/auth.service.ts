@@ -46,8 +46,8 @@ export class AuthService {
   await this.repo.updatePassword(user.id,await this.hash.hash(newValue));
   await this.repo.revokeAll(user.id);
  }
- async createUser(input:{email:string;nombre:string;temporalPassword:string}){
-  return this.repo.createUser({email:input.email.trim().toLowerCase(),nombre:input.nombre.trim(),hash:await this.hash.hash(input.temporalPassword)});
+ async createUser(actor:Principal,input:{email:string;nombre:string;temporalPassword:string}){
+  return this.repo.createUser({actorId:actor.id,email:input.email.trim().toLowerCase(),nombre:input.nombre.trim(),hash:await this.hash.hash(input.temporalPassword)});
  }
  async assignRole(actor:Principal,targetId:string,roleId:string,sucursalId:string|null){
   if(actor.id===targetId)throw new ForbiddenException('No puede modificar sus propios roles');

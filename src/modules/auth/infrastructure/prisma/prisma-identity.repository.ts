@@ -70,7 +70,11 @@ export class PrismaIdentityRepository extends IdentityRepository {
   }
   return [...permissions].sort();
  }
- async createUser(input:{email:string;nombre:string;hash:string}){
+ async createUser(input:{actorId:string;email:string;nombre:string;hash:string}){
+  const actor=await this.db.usuarioRol.findFirst({where:{
+   usuarioId:input.actorId,sucursalId:null,rol:{codigo:'SUPER_ADMIN',alcance:'GLOBAL',activo:true}
+  }});
+  if(!actor)throw new ForbiddenException('Solo SUPER_ADMIN global puede crear usuarios');
   if(await this.db.usuario.findUnique({where:{email:input.email}}))throw new ConflictException('Correo ya registrado');
   const u=await this.db.usuario.create({data:{email:input.email,nombre:input.nombre,
    hashContrasena:input.hash,debeCambiarContrasena:true,perfil:{create:{}}}});

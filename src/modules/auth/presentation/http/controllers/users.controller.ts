@@ -7,8 +7,8 @@ export class UsersController {
  constructor(private readonly auth:AuthService){}
  @Post()
  @RequirePermissions('users.create')
- create(@CurrentUser() _actor:Principal,@Body() dto:CreateUserDto){
-  return this.auth.createUser(dto);
+ create(@CurrentUser() actor:Principal,@Body() dto:CreateUserDto){
+  return this.auth.createUser(actor,dto);
  }
  @Post(':id/roles')
  @RequirePermissions('users.roles.assign')

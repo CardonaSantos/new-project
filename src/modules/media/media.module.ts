@@ -8,6 +8,7 @@ import {MediaSettingsPort} from './application/ports/media-settings.port.js';
 import {PrismaMediaRepository} from './infrastructure/prisma/prisma-media.repository.js';
 import {SpacesSettings} from './infrastructure/storage/spaces.settings.js';
 import {SpacesAdapter} from './infrastructure/storage/spaces.adapter.js';
+import {MediaMaintenanceService} from './infrastructure/maintenance/media-maintenance.service.js';
 import {MediaController} from './presentation/http/media.controller.js';
 
 @Module({
@@ -19,6 +20,7 @@ import {MediaController} from './presentation/http/media.controller.js';
   {provide:FileStoragePort,useClass:SpacesAdapter},
   {provide:MediaRepositoryPort,useClass:PrismaMediaRepository},
   MediaService,
+  MediaMaintenanceService,
  ],
  exports:[MediaService,MediaRepositoryPort],
 })

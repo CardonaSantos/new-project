@@ -20,4 +20,7 @@ export abstract class MediaRepositoryPort {
   abstract hasReferences(id: string): Promise<boolean>;
   abstract markDeleted(id: string): Promise<void>;
   abstract removePending(id: string): Promise<void>;
+  abstract listStalePending(before: Date, limit: number): Promise<MediaRecord[]>;
+  abstract claimStalePending(id: string, before: Date): Promise<boolean>;
+  abstract releasePendingClaim(id: string): Promise<void>;
 }

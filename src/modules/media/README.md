@@ -55,8 +55,11 @@ Para videos grandes, la URL PUT dura dos minutos y la confirmación debe
 ocurrir dentro de quince minutos. Se requiere CORS en el bucket para el
 origen de Angular, método PUT y cabecera Content-Type.
 
-Un objeto reservado y no confirmado debe purgarse periódicamente; implementar
-su mantenimiento antes de escalar uploads directos a clientes externos.
+Las cargas firmadas no confirmadas se limpian automáticamente cada 30 minutos
+cuando tienen más de 30 minutos de antigüedad. Un reclamo atómico evita que
+varios procesos borren simultáneamente el mismo objeto. La eliminación fallida
+se reintenta en la siguiente ejecución. Para cargas de alto volumen, conviene
+complementarlo con una política lifecycle de Spaces.
 
 La carga a través del backend utiliza Multer en memoria con límite estricto
 de 20 MiB. Videos grandes no pasan por la RAM del servidor.

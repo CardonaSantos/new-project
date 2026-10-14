@@ -55,4 +55,25 @@ export class PrismaMediaRepository extends MediaRepositoryPort {
  async removePending(id:string):Promise<void>{
   await this.prisma.media.deleteMany({where:{id,confirmadaEn:null}});
  }
+ async listStalePending(before:Date,limit:number):Promise<MediaRecord[]>{
+  const rows=await this.prisma.media.findMany({
+   where:{confirmadaEn:null,creadoEn:{lt:before},eliminadaEn:null},
+   orderBy:{creadoEn:'asc'},take:limit
+  });
+  return rows.map(MediaMapper.toDomain);
+ }
+ async claimStalePending(id:string,before:Date):Promise<boolean>{
+  const result=await this.prisma.media.updateMany({
+   where:{id,confirmadaEn:null,eliminadaEn:null,creadoEn:{lt:before}},
+   data:{eliminadaEn:new Date()}
+  });
+  return result.count===1;
+ }
+ async releasePendingClaim(id:string):Promise<void>{
+  await this.prisma.media.updateMany({
+   where:{id,confirmadaEn:null,eliminadaEn:{not:null}},
+   data:{eliminadaEn:null}
+  });
+ }
+
 }

@@ -1,7 +1,7 @@
 import {BadRequestException,Body,Controller,Delete,Get,Param,Post,Query,UploadedFile,UseInterceptors} from '@nestjs/common';
 import {FileInterceptor} from '@nestjs/platform-express';
 import {CurrentUser} from '../../../auth/presentation/http/decorators/auth.decorators.js';
-import type {Principal} from '../../auth/application/auth.service.js';
+import type {Principal} from '../../../auth/application/auth.service.js';
 import {MediaService} from '../../application/media.service.js';
 import {MediaListDto,MediaPresignDto,MediaUploadDto} from './dto/media.dto.js';
 
@@ -13,7 +13,7 @@ export class MediaController {
  @UseInterceptors(FileInterceptor('file',{
   limits:{fileSize:20*1024*1024,files:1,fields:5,parts:7,fieldSize:2048},
  }))
- upload(@CurrentUser() user:Principal,@UploadedFile() file:Express.Multer.File | undefined,@Body() dto:MediaUploadDto){
+ upload(@CurrentUser() user:Principal,@UploadedFile() file:{buffer:Buffer;mimetype:string;originalname:string;size:number} | undefined,@Body() dto:MediaUploadDto){
   if(!file?.buffer)throw new BadRequestException('Adjunta un archivo en el campo file');
   return this.media.upload(user,{
    file:file.buffer,declaredMime:file.mimetype,name:file.originalname,

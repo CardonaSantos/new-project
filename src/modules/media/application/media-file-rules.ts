@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {BadRequestException, PayloadTooLargeException} from '@nestjs/common';
 import {fileTypeFromBuffer} from 'file-type';
-import type {MediaContexto,MediaTipo} from './media.types.js';
+import type {MediaContexto,MediaTipo} from '../domain/media.types.js';
 
 export const formats = {
   'image/jpeg': {tipo:'IMAGEN',extension:'jpg',maxMB:10},

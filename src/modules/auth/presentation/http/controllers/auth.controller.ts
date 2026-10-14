@@ -11,9 +11,9 @@ export class AuthController {
  constructor(private readonly auth:AuthService,private readonly config:ConfigService){}
  private setCookie(res:Response,token:string){
   res.cookie(COOKIE,token,{httpOnly:true,secure:this.config.get<string>('NODE_ENV')==='production',
-    sameSite:'lax',path:'/api/v1/auth',maxAge:TTL});
+    sameSite:'lax',path:'/api/auth',maxAge:TTL});
  }
- private clearCookie(res:Response){res.clearCookie(COOKIE,{path:'/api/v1/auth'});}
+ private clearCookie(res:Response){res.clearCookie(COOKIE,{path:'/api/auth'});}
  private output<T extends {refreshToken:string}>(data:T):Omit<T,'refreshToken'>{
   const {refreshToken:secret,...response}=data;void secret;return response;
  }

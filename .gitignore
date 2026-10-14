@@ -1,9 +1,10 @@
-# compiled output
+# Compiled output
 /dist
 /node_modules
 /build
+/src/generated/prisma/
 
-# TypeScript build cache
+# TypeScript caches
 *.tsbuildinfo
 
 # Logs
@@ -18,11 +19,11 @@ lerna-debug.log*
 # OS
 .DS_Store
 
-# Tests
+# Tests and coverage
 /coverage
 /.nyc_output
 
-# IDEs and editors
+# IDE
 /.idea
 .project
 .classpath
@@ -30,30 +31,22 @@ lerna-debug.log*
 *.launch
 .settings/
 *.sublime-workspace
-
-# IDE - VSCode
 .vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
 
-# dotenv environment variable files
+# Environment secrets (keep example)
 .env
-.env.development.local
-.env.test.local
-.env.production.local
-.env.local
+.env.*
+!.env.example
 
-# temp directory
+# Temporary and runtime files
 .temp
 .tmp
-
-# Runtime data
 pids
 *.pid
 *.seed
 *.pid.lock
-
-# Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json

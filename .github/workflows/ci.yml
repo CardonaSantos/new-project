@@ -1,0 +1,25 @@
+name: Verify API foundation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      # The first commit intentionally removes the incompatible Prisma 8 RC lock.
+      # npm install generates a compatible lock; commit it locally afterward.
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Validate Prisma schema
+        run: npm run prisma:validate
+      - name: Build application
+        run: npm run build
+      - name: Test
+        run: npm run test:e2e

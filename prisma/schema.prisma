@@ -1,0 +1,13 @@
+// GASTRO CORE — Prisma 7 / PostgreSQL
+// Replace this entire file with the reviewed Gastro Core schema when ready.
+// Keep the generator output at ../src/generated/prisma and provider postgresql.
+// Do not run migrate dev until the full schema and DATABASE_URL are ready.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}

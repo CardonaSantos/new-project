@@ -2228,3 +2228,15 @@ model CategoriaMedia {
   @@index([categoriaId, principal, orden])
   @@index([mediaId])
 }
+
+
+// [S16] Historial mínimo de intentos fallidos para limitación distribuida.
+model IntentoAcceso {
+  id        String   @id @default(cuid())
+  correoHash String
+  ip        String
+  creadoEn  DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([ip, creadoEn])
+  @@index([correoHash, ip, creadoEn])
+}

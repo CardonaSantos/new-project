@@ -1,0 +1,1 @@
+Aquí solo viven mappers verdaderamente transversales. Los de filas Prisma a entidades Auth/Orders/etc se mantienen en su propio módulo.

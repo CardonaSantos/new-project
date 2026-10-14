@@ -1,32 +1,18 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, ValidationPipe, VersioningType } from '@nestjs/common';
+import {Test} from '@nestjs/testing';
+import {INestApplication,VersioningType} from '@nestjs/common';
 import request from 'supertest';
-import { App } from 'supertest/types';
-import { AppModule } from './../src/app.module.js';
-
-describe('Health (e2e)', () => {
-  let app: INestApplication<App>;
-
-  beforeEach(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    app = moduleFixture.createNestApplication();
-    app.setGlobalPrefix('api');
-    app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-    await app.init();
-  });
-
-  it('GET /api/v1/health', async () => {
-    await request(app.getHttpServer())
-      .get('/api/v1/health')
-      .expect(200)
-      .expect({ status: 'ok', service: 'gastro-core' });
-  });
-
-  afterEach(async () => {
-    await app.close();
-  });
+import {CoreModule} from '../src/modules/core/core.module.js';
+import type {App} from 'supertest/types';
+describe('Health public endpoint',()=>{
+ let app:INestApplication<App>;
+ beforeEach(async()=>{
+  const module=await Test.createTestingModule({imports:[CoreModule]}).compile();
+  app=module.createNestApplication();
+  app.setGlobalPrefix('api');
+  app.enableVersioning({type:VersioningType.URI,defaultVersion:'1'});
+  await app.init();
+ });
+ it('GET /api/v1/health',()=>request(app.getHttpServer()).get('/api/v1/health')
+  .expect(200).expect({status:'ok',service:'gastro-core'}));
+ afterEach(async()=>app.close());
 });

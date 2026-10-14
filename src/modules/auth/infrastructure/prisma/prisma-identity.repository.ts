@@ -44,10 +44,16 @@ export class PrismaIdentityRepository extends IdentityRepository {
  async revokeAll(userId:string):Promise<void>{
   await this.db.sesionUsuario.updateMany({where:{usuarioId:userId,revocadaEn:null},data:{revocadaEn:new Date(),revocacionMotivo:'LOGOUT_ALL'}});
  }
- async updatePassword(userId:string,hash:string):Promise<void>{
-  await this.db.usuario.update({where:{id:userId},data:{
-   hashContrasena:hash,debeCambiarContrasena:false,contrasenaCambiadaEn:new Date(),versionAutorizacion:{increment:1}
-  }});
+ async changePasswordAndRevokeSessions(userId:string,hash:string):Promise<void>{
+  await this.db.$transaction(async(tx)=>{
+   await tx.usuario.update({where:{id:userId},data:{
+    hashContrasena:hash,debeCambiarContrasena:false,
+    contrasenaCambiadaEn:new Date(),versionAutorizacion:{increment:1}
+   }});
+   await tx.sesionUsuario.updateMany({where:{usuarioId:userId,revocadaEn:null},data:{
+    revocadaEn:new Date(),revocacionMotivo:'PASSWORD_CHANGE'
+   }});
+  });
  }
  async touchLogin(userId:string):Promise<void>{
   await this.db.usuario.update({where:{id:userId},data:{ultimoAccesoEn:new Date()}});

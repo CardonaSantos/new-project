@@ -43,8 +43,7 @@ export class AuthService {
   if(oldValue===newValue)throw new ConflictException('La nueva contraseña debe ser diferente');
   const account=await this.repo.account(user.email);
   if(!account||!await this.hash.verify(account.hashContrasena,oldValue))throw new UnauthorizedException('Contraseña actual incorrecta');
-  await this.repo.updatePassword(user.id,await this.hash.hash(newValue));
-  await this.repo.revokeAll(user.id);
+  await this.repo.changePasswordAndRevokeSessions(user.id,await this.hash.hash(newValue));
  }
  async createUser(actor:Principal,input:{email:string;nombre:string;temporalPassword:string}){
   return this.repo.createUser({actorId:actor.id,email:input.email.trim().toLowerCase(),nombre:input.nombre.trim(),hash:await this.hash.hash(input.temporalPassword)});

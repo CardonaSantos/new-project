@@ -9,7 +9,7 @@ export abstract class IdentityRepository {
  abstract rotate(id:string,oldHash:string,newHash:string):Promise<boolean>;
  abstract revoke(id:string,userId:string):Promise<void>;
  abstract revokeAll(userId:string):Promise<void>;
- abstract updatePassword(userId:string,hash:string):Promise<void>;
+ abstract changePasswordAndRevokeSessions(userId:string,hash:string):Promise<void>;
  abstract touchLogin(userId:string):Promise<void>;
  abstract roles(userId:string):Promise<RoleInfo[]>;
  abstract capabilities(userId:string,sucursalId:string|null):Promise<string[]>;

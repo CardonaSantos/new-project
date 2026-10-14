@@ -11,3 +11,2084 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+// ============================================================================
+// GASTRO CORE — SCHEMA PRISMA v0.1 (una empresa por base de datos)
+// PostgreSQL · NestJS · Prisma ORM 7 · Nomenclatura PascalCase/camelCase
+// ============================================================================
+// ÍNDICE DE SECCIONES — busque [SNN] en el editor para navegar
+// [S00] Configuración Prisma y enumeraciones operativas
+// [S01] EMPRESA, SUCURSALES Y DISPOSITIVOS
+// [S02] IDENTIDAD, ROLES, PERMISOS Y AUDITORÍA
+// [S03] CATÁLOGO COMERCIAL, VARIANTES Y MODIFICADORES
+// [S04] ARTÍCULOS, UNIDADES, RECETAS Y EMPAQUES
+// [S05] ALMACENES, LOTES, KARDEX Y CONTEOS
+// [S06] PRODUCCIÓN Y CONSUMO REAL
+// [S07] PROVEEDORES, COMPRAS, RECEPCIONES Y PAGOS
+// [S08] REQUISICIONES Y TRANSFERENCIAS
+// [S09] CLIENTES, MESAS, ÓRDENES Y CUENTAS
+// [S10] ESTACIONES, COMANDAS Y PREPARACIÓN
+// [S11] CAJA, PAGOS, VENTAS Y GASTOS
+// [S12] DELIVERY Y CANALES EXTERNOS
+// [S13] RESERVAS Y RECORDATORIOS
+// [S14] AUTOSERVICIO Y EVENTOS TÉCNICOS
+// ============================================================================
+// CRITERIOS
+// - FEL/CFDI/emisión fiscal: FUERA DE ESTA VERSIÓN expresamente.
+// - Estado mínimo: no hay aprobaciones redundantes para operaciones normales.
+// - Decimal(18,2): dinero total GTQ; Decimal(18,6): costo unitario;
+//   Decimal(20,6): cantidades físicas; Decimal(24,10): conversiones.
+// - NUNCA Float para importes, ingredientes o tasas.
+// - Stock se registra por ubicación y lote; el Kardex es MovimientoInventario.
+// - Registro de operación NO es emisión fiscal; Venta = comprobante INTERNO.
+// - Para Prisma 7: DATABASE_URL se configura en prisma.config.ts.
+// - Restricciones SQL avanzadas y riesgos pendientes documentados en README.
+// ============================================================================
+
+// ============================================================================
+// [S00] CONFIGURACIÓN — Prisma ORM 7
+// ============================================================================
+
+// ============================================================================
+// [S00] ENUMS OPERATIVOS MÍNIMOS
+// ============================================================================
+
+enum EstadoOrden {
+  ABIERTA
+  CERRADA
+  CANCELADA
+}
+
+enum OrigenOrden {
+  CAJA
+  MESERO
+  QUIOSCO
+  QR
+  WEB
+  TELEFONO
+  PLATAFORMA
+}
+
+enum ModalidadServicio {
+  MESA
+  MOSTRADOR
+  PARA_LLEVAR
+  DELIVERY
+}
+
+enum EstadoComanda {
+  PENDIENTE
+  PREPARANDO
+  LISTA
+  CANCELADA
+}
+
+enum EstadoEntrega {
+  PENDIENTE
+  EN_REPARTO
+  ENTREGADA
+  CANCELADA
+}
+
+enum EstadoReserva {
+  PENDIENTE
+  CONFIRMADA
+  CANCELADA
+  COMPLETADA
+  NO_ASISTIO
+}
+
+enum EstadoRecordatorio {
+  PENDIENTE
+  ENVIADO
+  FALLIDO
+  CANCELADO
+}
+
+enum CanalRecordatorio {
+  EMAIL
+  SMS
+  WHATSAPP
+}
+
+enum TipoArticulo {
+  INGREDIENTE
+  PREPARACION
+  PRODUCTO_TERMINADO
+  EMPAQUE
+  SUMINISTRO
+}
+
+enum TipoProducto {
+  PREPARADO
+  INVENTARIABLE
+  SERVICIO
+}
+
+enum TipoReceta {
+  VENTA
+  PRODUCCION
+}
+
+enum TipoConsumoOrden {
+  RECETA
+  EMPAQUE
+}
+
+enum EfectoModificador {
+  SUMAR
+  RESTAR
+  SUSTITUIR
+}
+
+enum TipoMovimientoInventario {
+  COMPRA
+  CONSUMO
+  PRODUCCION_ENTRADA
+  PRODUCCION_SALIDA
+  TRANSFERENCIA_ENTRADA
+  TRANSFERENCIA_SALIDA
+  AJUSTE_ENTRADA
+  AJUSTE_SALIDA
+  MERMA
+  DEVOLUCION
+}
+
+enum EstadoDocumento {
+  BORRADOR
+  CONFIRMADO
+  CANCELADO
+}
+
+enum EstadoTransferencia {
+  BORRADOR
+  EN_TRANSITO
+  RECIBIDA
+  CANCELADA
+}
+
+enum MetodoValoracion {
+  PROMEDIO_PONDERADO
+  FIFO
+}
+
+enum MetodoPago {
+  EFECTIVO
+  TARJETA
+  TRANSFERENCIA
+  OTRO
+}
+
+enum EstadoIntentoPago {
+  PENDIENTE
+  CONFIRMADO
+  FALLIDO
+  CANCELADO
+}
+
+enum TipoMovimientoCaja {
+  INGRESO
+  EGRESO
+}
+
+enum TipoGasto {
+  OPERATIVO
+  COMPRA_INVENTARIO
+  OTRO
+}
+
+enum EstadoProduccion {
+  BORRADOR
+  CONFIRMADA
+  CANCELADA
+}
+
+enum EstadoOrdenCompra {
+  BORRADOR
+  CONFIRMADA
+  CANCELADA
+}
+
+enum EstadoRequisicion {
+  ABIERTA
+  ATENDIDA
+  CANCELADA
+}
+
+enum EstadoCuenta {
+  ABIERTA
+  CERRADA
+}
+
+enum EstadoLiquidacion {
+  ABIERTA
+  CERRADA
+}
+
+enum TipoDispositivo {
+  POS
+  KDS
+  QUIOSCO
+  PANTALLA_TURNOS
+  IMPRESORA
+  OTRO
+}
+
+enum UnidadDimension {
+  UNIDAD
+  MASA
+  VOLUMEN
+  LONGITUD
+}
+
+enum AlcanceEmpaque {
+  ARTICULO
+  ORDEN
+}
+
+enum EstadoSesionAutoservicio {
+  ACTIVA
+  FINALIZADA
+  EXPIRADA
+}
+
+enum EstadoEvento {
+  PENDIENTE
+  PROCESADO
+  FALLIDO
+}
+
+// ============================================================================
+// [S01] EMPRESA, SUCURSALES Y DISPOSITIVOS
+// ============================================================================
+
+model EmpresaConfiguracion {
+  id               String           @id @default(cuid())
+  nombreComercial  String
+  razonSocial      String?
+  nit              String?
+  moneda           String           @default("GTQ") @db.VarChar(3)
+  zonaHoraria      String           @default("America/Guatemala")
+  metodoValoracion MetodoValoracion @default(PROMEDIO_PONDERADO)
+  creadoEn         DateTime         @default(now()) @db.Timestamptz(3)
+  actualizadoEn    DateTime         @updatedAt @db.Timestamptz(3)
+}
+
+model Sucursal {
+  id            String   @id @default(cuid())
+  codigo        String   @unique
+  nombre        String
+  direccion     String?
+  telefono      String?
+  zonaHoraria   String   @default("America/Guatemala")
+  activa        Boolean  @default(true)
+  creadoEn      DateTime @default(now()) @db.Timestamptz(3)
+  actualizadoEn DateTime @updatedAt @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  configuracionSucursalesComoSucursal     ConfiguracionSucursal?       @relation("ConfiguracionSucursal_sucursal_Sucursal")
+  dispositivosComoSucursal                Dispositivo[]                @relation("Dispositivo_sucursal_Sucursal")
+  usuarioRolesComoSucursal                UsuarioRol[]                 @relation("UsuarioRol_sucursal_Sucursal")
+  eventoAuditoriasComoSucursal            EventoAuditoria[]            @relation("EventoAuditoria_sucursal_Sucursal")
+  precioVariantesComoSucursal             PrecioVariante[]             @relation("PrecioVariante_sucursal_Sucursal")
+  reglaEmpaquesComoSucursal               ReglaEmpaque[]               @relation("ReglaEmpaque_sucursal_Sucursal")
+  almacenesComoSucursal                   Almacen[]                    @relation("Almacen_sucursal_Sucursal")
+  ordenComprasComoSucursal                OrdenCompra[]                @relation("OrdenCompra_sucursal_Sucursal")
+  facturasProveedorComoSucursal           FacturaProveedor[]           @relation("FacturaProveedor_sucursal_Sucursal")
+  salasComoSucursal                       Sala[]                       @relation("Sala_sucursal_Sucursal")
+  ordenesComoSucursal                     Orden[]                      @relation("Orden_sucursal_Sucursal")
+  estacionPreparacionesComoSucursal       EstacionPreparacion[]        @relation("EstacionPreparacion_sucursal_Sucursal")
+  cajasComoSucursal                       Caja[]                       @relation("Caja_sucursal_Sucursal")
+  configuracionProveedorPagosComoSucursal ConfiguracionProveedorPago[] @relation("ConfiguracionProveedorPago_sucursal_Sucursal")
+  ventasComoSucursal                      Venta[]                      @relation("Venta_sucursal_Sucursal")
+  cuentaFinancierasComoSucursal           CuentaFinanciera[]           @relation("CuentaFinanciera_sucursal_Sucursal")
+  gastoOperativosComoSucursal             GastoOperativo[]             @relation("GastoOperativo_sucursal_Sucursal")
+  cierreOperativosComoSucursal            CierreOperativo[]            @relation("CierreOperativo_sucursal_Sucursal")
+  liquidacionRepartidoresComoSucursal     LiquidacionRepartidor[]      @relation("LiquidacionRepartidor_sucursal_Sucursal")
+  reservasComoSucursal                    Reserva[]                    @relation("Reserva_sucursal_Sucursal")
+  sesionAutoserviciosComoSucursal         SesionAutoservicio[]         @relation("SesionAutoservicio_sucursal_Sucursal")
+}
+
+model ConfiguracionSucursal {
+  id                      String   @id @default(cuid())
+  sucursalId              String   @unique
+  sucursal                Sucursal @relation("ConfiguracionSucursal_sucursal_Sucursal", fields: [sucursalId], references: [id], onDelete: Restrict)
+  horaCorteOperativo      String   @default("04:00") @db.VarChar(5)
+  exigeCobroAntesPreparar Boolean  @default(false)
+  permiteStockNegativo    Boolean  @default(false)
+  permiteOrdenesQR        Boolean  @default(false)
+  moneda                  String   @default("GTQ") @db.VarChar(3)
+  actualizadoEn           DateTime @updatedAt @db.Timestamptz(3)
+}
+
+model Dispositivo {
+  id                    String               @id @default(cuid())
+  sucursalId            String
+  sucursal              Sucursal             @relation("Dispositivo_sucursal_Sucursal", fields: [sucursalId], references: [id], onDelete: Restrict)
+  codigo                String
+  nombre                String
+  tipo                  TipoDispositivo
+  estacionPreparacionId String?
+  estacionPreparacion   EstacionPreparacion? @relation("Dispositivo_estacionPreparacion_EstacionPreparacion", fields: [estacionPreparacionId], references: [id], onDelete: SetNull)
+  ultimoAccesoEn        DateTime?            @db.Timestamptz(3)
+  activo                Boolean              @default(true)
+  creadoEn              DateTime             @default(now()) @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  sesionUsuariosComoDispositivo      SesionUsuario[]      @relation("SesionUsuario_dispositivo_Dispositivo")
+  sesionAutoserviciosComoDispositivo SesionAutoservicio[] @relation("SesionAutoservicio_dispositivo_Dispositivo")
+
+  @@unique([sucursalId, codigo])
+}
+
+// ============================================================================
+// [S02] IDENTIDAD, ROLES, PERMISOS Y AUDITORÍA
+// ============================================================================
+
+model Usuario {
+  id                  String    @id @default(cuid())
+  email               String    @unique
+  nombre              String
+  hashContrasena      String
+  activo              Boolean   @default(true)
+  versionAutorizacion Int       @default(1)
+  ultimoAccesoEn      DateTime? @db.Timestamptz(3)
+  creadoEn            DateTime  @default(now()) @db.Timestamptz(3)
+  actualizadoEn       DateTime  @updatedAt @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  sesionUsuariosComoUsuario             SesionUsuario[]           @relation("SesionUsuario_usuario_Usuario")
+  usuarioRolesComoUsuario               UsuarioRol[]              @relation("UsuarioRol_usuario_Usuario")
+  eventoAuditoriasComoUsuario           EventoAuditoria[]         @relation("EventoAuditoria_usuario_Usuario")
+  movimientoInventariosComoUsuario      MovimientoInventario[]    @relation("MovimientoInventario_usuario_Usuario")
+  conteoInventariosComoUsuario          ConteoInventario[]        @relation("ConteoInventario_usuario_Usuario")
+  ajusteInventariosComoUsuario          AjusteInventario[]        @relation("AjusteInventario_usuario_Usuario")
+  produccionLotesComoUsuario            ProduccionLote[]          @relation("ProduccionLote_usuario_Usuario")
+  ordenComprasComoUsuario               OrdenCompra[]             @relation("OrdenCompra_usuario_Usuario")
+  recepcionesCompraComoUsuario          RecepcionCompra[]         @relation("RecepcionCompra_usuario_Usuario")
+  pagoProveedoresComoUsuario            PagoProveedor[]           @relation("PagoProveedor_usuario_Usuario")
+  requisicionesComoSolicitante          Requisicion[]             @relation("Requisicion_solicitante_Usuario")
+  transferenciaInventariosComoUsuario   TransferenciaInventario[] @relation("TransferenciaInventario_usuario_Usuario")
+  ocupacionMesasComoAbiertaPor          OcupacionMesa[]           @relation("OcupacionMesa_abiertaPor_Usuario")
+  ordenesComoUsuario                    Orden[]                   @relation("Orden_usuario_Usuario")
+  eventoOrdenesComoUsuario              EventoOrden[]             @relation("EventoOrden_usuario_Usuario")
+  eventoComandasComoUsuario             EventoComanda[]           @relation("EventoComanda_usuario_Usuario")
+  turnoCajasComoCajero                  TurnoCaja[]               @relation("TurnoCaja_cajero_Usuario")
+  movimientoCajasComoUsuario            MovimientoCaja[]          @relation("MovimientoCaja_usuario_Usuario")
+  arqueoCajasComoRealizadoPor           ArqueoCaja[]              @relation("ArqueoCaja_realizadoPor_Usuario")
+  pagosComoCobradoPor                   Pago[]                    @relation("Pago_cobradoPor_Usuario")
+  reembolsoPagosComoUsuario             ReembolsoPago[]           @relation("ReembolsoPago_usuario_Usuario")
+  gastoOperativosComoUsuario            GastoOperativo[]          @relation("GastoOperativo_usuario_Usuario")
+  cierreOperativosComoUsuario           CierreOperativo[]         @relation("CierreOperativo_usuario_Usuario")
+  entregasComoRepartidor                Entrega[]                 @relation("Entrega_repartidor_Usuario")
+  liquidacionRepartidoresComoRepartidor LiquidacionRepartidor[]   @relation("LiquidacionRepartidor_repartidor_Usuario")
+  reservasComoCreadaPor                 Reserva[]                 @relation("Reserva_creadaPor_Usuario")
+  eventoReservasComoUsuario             EventoReserva[]           @relation("EventoReserva_usuario_Usuario")
+}
+
+model SesionUsuario {
+  id               String       @id @default(cuid())
+  usuarioId        String
+  usuario          Usuario      @relation("SesionUsuario_usuario_Usuario", fields: [usuarioId], references: [id], onDelete: Restrict)
+  hashRefreshToken String       @unique
+  dispositivoId    String?
+  dispositivo      Dispositivo? @relation("SesionUsuario_dispositivo_Dispositivo", fields: [dispositivoId], references: [id], onDelete: SetNull)
+  expiraEn         DateTime     @db.Timestamptz(3)
+  revocadaEn       DateTime?    @db.Timestamptz(3)
+  creadaEn         DateTime     @default(now()) @db.Timestamptz(3)
+
+  @@index([usuarioId, revocadaEn])
+}
+
+model Rol {
+  id          String   @id @default(cuid())
+  codigo      String   @unique
+  nombre      String
+  descripcion String?
+  activo      Boolean  @default(true)
+  version     Int      @default(1)
+  creadoEn    DateTime @default(now()) @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  rolPermisosComoRol  RolPermiso[] @relation("RolPermiso_rol_Rol")
+  usuarioRolesComoRol UsuarioRol[] @relation("UsuarioRol_rol_Rol")
+}
+
+model Permiso {
+  id          String  @id @default(cuid())
+  codigo      String  @unique
+  descripcion String?
+  modulo      String
+
+  // Relaciones inversas (navegación Prisma)
+  rolPermisosComoPermiso RolPermiso[] @relation("RolPermiso_permiso_Permiso")
+}
+
+model RolPermiso {
+  id        String  @id @default(cuid())
+  rolId     String
+  rol       Rol     @relation("RolPermiso_rol_Rol", fields: [rolId], references: [id], onDelete: Cascade)
+  permisoId String
+  permiso   Permiso @relation("RolPermiso_permiso_Permiso", fields: [permisoId], references: [id], onDelete: Cascade)
+
+  @@unique([rolId, permisoId])
+}
+
+model UsuarioRol {
+  id         String   @id @default(cuid())
+  usuarioId  String
+  usuario    Usuario  @relation("UsuarioRol_usuario_Usuario", fields: [usuarioId], references: [id], onDelete: Cascade)
+  rolId      String
+  rol        Rol      @relation("UsuarioRol_rol_Rol", fields: [rolId], references: [id], onDelete: Restrict)
+  sucursalId String
+  sucursal   Sucursal @relation("UsuarioRol_sucursal_Sucursal", fields: [sucursalId], references: [id], onDelete: Restrict)
+  creadoEn   DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([usuarioId, rolId, sucursalId])
+  @@index([sucursalId, usuarioId])
+}
+
+model EventoAuditoria {
+  id         String    @id @default(cuid())
+  usuarioId  String?
+  usuario    Usuario?  @relation("EventoAuditoria_usuario_Usuario", fields: [usuarioId], references: [id], onDelete: SetNull)
+  sucursalId String?
+  sucursal   Sucursal? @relation("EventoAuditoria_sucursal_Sucursal", fields: [sucursalId], references: [id], onDelete: SetNull)
+  accion     String
+  entidad    String
+  entidadId  String?
+  antes      Json?
+  despues    Json?
+  ip         String?
+  motivo     String?
+  creadoEn   DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([entidad, entidadId, creadoEn])
+  @@index([usuarioId, creadoEn])
+}
+
+// ============================================================================
+// [S03] CATÁLOGO COMERCIAL, VARIANTES Y MODIFICADORES
+// ============================================================================
+
+model Categoria {
+  id       String     @id @default(cuid())
+  nombre   String
+  parentId String?
+  parent   Categoria? @relation("Categoria_parent_Categoria", fields: [parentId], references: [id], onDelete: SetNull)
+  orden    Int        @default(0)
+  activa   Boolean    @default(true)
+
+  // Relaciones inversas (navegación Prisma)
+  categoriasComoParent           Categoria[]       @relation("Categoria_parent_Categoria")
+  productosComoCategoria         Producto[]        @relation("Producto_categoria_Categoria")
+  rutaPreparacionesComoCategoria RutaPreparacion[] @relation("RutaPreparacion_categoria_Categoria")
+}
+
+model Producto {
+  id            String       @id @default(cuid())
+  codigo        String       @unique
+  categoriaId   String?
+  categoria     Categoria?   @relation("Producto_categoria_Categoria", fields: [categoriaId], references: [id], onDelete: SetNull)
+  nombre        String
+  descripcion   String?
+  tipo          TipoProducto @default(PREPARADO)
+  imagenUrl     String?
+  activo        Boolean      @default(true)
+  creadoEn      DateTime     @default(now()) @db.Timestamptz(3)
+  actualizadoEn DateTime     @updatedAt @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  varianteProductosComoProducto VarianteProducto[] @relation("VarianteProducto_producto_Producto")
+}
+
+model VarianteProducto {
+  id                   String              @id @default(cuid())
+  productoId           String
+  producto             Producto            @relation("VarianteProducto_producto_Producto", fields: [productoId], references: [id], onDelete: Restrict)
+  articuloInventarioId String?
+  articuloInventario   ArticuloInventario? @relation("VarianteProducto_articuloInventario_ArticuloInventario", fields: [articuloInventarioId], references: [id], onDelete: Restrict)
+  // Si Producto.tipo=INVENTARIABLE, cada variante apunta a su SKU físico.
+  sku                  String?             @unique
+  nombre               String
+  orden                Int                 @default(0)
+  activo               Boolean             @default(true)
+
+  // Relaciones inversas (navegación Prisma)
+  precioVariantesComoVariante            PrecioVariante[]           @relation("PrecioVariante_variante_VarianteProducto")
+  varianteGrupoModificadoresComoVariante VarianteGrupoModificador[] @relation("VarianteGrupoModificador_variante_VarianteProducto")
+  recetasComoVariante                    Receta[]                   @relation("Receta_variante_VarianteProducto")
+  reglaEmpaquesComoVariante              ReglaEmpaque[]             @relation("ReglaEmpaque_variante_VarianteProducto")
+  ordenLineasComoVariante                OrdenLinea[]               @relation("OrdenLinea_variante_VarianteProducto")
+  rutaPreparacionesComoVariante          RutaPreparacion[]          @relation("RutaPreparacion_variante_VarianteProducto")
+
+  @@unique([productoId, nombre])
+}
+
+model PrecioVariante {
+  id           String           @id @default(cuid())
+  varianteId   String
+  variante     VarianteProducto @relation("PrecioVariante_variante_VarianteProducto", fields: [varianteId], references: [id], onDelete: Restrict)
+  sucursalId   String
+  sucursal     Sucursal         @relation("PrecioVariante_sucursal_Sucursal", fields: [sucursalId], references: [id], onDelete: Restrict)
+  importe      Decimal          @db.Decimal(18, 2)
+  vigenteDesde DateTime         @default(now()) @db.Timestamptz(3)
+  vigenteHasta DateTime?        @db.Timestamptz(3)
+
+  @@index([varianteId, sucursalId, vigenteDesde])
+}
+
+model GrupoModificador {
+  id     String  @id @default(cuid())
+  nombre String
+  minimo Int     @default(0)
+  maximo Int?
+  activo Boolean @default(true)
+
+  // Relaciones inversas (navegación Prisma)
+  modificadoresComoGrupo              Modificador[]              @relation("Modificador_grupo_GrupoModificador")
+  varianteGrupoModificadoresComoGrupo VarianteGrupoModificador[] @relation("VarianteGrupoModificador_grupo_GrupoModificador")
+}
+
+model Modificador {
+  id               String           @id @default(cuid())
+  grupoId          String
+  grupo            GrupoModificador @relation("Modificador_grupo_GrupoModificador", fields: [grupoId], references: [id], onDelete: Restrict)
+  nombre           String
+  incrementoPrecio Decimal          @default(0) @db.Decimal(18, 2)
+  activo           Boolean          @default(true)
+
+  // Relaciones inversas (navegación Prisma)
+  modificadorComponentesComoModificador  ModificadorComponente[] @relation("ModificadorComponente_modificador_Modificador")
+  ordenLineaModificadoresComoModificador OrdenLineaModificador[] @relation("OrdenLineaModificador_modificador_Modificador")
+
+  @@unique([grupoId, nombre])
+}
+
+model VarianteGrupoModificador {
+  id          String           @id @default(cuid())
+  varianteId  String
+  variante    VarianteProducto @relation("VarianteGrupoModificador_variante_VarianteProducto", fields: [varianteId], references: [id], onDelete: Cascade)
+  grupoId     String
+  grupo       GrupoModificador @relation("VarianteGrupoModificador_grupo_GrupoModificador", fields: [grupoId], references: [id], onDelete: Restrict)
+  orden       Int              @default(0)
+  obligatorio Boolean          @default(false)
+
+  @@unique([varianteId, grupoId])
+}
+
+// ============================================================================
+// [S04] ARTÍCULOS, UNIDADES, RECETAS Y EMPAQUES
+// ============================================================================
+
+model UnidadMedida {
+  id        String          @id @default(cuid())
+  codigo    String          @unique
+  nombre    String
+  dimension UnidadDimension
+  esBase    Boolean         @default(false)
+
+  // Relaciones inversas (navegación Prisma)
+  conversionUnidadesComoUnidadOrigen   ConversionUnidad[]      @relation("ConversionUnidad_unidadOrigen_UnidadMedida")
+  conversionUnidadesComoUnidadDestino  ConversionUnidad[]      @relation("ConversionUnidad_unidadDestino_UnidadMedida")
+  articulosInventarioComoUnidadBase    ArticuloInventario[]    @relation("ArticuloInventario_unidadBase_UnidadMedida")
+  recetaVersionesComoUnidadRendimiento RecetaVersion[]         @relation("RecetaVersion_unidadRendimiento_UnidadMedida")
+  recetaComponentesComoUnidad          RecetaComponente[]      @relation("RecetaComponente_unidad_UnidadMedida")
+  modificadorComponentesComoUnidad     ModificadorComponente[] @relation("ModificadorComponente_unidad_UnidadMedida")
+  presentacionComprasComoUnidadCompra  PresentacionCompra[]    @relation("PresentacionCompra_unidadCompra_UnidadMedida")
+}
+
+model ConversionUnidad {
+  id              String       @id @default(cuid())
+  unidadOrigenId  String
+  unidadOrigen    UnidadMedida @relation("ConversionUnidad_unidadOrigen_UnidadMedida", fields: [unidadOrigenId], references: [id], onDelete: Restrict)
+  unidadDestinoId String
+  unidadDestino   UnidadMedida @relation("ConversionUnidad_unidadDestino_UnidadMedida", fields: [unidadDestinoId], references: [id], onDelete: Restrict)
+  factor          Decimal      @db.Decimal(24, 10)
+
+  @@unique([unidadOrigenId, unidadDestinoId])
+}
+
+model ArticuloInventario {
+  id                  String       @id @default(cuid())
+  codigo              String       @unique
+  nombre              String
+  tipo                TipoArticulo
+  unidadBaseId        String
+  unidadBase          UnidadMedida @relation("ArticuloInventario_unidadBase_UnidadMedida", fields: [unidadBaseId], references: [id], onDelete: Restrict)
+  requiereLote        Boolean      @default(false)
+  requiereVencimiento Boolean      @default(false)
+  costoReferencia     Decimal?     @db.Decimal(18, 6)
+  stockMinimo         Decimal?     @db.Decimal(20, 6)
+  activo              Boolean      @default(true)
+  creadoEn            DateTime     @default(now()) @db.Timestamptz(3)
+  actualizadoEn       DateTime     @updatedAt @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  varianteProductosComoArticuloInventario     VarianteProducto[]             @relation("VarianteProducto_articuloInventario_ArticuloInventario")
+  recetasComoArticuloResultado                Receta[]                       @relation("Receta_articuloResultado_ArticuloInventario")
+  recetaComponentesComoArticulo               RecetaComponente[]             @relation("RecetaComponente_articulo_ArticuloInventario")
+  modificadorComponentesComoArticulo          ModificadorComponente[]        @relation("ModificadorComponente_articulo_ArticuloInventario")
+  modificadorComponentesComoSustituyeArticulo ModificadorComponente[]        @relation("ModificadorComponente_sustituyeArticulo_ArticuloInventario")
+  reglaEmpaqueLineasComoArticulo              ReglaEmpaqueLinea[]            @relation("ReglaEmpaqueLinea_articulo_ArticuloInventario")
+  loteInventariosComoArticulo                 LoteInventario[]               @relation("LoteInventario_articulo_ArticuloInventario")
+  existenciasComoArticulo                     Existencia[]                   @relation("Existencia_articulo_ArticuloInventario")
+  movimientoInventariosComoArticulo           MovimientoInventario[]         @relation("MovimientoInventario_articulo_ArticuloInventario")
+  capaCostoInventariosComoArticulo            CapaCostoInventario[]          @relation("CapaCostoInventario_articulo_ArticuloInventario")
+  conteoInventarioLineasComoArticulo          ConteoInventarioLinea[]        @relation("ConteoInventarioLinea_articulo_ArticuloInventario")
+  ajusteInventarioLineasComoArticulo          AjusteInventarioLinea[]        @relation("AjusteInventarioLinea_articulo_ArticuloInventario")
+  produccionConsumosComoArticulo              ProduccionConsumo[]            @relation("ProduccionConsumo_articulo_ArticuloInventario")
+  consumoOrdenLineasComoArticulo              ConsumoOrdenLinea[]            @relation("ConsumoOrdenLinea_articulo_ArticuloInventario")
+  presentacionComprasComoArticulo             PresentacionCompra[]           @relation("PresentacionCompra_articulo_ArticuloInventario")
+  ordenCompraLineasComoArticulo               OrdenCompraLinea[]             @relation("OrdenCompraLinea_articulo_ArticuloInventario")
+  recepcionCompraLineasComoArticulo           RecepcionCompraLinea[]         @relation("RecepcionCompraLinea_articulo_ArticuloInventario")
+  facturaProveedorLineasComoArticulo          FacturaProveedorLinea[]        @relation("FacturaProveedorLinea_articulo_ArticuloInventario")
+  requisicionLineasComoArticulo               RequisicionLinea[]             @relation("RequisicionLinea_articulo_ArticuloInventario")
+  transferenciaInventarioLineasComoArticulo   TransferenciaInventarioLinea[] @relation("TransferenciaInventarioLinea_articulo_ArticuloInventario")
+}
+
+model Receta {
+  id                  String              @id @default(cuid())
+  nombre              String
+  tipo                TipoReceta
+  varianteId          String?
+  variante            VarianteProducto?   @relation("Receta_variante_VarianteProducto", fields: [varianteId], references: [id], onDelete: Restrict)
+  articuloResultadoId String?
+  articuloResultado   ArticuloInventario? @relation("Receta_articuloResultado_ArticuloInventario", fields: [articuloResultadoId], references: [id], onDelete: Restrict)
+  activa              Boolean             @default(true)
+  // Para VENTA usar varianteId; para PRODUCCION usar articuloResultadoId.
+
+  // Relaciones inversas (navegación Prisma)
+  recetaVersionesComoReceta RecetaVersion[] @relation("RecetaVersion_receta_Receta")
+}
+
+model RecetaVersion {
+  id                  String       @id @default(cuid())
+  recetaId            String
+  receta              Receta       @relation("RecetaVersion_receta_Receta", fields: [recetaId], references: [id], onDelete: Restrict)
+  numero              Int
+  rendimiento         Decimal      @default(1) @db.Decimal(20, 6)
+  unidadRendimientoId String
+  unidadRendimiento   UnidadMedida @relation("RecetaVersion_unidadRendimiento_UnidadMedida", fields: [unidadRendimientoId], references: [id], onDelete: Restrict)
+  publicadaEn         DateTime?    @db.Timestamptz(3)
+  activa              Boolean      @default(false)
+  creadaEn            DateTime     @default(now()) @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  recetaComponentesComoRecetaVersion RecetaComponente[] @relation("RecetaComponente_recetaVersion_RecetaVersion")
+  produccionLotesComoRecetaVersion   ProduccionLote[]   @relation("ProduccionLote_recetaVersion_RecetaVersion")
+  consumoOrdenesComoRecetaVersion    ConsumoOrden[]     @relation("ConsumoOrden_recetaVersion_RecetaVersion")
+
+  @@unique([recetaId, numero])
+}
+
+model RecetaComponente {
+  id              String             @id @default(cuid())
+  recetaVersionId String
+  recetaVersion   RecetaVersion      @relation("RecetaComponente_recetaVersion_RecetaVersion", fields: [recetaVersionId], references: [id], onDelete: Restrict)
+  articuloId      String
+  articulo        ArticuloInventario @relation("RecetaComponente_articulo_ArticuloInventario", fields: [articuloId], references: [id], onDelete: Restrict)
+  cantidad        Decimal            @db.Decimal(20, 6)
+  unidadId        String
+  unidad          UnidadMedida       @relation("RecetaComponente_unidad_UnidadMedida", fields: [unidadId], references: [id], onDelete: Restrict)
+  mermaPorcentaje Decimal            @default(0) @db.Decimal(7, 4)
+
+  @@unique([recetaVersionId, articuloId])
+}
+
+model ModificadorComponente {
+  id                  String              @id @default(cuid())
+  modificadorId       String
+  modificador         Modificador         @relation("ModificadorComponente_modificador_Modificador", fields: [modificadorId], references: [id], onDelete: Restrict)
+  articuloId          String
+  articulo            ArticuloInventario  @relation("ModificadorComponente_articulo_ArticuloInventario", fields: [articuloId], references: [id], onDelete: Restrict)
+  efecto              EfectoModificador
+  cantidad            Decimal             @db.Decimal(20, 6)
+  unidadId            String
+  unidad              UnidadMedida        @relation("ModificadorComponente_unidad_UnidadMedida", fields: [unidadId], references: [id], onDelete: Restrict)
+  sustituyeArticuloId String?
+  sustituyeArticulo   ArticuloInventario? @relation("ModificadorComponente_sustituyeArticulo_ArticuloInventario", fields: [sustituyeArticuloId], references: [id], onDelete: Restrict)
+
+  @@index([modificadorId])
+}
+
+model ReglaEmpaque {
+  id         String            @id @default(cuid())
+  nombre     String
+  alcance    AlcanceEmpaque
+  modalidad  ModalidadServicio
+  varianteId String?
+  variante   VarianteProducto? @relation("ReglaEmpaque_variante_VarianteProducto", fields: [varianteId], references: [id], onDelete: Restrict)
+  sucursalId String?
+  sucursal   Sucursal?         @relation("ReglaEmpaque_sucursal_Sucursal", fields: [sucursalId], references: [id], onDelete: Restrict)
+  activa     Boolean           @default(true)
+
+  // Relaciones inversas (navegación Prisma)
+  reglaEmpaqueLineasComoRegla ReglaEmpaqueLinea[] @relation("ReglaEmpaqueLinea_regla_ReglaEmpaque")
+}
+
+model ReglaEmpaqueLinea {
+  id         String             @id @default(cuid())
+  reglaId    String
+  regla      ReglaEmpaque       @relation("ReglaEmpaqueLinea_regla_ReglaEmpaque", fields: [reglaId], references: [id], onDelete: Cascade)
+  articuloId String
+  articulo   ArticuloInventario @relation("ReglaEmpaqueLinea_articulo_ArticuloInventario", fields: [articuloId], references: [id], onDelete: Restrict)
+  cantidad   Decimal            @db.Decimal(20, 6)
+
+  @@unique([reglaId, articuloId])
+}
+
+// ============================================================================
+// [S05] ALMACENES, LOTES, KARDEX Y CONTEOS
+// ============================================================================
+
+model Almacen {
+  id         String   @id @default(cuid())
+  sucursalId String
+  sucursal   Sucursal @relation("Almacen_sucursal_Sucursal", fields: [sucursalId], references: [id], onDelete: Restrict)
+  codigo     String
+  nombre     String
+  activo     Boolean  @default(true)
+  creadoEn   DateTime @default(now()) @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  ubicacionAlmacenesComoAlmacen              UbicacionAlmacen[]        @relation("UbicacionAlmacen_almacen_Almacen")
+  conteoInventariosComoAlmacen               ConteoInventario[]        @relation("ConteoInventario_almacen_Almacen")
+  ajusteInventariosComoAlmacen               AjusteInventario[]        @relation("AjusteInventario_almacen_Almacen")
+  recepcionesCompraComoAlmacen               RecepcionCompra[]         @relation("RecepcionCompra_almacen_Almacen")
+  requisicionesComoAlmacenDestino            Requisicion[]             @relation("Requisicion_almacenDestino_Almacen")
+  transferenciaInventariosComoAlmacenOrigen  TransferenciaInventario[] @relation("TransferenciaInventario_almacenOrigen_Almacen")
+  transferenciaInventariosComoAlmacenDestino TransferenciaInventario[] @relation("TransferenciaInventario_almacenDestino_Almacen")
+
+  @@unique([sucursalId, codigo])
+}
+
+model UbicacionAlmacen {
+  id          String  @id @default(cuid())
+  almacenId   String
+  almacen     Almacen @relation("UbicacionAlmacen_almacen_Almacen", fields: [almacenId], references: [id], onDelete: Restrict)
+  codigo      String
+  nombre      String
+  esRecepcion Boolean @default(false)
+  activa      Boolean @default(true)
+
+  // Relaciones inversas (navegación Prisma)
+  existenciasComoUbicacion                          Existencia[]                   @relation("Existencia_ubicacion_UbicacionAlmacen")
+  movimientoInventariosComoUbicacion                MovimientoInventario[]         @relation("MovimientoInventario_ubicacion_UbicacionAlmacen")
+  capaCostoInventariosComoUbicacion                 CapaCostoInventario[]          @relation("CapaCostoInventario_ubicacion_UbicacionAlmacen")
+  conteoInventarioLineasComoUbicacion               ConteoInventarioLinea[]        @relation("ConteoInventarioLinea_ubicacion_UbicacionAlmacen")
+  ajusteInventarioLineasComoUbicacion               AjusteInventarioLinea[]        @relation("AjusteInventarioLinea_ubicacion_UbicacionAlmacen")
+  produccionLotesComoUbicacionDestino               ProduccionLote[]               @relation("ProduccionLote_ubicacionDestino_UbicacionAlmacen")
+  produccionConsumosComoUbicacion                   ProduccionConsumo[]            @relation("ProduccionConsumo_ubicacion_UbicacionAlmacen")
+  consumoOrdenLineasComoUbicacion                   ConsumoOrdenLinea[]            @relation("ConsumoOrdenLinea_ubicacion_UbicacionAlmacen")
+  recepcionCompraLineasComoUbicacion                RecepcionCompraLinea[]         @relation("RecepcionCompraLinea_ubicacion_UbicacionAlmacen")
+  transferenciaInventarioLineasComoUbicacionOrigen  TransferenciaInventarioLinea[] @relation("TransferenciaInventarioLinea_ubicacionOrigen_UbicacionAlmacen")
+  transferenciaInventarioLineasComoUbicacionDestino TransferenciaInventarioLinea[] @relation("TransferenciaInventarioLinea_ubicacionDestino_UbicacionAlmacen")
+  estacionPreparacionesComoUbicacionConsumo         EstacionPreparacion[]          @relation("EstacionPreparacion_ubicacionConsumo_UbicacionAlmacen")
+
+  @@unique([almacenId, codigo])
+}
+
+model LoteInventario {
+  id               String             @id @default(cuid())
+  articuloId       String
+  articulo         ArticuloInventario @relation("LoteInventario_articulo_ArticuloInventario", fields: [articuloId], references: [id], onDelete: Restrict)
+  codigoLote       String
+  fechaElaboracion DateTime?          @db.Date
+  fechaVencimiento DateTime?          @db.Date
+  costoOrigen      Decimal?           @db.Decimal(18, 6)
+  bloqueado        Boolean            @default(false) // Retención, contaminación o cuarentena.
+  creadoEn         DateTime           @default(now()) @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  existenciasComoLote                   Existencia[]                   @relation("Existencia_lote_LoteInventario")
+  movimientoInventariosComoLote         MovimientoInventario[]         @relation("MovimientoInventario_lote_LoteInventario")
+  conteoInventarioLineasComoLote        ConteoInventarioLinea[]        @relation("ConteoInventarioLinea_lote_LoteInventario")
+  ajusteInventarioLineasComoLote        AjusteInventarioLinea[]        @relation("AjusteInventarioLinea_lote_LoteInventario")
+  produccionLotesComoLoteResultado      ProduccionLote[]               @relation("ProduccionLote_loteResultado_LoteInventario")
+  produccionConsumosComoLote            ProduccionConsumo[]            @relation("ProduccionConsumo_lote_LoteInventario")
+  consumoOrdenLineasComoLote            ConsumoOrdenLinea[]            @relation("ConsumoOrdenLinea_lote_LoteInventario")
+  recepcionCompraLineasComoLote         RecepcionCompraLinea[]         @relation("RecepcionCompraLinea_lote_LoteInventario")
+  transferenciaInventarioLineasComoLote TransferenciaInventarioLinea[] @relation("TransferenciaInventarioLinea_lote_LoteInventario")
+
+  @@unique([articuloId, codigoLote])
+  @@index([fechaVencimiento])
+}
+
+model Existencia {
+  id            String             @id @default(cuid())
+  articuloId    String
+  articulo      ArticuloInventario @relation("Existencia_articulo_ArticuloInventario", fields: [articuloId], references: [id], onDelete: Restrict)
+  ubicacionId   String
+  ubicacion     UbicacionAlmacen   @relation("Existencia_ubicacion_UbicacionAlmacen", fields: [ubicacionId], references: [id], onDelete: Restrict)
+  loteId        String?
+  lote          LoteInventario?    @relation("Existencia_lote_LoteInventario", fields: [loteId], references: [id], onDelete: Restrict)
+  cantidad      Decimal            @default(0) @db.Decimal(20, 6)
+  costoPromedio Decimal            @default(0) @db.Decimal(18, 6)
+  actualizadoEn DateTime           @updatedAt @db.Timestamptz(3)
+  // IMPORTANTE: unique parcial para lote NULL; ver README técnico.
+
+  @@unique([articuloId, ubicacionId, loteId])
+  @@index([ubicacionId, articuloId])
+}
+
+model MovimientoInventario {
+  id             String                   @id @default(cuid())
+  articuloId     String
+  articulo       ArticuloInventario       @relation("MovimientoInventario_articulo_ArticuloInventario", fields: [articuloId], references: [id], onDelete: Restrict)
+  ubicacionId    String
+  ubicacion      UbicacionAlmacen         @relation("MovimientoInventario_ubicacion_UbicacionAlmacen", fields: [ubicacionId], references: [id], onDelete: Restrict)
+  loteId         String?
+  lote           LoteInventario?          @relation("MovimientoInventario_lote_LoteInventario", fields: [loteId], references: [id], onDelete: Restrict)
+  tipo           TipoMovimientoInventario
+  cantidad       Decimal                  @db.Decimal(20, 6) // firmada: + entrada / - salida
+  costoUnitario  Decimal                  @db.Decimal(18, 6)
+  costoTotal     Decimal                  @db.Decimal(20, 6)
+  referenciaTipo String
+  referenciaId   String
+  claveOperacion String                   @unique
+  nota           String?
+  usuarioId      String?
+  usuario        Usuario?                 @relation("MovimientoInventario_usuario_Usuario", fields: [usuarioId], references: [id], onDelete: SetNull)
+  creadoEn       DateTime                 @default(now()) @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  capaCostoInventariosComoMovimientoEntrada CapaCostoInventario?  @relation("CapaCostoInventario_movimientoEntrada_MovimientoInventario")
+  aplicacionCapaCostosComoMovimientoSalida  AplicacionCapaCosto[] @relation("AplicacionCapaCosto_movimientoSalida_MovimientoInventario")
+  produccionConsumosComoMovimiento          ProduccionConsumo?    @relation("ProduccionConsumo_movimiento_MovimientoInventario")
+  consumoOrdenLineasComoMovimiento          ConsumoOrdenLinea?    @relation("ConsumoOrdenLinea_movimiento_MovimientoInventario")
+
+  @@index([articuloId, creadoEn])
+  @@index([ubicacionId, creadoEn])
+  @@index([referenciaTipo, referenciaId])
+}
+
+model CapaCostoInventario {
+  id                  String               @id @default(cuid())
+  movimientoEntradaId String               @unique
+  movimientoEntrada   MovimientoInventario @relation("CapaCostoInventario_movimientoEntrada_MovimientoInventario", fields: [movimientoEntradaId], references: [id], onDelete: Restrict)
+  articuloId          String
+  articulo            ArticuloInventario   @relation("CapaCostoInventario_articulo_ArticuloInventario", fields: [articuloId], references: [id], onDelete: Restrict)
+  ubicacionId         String
+  ubicacion           UbicacionAlmacen     @relation("CapaCostoInventario_ubicacion_UbicacionAlmacen", fields: [ubicacionId], references: [id], onDelete: Restrict)
+  cantidadInicial     Decimal              @db.Decimal(20, 6)
+  cantidadRestante    Decimal              @db.Decimal(20, 6)
+  costoUnitario       Decimal              @db.Decimal(18, 6)
+  creadoEn            DateTime             @default(now()) @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  aplicacionCapaCostosComoCapa AplicacionCapaCosto[] @relation("AplicacionCapaCosto_capa_CapaCostoInventario")
+
+  @@index([articuloId, ubicacionId, creadoEn])
+}
+
+model AplicacionCapaCosto {
+  id                 String               @id @default(cuid())
+  capaId             String
+  capa               CapaCostoInventario  @relation("AplicacionCapaCosto_capa_CapaCostoInventario", fields: [capaId], references: [id], onDelete: Restrict)
+  movimientoSalidaId String
+  movimientoSalida   MovimientoInventario @relation("AplicacionCapaCosto_movimientoSalida_MovimientoInventario", fields: [movimientoSalidaId], references: [id], onDelete: Restrict)
+  cantidad           Decimal              @db.Decimal(20, 6)
+  costoUnitario      Decimal              @db.Decimal(18, 6)
+
+  @@unique([capaId, movimientoSalidaId])
+}
+
+model ConteoInventario {
+  id           String          @id @default(cuid())
+  almacenId    String
+  almacen      Almacen         @relation("ConteoInventario_almacen_Almacen", fields: [almacenId], references: [id], onDelete: Restrict)
+  usuarioId    String
+  usuario      Usuario         @relation("ConteoInventario_usuario_Usuario", fields: [usuarioId], references: [id], onDelete: Restrict)
+  estado       EstadoDocumento @default(BORRADOR)
+  nota         String?
+  confirmadoEn DateTime?       @db.Timestamptz(3)
+  creadoEn     DateTime        @default(now()) @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  conteoInventarioLineasComoConteo ConteoInventarioLinea[] @relation("ConteoInventarioLinea_conteo_ConteoInventario")
+  ajusteInventariosComoConteo      AjusteInventario?       @relation("AjusteInventario_conteo_ConteoInventario")
+}
+
+model ConteoInventarioLinea {
+  id              String             @id @default(cuid())
+  conteoId        String
+  conteo          ConteoInventario   @relation("ConteoInventarioLinea_conteo_ConteoInventario", fields: [conteoId], references: [id], onDelete: Restrict)
+  articuloId      String
+  articulo        ArticuloInventario @relation("ConteoInventarioLinea_articulo_ArticuloInventario", fields: [articuloId], references: [id], onDelete: Restrict)
+  ubicacionId     String
+  ubicacion       UbicacionAlmacen   @relation("ConteoInventarioLinea_ubicacion_UbicacionAlmacen", fields: [ubicacionId], references: [id], onDelete: Restrict)
+  loteId          String?
+  lote            LoteInventario?    @relation("ConteoInventarioLinea_lote_LoteInventario", fields: [loteId], references: [id], onDelete: Restrict)
+  cantidadTeorica Decimal            @db.Decimal(20, 6)
+  cantidadContada Decimal            @db.Decimal(20, 6)
+  // Una línea de diferencia genera un movimiento al confirmar.
+
+  @@index([conteoId, articuloId])
+}
+
+model AjusteInventario {
+  id           String            @id @default(cuid())
+  almacenId    String
+  almacen      Almacen           @relation("AjusteInventario_almacen_Almacen", fields: [almacenId], references: [id], onDelete: Restrict)
+  conteoId     String?           @unique
+  conteo       ConteoInventario? @relation("AjusteInventario_conteo_ConteoInventario", fields: [conteoId], references: [id], onDelete: SetNull)
+  usuarioId    String
+  usuario      Usuario           @relation("AjusteInventario_usuario_Usuario", fields: [usuarioId], references: [id], onDelete: Restrict)
+  motivo       String
+  estado       EstadoDocumento   @default(BORRADOR)
+  confirmadoEn DateTime?         @db.Timestamptz(3)
+  creadoEn     DateTime          @default(now()) @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  ajusteInventarioLineasComoAjuste AjusteInventarioLinea[] @relation("AjusteInventarioLinea_ajuste_AjusteInventario")
+}
+
+model AjusteInventarioLinea {
+  id            String             @id @default(cuid())
+  ajusteId      String
+  ajuste        AjusteInventario   @relation("AjusteInventarioLinea_ajuste_AjusteInventario", fields: [ajusteId], references: [id], onDelete: Restrict)
+  articuloId    String
+  articulo      ArticuloInventario @relation("AjusteInventarioLinea_articulo_ArticuloInventario", fields: [articuloId], references: [id], onDelete: Restrict)
+  ubicacionId   String
+  ubicacion     UbicacionAlmacen   @relation("AjusteInventarioLinea_ubicacion_UbicacionAlmacen", fields: [ubicacionId], references: [id], onDelete: Restrict)
+  loteId        String?
+  lote          LoteInventario?    @relation("AjusteInventarioLinea_lote_LoteInventario", fields: [loteId], references: [id], onDelete: Restrict)
+  deltaCantidad Decimal            @db.Decimal(20, 6)
+  motivo        String?
+}
+
+// ============================================================================
+// [S06] PRODUCCIÓN Y CONSUMO REAL
+// ============================================================================
+
+model ProduccionLote {
+  id                 String           @id @default(cuid())
+  recetaVersionId    String
+  recetaVersion      RecetaVersion    @relation("ProduccionLote_recetaVersion_RecetaVersion", fields: [recetaVersionId], references: [id], onDelete: Restrict)
+  ubicacionDestinoId String
+  ubicacionDestino   UbicacionAlmacen @relation("ProduccionLote_ubicacionDestino_UbicacionAlmacen", fields: [ubicacionDestinoId], references: [id], onDelete: Restrict)
+  usuarioId          String
+  usuario            Usuario          @relation("ProduccionLote_usuario_Usuario", fields: [usuarioId], references: [id], onDelete: Restrict)
+  cantidadProducida  Decimal          @db.Decimal(20, 6)
+  loteResultadoId    String?
+  loteResultado      LoteInventario?  @relation("ProduccionLote_loteResultado_LoteInventario", fields: [loteResultadoId], references: [id], onDelete: Restrict)
+  estado             EstadoProduccion @default(BORRADOR)
+  fechaVencimiento   DateTime?        @db.Date
+  costoTotal         Decimal?         @db.Decimal(20, 6)
+  confirmadoEn       DateTime?        @db.Timestamptz(3)
+  creadoEn           DateTime         @default(now()) @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  produccionConsumosComoProduccion ProduccionConsumo[] @relation("ProduccionConsumo_produccion_ProduccionLote")
+}
+
+model ProduccionConsumo {
+  id            String                @id @default(cuid())
+  produccionId  String
+  produccion    ProduccionLote        @relation("ProduccionConsumo_produccion_ProduccionLote", fields: [produccionId], references: [id], onDelete: Restrict)
+  articuloId    String
+  articulo      ArticuloInventario    @relation("ProduccionConsumo_articulo_ArticuloInventario", fields: [articuloId], references: [id], onDelete: Restrict)
+  ubicacionId   String
+  ubicacion     UbicacionAlmacen      @relation("ProduccionConsumo_ubicacion_UbicacionAlmacen", fields: [ubicacionId], references: [id], onDelete: Restrict)
+  loteId        String?
+  lote          LoteInventario?       @relation("ProduccionConsumo_lote_LoteInventario", fields: [loteId], references: [id], onDelete: Restrict)
+  cantidad      Decimal               @db.Decimal(20, 6)
+  costoUnitario Decimal               @db.Decimal(18, 6)
+  movimientoId  String?               @unique
+  movimiento    MovimientoInventario? @relation("ProduccionConsumo_movimiento_MovimientoInventario", fields: [movimientoId], references: [id], onDelete: Restrict)
+}
+
+model ConsumoOrden {
+  id                String           @id @default(cuid())
+  ordenId           String
+  orden             Orden            @relation("ConsumoOrden_orden_Orden", fields: [ordenId], references: [id], onDelete: Restrict)
+  comandaLineaId    String?
+  comandaLinea      ComandaLinea?    @relation("ConsumoOrden_comandaLinea_ComandaLinea", fields: [comandaLineaId], references: [id], onDelete: Restrict)
+  tipo              TipoConsumoOrden
+  recetaVersionId   String?
+  recetaVersion     RecetaVersion?   @relation("ConsumoOrden_recetaVersion_RecetaVersion", fields: [recetaVersionId], references: [id], onDelete: Restrict)
+  cantidadPreparada Decimal?         @db.Decimal(18, 3)
+  creadoEn          DateTime         @default(now()) @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  consumoOrdenLineasComoConsumo ConsumoOrdenLinea[] @relation("ConsumoOrdenLinea_consumo_ConsumoOrden")
+
+  @@index([comandaLineaId])
+}
+
+model ConsumoOrdenLinea {
+  id            String                @id @default(cuid())
+  consumoId     String
+  consumo       ConsumoOrden          @relation("ConsumoOrdenLinea_consumo_ConsumoOrden", fields: [consumoId], references: [id], onDelete: Restrict)
+  articuloId    String
+  articulo      ArticuloInventario    @relation("ConsumoOrdenLinea_articulo_ArticuloInventario", fields: [articuloId], references: [id], onDelete: Restrict)
+  ubicacionId   String
+  ubicacion     UbicacionAlmacen      @relation("ConsumoOrdenLinea_ubicacion_UbicacionAlmacen", fields: [ubicacionId], references: [id], onDelete: Restrict)
+  loteId        String?
+  lote          LoteInventario?       @relation("ConsumoOrdenLinea_lote_LoteInventario", fields: [loteId], references: [id], onDelete: Restrict)
+  cantidad      Decimal               @db.Decimal(20, 6)
+  costoUnitario Decimal               @db.Decimal(18, 6)
+  movimientoId  String?               @unique
+  movimiento    MovimientoInventario? @relation("ConsumoOrdenLinea_movimiento_MovimientoInventario", fields: [movimientoId], references: [id], onDelete: Restrict)
+}
+
+// ============================================================================
+// [S07] PROVEEDORES, COMPRAS, RECEPCIONES Y PAGOS
+// ============================================================================
+
+model Proveedor {
+  id        String   @id @default(cuid())
+  nombre    String
+  nit       String?
+  telefono  String?
+  email     String?
+  direccion String?
+  activo    Boolean  @default(true)
+  creadoEn  DateTime @default(now()) @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  presentacionComprasComoProveedor PresentacionCompra[] @relation("PresentacionCompra_proveedor_Proveedor")
+  ordenComprasComoProveedor        OrdenCompra[]        @relation("OrdenCompra_proveedor_Proveedor")
+  recepcionesCompraComoProveedor   RecepcionCompra[]    @relation("RecepcionCompra_proveedor_Proveedor")
+  facturasProveedorComoProveedor   FacturaProveedor[]   @relation("FacturaProveedor_proveedor_Proveedor")
+  pagoProveedoresComoProveedor     PagoProveedor[]      @relation("PagoProveedor_proveedor_Proveedor")
+  gastoOperativosComoProveedor     GastoOperativo[]     @relation("GastoOperativo_proveedor_Proveedor")
+}
+
+model PresentacionCompra {
+  id                String             @id @default(cuid())
+  articuloId        String
+  articulo          ArticuloInventario @relation("PresentacionCompra_articulo_ArticuloInventario", fields: [articuloId], references: [id], onDelete: Restrict)
+  proveedorId       String?
+  proveedor         Proveedor?         @relation("PresentacionCompra_proveedor_Proveedor", fields: [proveedorId], references: [id], onDelete: SetNull)
+  nombre            String
+  unidadCompraId    String
+  unidadCompra      UnidadMedida       @relation("PresentacionCompra_unidadCompra_UnidadMedida", fields: [unidadCompraId], references: [id], onDelete: Restrict)
+  factorAUnidadBase Decimal            @db.Decimal(24, 10)
+  activa            Boolean            @default(true)
+
+  // Relaciones inversas (navegación Prisma)
+  ordenCompraLineasComoPresentacion OrdenCompraLinea[] @relation("OrdenCompraLinea_presentacion_PresentacionCompra")
+}
+
+model OrdenCompra {
+  id            String            @id @default(cuid())
+  numero        String            @unique
+  proveedorId   String
+  proveedor     Proveedor         @relation("OrdenCompra_proveedor_Proveedor", fields: [proveedorId], references: [id], onDelete: Restrict)
+  sucursalId    String
+  sucursal      Sucursal          @relation("OrdenCompra_sucursal_Sucursal", fields: [sucursalId], references: [id], onDelete: Restrict)
+  usuarioId     String
+  usuario       Usuario           @relation("OrdenCompra_usuario_Usuario", fields: [usuarioId], references: [id], onDelete: Restrict)
+  estado        EstadoOrdenCompra @default(BORRADOR)
+  observaciones String?
+  totalEstimado Decimal           @default(0) @db.Decimal(18, 2)
+  creadaEn      DateTime          @default(now()) @db.Timestamptz(3)
+  confirmadaEn  DateTime?         @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  ordenCompraLineasComoOrdenCompra OrdenCompraLinea[] @relation("OrdenCompraLinea_ordenCompra_OrdenCompra")
+  recepcionesCompraComoOrdenCompra RecepcionCompra[]  @relation("RecepcionCompra_ordenCompra_OrdenCompra")
+}
+
+model OrdenCompraLinea {
+  id                   String              @id @default(cuid())
+  ordenCompraId        String
+  ordenCompra          OrdenCompra         @relation("OrdenCompraLinea_ordenCompra_OrdenCompra", fields: [ordenCompraId], references: [id], onDelete: Restrict)
+  articuloId           String
+  articulo             ArticuloInventario  @relation("OrdenCompraLinea_articulo_ArticuloInventario", fields: [articuloId], references: [id], onDelete: Restrict)
+  presentacionId       String?
+  presentacion         PresentacionCompra? @relation("OrdenCompraLinea_presentacion_PresentacionCompra", fields: [presentacionId], references: [id], onDelete: Restrict)
+  cantidadCompra       Decimal             @db.Decimal(20, 6)
+  factorAUnidadBase    Decimal             @db.Decimal(24, 10)
+  precioUnitarioCompra Decimal             @db.Decimal(18, 6)
+  subtotal             Decimal             @db.Decimal(18, 2)
+
+  // Relaciones inversas (navegación Prisma)
+  recepcionCompraLineasComoOrdenCompraLinea RecepcionCompraLinea[] @relation("RecepcionCompraLinea_ordenCompraLinea_OrdenCompraLinea")
+}
+
+model RecepcionCompra {
+  id                  String          @id @default(cuid())
+  numero              String          @unique
+  ordenCompraId       String?
+  ordenCompra         OrdenCompra?    @relation("RecepcionCompra_ordenCompra_OrdenCompra", fields: [ordenCompraId], references: [id], onDelete: Restrict)
+  proveedorId         String
+  proveedor           Proveedor       @relation("RecepcionCompra_proveedor_Proveedor", fields: [proveedorId], references: [id], onDelete: Restrict)
+  almacenId           String
+  almacen             Almacen         @relation("RecepcionCompra_almacen_Almacen", fields: [almacenId], references: [id], onDelete: Restrict)
+  usuarioId           String
+  usuario             Usuario         @relation("RecepcionCompra_usuario_Usuario", fields: [usuarioId], references: [id], onDelete: Restrict)
+  estado              EstadoDocumento @default(BORRADOR)
+  referenciaProveedor String?
+  observaciones       String?
+  recibidoEn          DateTime?       @db.Timestamptz(3)
+  creadoEn            DateTime        @default(now()) @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  recepcionCompraLineasComoRecepcion RecepcionCompraLinea[] @relation("RecepcionCompraLinea_recepcion_RecepcionCompra")
+}
+
+model RecepcionCompraLinea {
+  id                   String             @id @default(cuid())
+  recepcionId          String
+  recepcion            RecepcionCompra    @relation("RecepcionCompraLinea_recepcion_RecepcionCompra", fields: [recepcionId], references: [id], onDelete: Restrict)
+  ordenCompraLineaId   String?
+  ordenCompraLinea     OrdenCompraLinea?  @relation("RecepcionCompraLinea_ordenCompraLinea_OrdenCompraLinea", fields: [ordenCompraLineaId], references: [id], onDelete: Restrict)
+  articuloId           String
+  articulo             ArticuloInventario @relation("RecepcionCompraLinea_articulo_ArticuloInventario", fields: [articuloId], references: [id], onDelete: Restrict)
+  ubicacionId          String
+  ubicacion            UbicacionAlmacen   @relation("RecepcionCompraLinea_ubicacion_UbicacionAlmacen", fields: [ubicacionId], references: [id], onDelete: Restrict)
+  loteId               String?
+  lote                 LoteInventario?    @relation("RecepcionCompraLinea_lote_LoteInventario", fields: [loteId], references: [id], onDelete: Restrict)
+  cantidadCompra       Decimal            @db.Decimal(20, 6)
+  factorAUnidadBase    Decimal            @db.Decimal(24, 10)
+  cantidadBase         Decimal            @db.Decimal(20, 6)
+  precioUnitarioCompra Decimal            @db.Decimal(18, 6)
+  costoTotal           Decimal            @db.Decimal(18, 2)
+
+  // Relaciones inversas (navegación Prisma)
+  facturaProveedorLineasComoRecepcionLinea FacturaProveedorLinea[] @relation("FacturaProveedorLinea_recepcionLinea_RecepcionCompraLinea")
+
+  @@index([recepcionId, articuloId])
+}
+
+model FacturaProveedor {
+  id               String    @id @default(cuid())
+  proveedorId      String
+  proveedor        Proveedor @relation("FacturaProveedor_proveedor_Proveedor", fields: [proveedorId], references: [id], onDelete: Restrict)
+  sucursalId       String
+  sucursal         Sucursal  @relation("FacturaProveedor_sucursal_Sucursal", fields: [sucursalId], references: [id], onDelete: Restrict)
+  numeroDocumento  String
+  referenciaFiscal String?
+  fechaEmision     DateTime  @db.Date
+  fechaVencimiento DateTime? @db.Date
+  subtotal         Decimal   @db.Decimal(18, 2)
+  impuestos        Decimal   @default(0) @db.Decimal(18, 2)
+  total            Decimal   @db.Decimal(18, 2)
+  observaciones    String?
+  creadaEn         DateTime  @default(now()) @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  facturaProveedorLineasComoFactura    FacturaProveedorLinea[]   @relation("FacturaProveedorLinea_factura_FacturaProveedor")
+  aplicacionPagoProveedoresComoFactura AplicacionPagoProveedor[] @relation("AplicacionPagoProveedor_factura_FacturaProveedor")
+
+  @@unique([proveedorId, numeroDocumento])
+}
+
+model FacturaProveedorLinea {
+  id               String                @id @default(cuid())
+  facturaId        String
+  factura          FacturaProveedor      @relation("FacturaProveedorLinea_factura_FacturaProveedor", fields: [facturaId], references: [id], onDelete: Restrict)
+  recepcionLineaId String?
+  recepcionLinea   RecepcionCompraLinea? @relation("FacturaProveedorLinea_recepcionLinea_RecepcionCompraLinea", fields: [recepcionLineaId], references: [id], onDelete: Restrict)
+  articuloId       String?
+  articulo         ArticuloInventario?   @relation("FacturaProveedorLinea_articulo_ArticuloInventario", fields: [articuloId], references: [id], onDelete: Restrict)
+  descripcion      String
+  cantidad         Decimal               @db.Decimal(20, 6)
+  precioUnitario   Decimal               @db.Decimal(18, 6)
+  subtotal         Decimal               @db.Decimal(18, 2)
+}
+
+model PagoProveedor {
+  id                 String            @id @default(cuid())
+  proveedorId        String
+  proveedor          Proveedor         @relation("PagoProveedor_proveedor_Proveedor", fields: [proveedorId], references: [id], onDelete: Restrict)
+  cuentaFinancieraId String?
+  cuentaFinanciera   CuentaFinanciera? @relation("PagoProveedor_cuentaFinanciera_CuentaFinanciera", fields: [cuentaFinancieraId], references: [id], onDelete: Restrict)
+  turnoCajaId        String?
+  turnoCaja          TurnoCaja?        @relation("PagoProveedor_turnoCaja_TurnoCaja", fields: [turnoCajaId], references: [id], onDelete: Restrict)
+  metodo             MetodoPago
+  monto              Decimal           @db.Decimal(18, 2)
+  referencia         String?
+  usuarioId          String
+  usuario            Usuario           @relation("PagoProveedor_usuario_Usuario", fields: [usuarioId], references: [id], onDelete: Restrict)
+  pagadoEn           DateTime          @default(now()) @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  aplicacionPagoProveedoresComoPago AplicacionPagoProveedor[] @relation("AplicacionPagoProveedor_pago_PagoProveedor")
+  movimientoCajasComoPagoProveedor  MovimientoCaja?           @relation("MovimientoCaja_pagoProveedor_PagoProveedor")
+}
+
+model AplicacionPagoProveedor {
+  id        String           @id @default(cuid())
+  pagoId    String
+  pago      PagoProveedor    @relation("AplicacionPagoProveedor_pago_PagoProveedor", fields: [pagoId], references: [id], onDelete: Restrict)
+  facturaId String
+  factura   FacturaProveedor @relation("AplicacionPagoProveedor_factura_FacturaProveedor", fields: [facturaId], references: [id], onDelete: Restrict)
+  monto     Decimal          @db.Decimal(18, 2)
+
+  @@unique([pagoId, facturaId])
+}
+
+// ============================================================================
+// [S08] REQUISICIONES Y TRANSFERENCIAS
+// ============================================================================
+
+model Requisicion {
+  id               String            @id @default(cuid())
+  numero           String            @unique
+  almacenDestinoId String
+  almacenDestino   Almacen           @relation("Requisicion_almacenDestino_Almacen", fields: [almacenDestinoId], references: [id], onDelete: Restrict)
+  solicitanteId    String
+  solicitante      Usuario           @relation("Requisicion_solicitante_Usuario", fields: [solicitanteId], references: [id], onDelete: Restrict)
+  estado           EstadoRequisicion @default(ABIERTA)
+  nota             String?
+  creadaEn         DateTime          @default(now()) @db.Timestamptz(3)
+  atendidaEn       DateTime?         @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  requisicionLineasComoRequisicion        RequisicionLinea[]        @relation("RequisicionLinea_requisicion_Requisicion")
+  transferenciaInventariosComoRequisicion TransferenciaInventario[] @relation("TransferenciaInventario_requisicion_Requisicion")
+}
+
+model RequisicionLinea {
+  id                 String             @id @default(cuid())
+  requisicionId      String
+  requisicion        Requisicion        @relation("RequisicionLinea_requisicion_Requisicion", fields: [requisicionId], references: [id], onDelete: Restrict)
+  articuloId         String
+  articulo           ArticuloInventario @relation("RequisicionLinea_articulo_ArticuloInventario", fields: [articuloId], references: [id], onDelete: Restrict)
+  cantidadSolicitada Decimal            @db.Decimal(20, 6)
+  cantidadAtendida   Decimal            @default(0) @db.Decimal(20, 6)
+}
+
+model TransferenciaInventario {
+  id               String              @id @default(cuid())
+  numero           String              @unique
+  almacenOrigenId  String
+  almacenOrigen    Almacen             @relation("TransferenciaInventario_almacenOrigen_Almacen", fields: [almacenOrigenId], references: [id], onDelete: Restrict)
+  almacenDestinoId String
+  almacenDestino   Almacen             @relation("TransferenciaInventario_almacenDestino_Almacen", fields: [almacenDestinoId], references: [id], onDelete: Restrict)
+  requisicionId    String?
+  requisicion      Requisicion?        @relation("TransferenciaInventario_requisicion_Requisicion", fields: [requisicionId], references: [id], onDelete: SetNull)
+  usuarioId        String
+  usuario          Usuario             @relation("TransferenciaInventario_usuario_Usuario", fields: [usuarioId], references: [id], onDelete: Restrict)
+  estado           EstadoTransferencia @default(BORRADOR)
+  nota             String?
+  despachadaEn     DateTime?           @db.Timestamptz(3)
+  recibidaEn       DateTime?           @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  transferenciaInventarioLineasComoTransferencia TransferenciaInventarioLinea[] @relation("TransferenciaInventarioLinea_transferencia_TransferenciaInventario")
+}
+
+model TransferenciaInventarioLinea {
+  id                 String                  @id @default(cuid())
+  transferenciaId    String
+  transferencia      TransferenciaInventario @relation("TransferenciaInventarioLinea_transferencia_TransferenciaInventario", fields: [transferenciaId], references: [id], onDelete: Restrict)
+  articuloId         String
+  articulo           ArticuloInventario      @relation("TransferenciaInventarioLinea_articulo_ArticuloInventario", fields: [articuloId], references: [id], onDelete: Restrict)
+  ubicacionOrigenId  String
+  ubicacionOrigen    UbicacionAlmacen        @relation("TransferenciaInventarioLinea_ubicacionOrigen_UbicacionAlmacen", fields: [ubicacionOrigenId], references: [id], onDelete: Restrict)
+  ubicacionDestinoId String?
+  ubicacionDestino   UbicacionAlmacen?       @relation("TransferenciaInventarioLinea_ubicacionDestino_UbicacionAlmacen", fields: [ubicacionDestinoId], references: [id], onDelete: Restrict)
+  loteId             String?
+  lote               LoteInventario?         @relation("TransferenciaInventarioLinea_lote_LoteInventario", fields: [loteId], references: [id], onDelete: Restrict)
+  cantidadEnviada    Decimal                 @db.Decimal(20, 6)
+  cantidadRecibida   Decimal?                @db.Decimal(20, 6)
+
+  @@index([transferenciaId, articuloId])
+}
+
+// ============================================================================
+// [S09] CLIENTES, MESAS, ÓRDENES Y CUENTAS
+// ============================================================================
+
+model Cliente {
+  id       String   @id @default(cuid())
+  nombre   String
+  nit      String?
+  telefono String?
+  email    String?
+  notas    String?
+  activo   Boolean  @default(true)
+  creadoEn DateTime @default(now()) @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  direccionClientesComoCliente DireccionCliente[] @relation("DireccionCliente_cliente_Cliente")
+  ordenesComoCliente           Orden[]            @relation("Orden_cliente_Cliente")
+  ventasComoCliente            Venta[]            @relation("Venta_cliente_Cliente")
+  reservasComoCliente          Reserva[]          @relation("Reserva_cliente_Cliente")
+}
+
+model DireccionCliente {
+  id         String   @id @default(cuid())
+  clienteId  String
+  cliente    Cliente  @relation("DireccionCliente_cliente_Cliente", fields: [clienteId], references: [id], onDelete: Restrict)
+  alias      String?
+  direccion  String
+  referencia String?
+  latitud    Decimal? @db.Decimal(10, 7)
+  longitud   Decimal? @db.Decimal(10, 7)
+  principal  Boolean  @default(false)
+
+  // Relaciones inversas (navegación Prisma)
+  entregasComoDireccion Entrega[] @relation("Entrega_direccion_DireccionCliente")
+}
+
+model Sala {
+  id         String   @id @default(cuid())
+  sucursalId String
+  sucursal   Sucursal @relation("Sala_sucursal_Sucursal", fields: [sucursalId], references: [id], onDelete: Restrict)
+  nombre     String
+  orden      Int      @default(0)
+  activa     Boolean  @default(true)
+
+  // Relaciones inversas (navegación Prisma)
+  mesasComoSala Mesa[] @relation("Mesa_sala_Sala")
+
+  @@unique([sucursalId, nombre])
+}
+
+model Mesa {
+  id        String  @id @default(cuid())
+  salaId    String
+  sala      Sala    @relation("Mesa_sala_Sala", fields: [salaId], references: [id], onDelete: Restrict)
+  numero    String
+  capacidad Int
+  activa    Boolean @default(true)
+
+  // Relaciones inversas (navegación Prisma)
+  ocupacionMesasComoMesa OcupacionMesa[] @relation("OcupacionMesa_mesa_Mesa")
+  reservaMesasComoMesa   ReservaMesa[]   @relation("ReservaMesa_mesa_Mesa")
+  accesoMesaQResComoMesa AccesoMesaQR[]  @relation("AccesoMesaQR_mesa_Mesa")
+
+  @@unique([salaId, numero])
+}
+
+model OcupacionMesa {
+  id           String    @id @default(cuid())
+  mesaId       String
+  mesa         Mesa      @relation("OcupacionMesa_mesa_Mesa", fields: [mesaId], references: [id], onDelete: Restrict)
+  reservaId    String?
+  reserva      Reserva?  @relation("OcupacionMesa_reserva_Reserva", fields: [reservaId], references: [id], onDelete: SetNull)
+  abiertaEn    DateTime  @default(now()) @db.Timestamptz(3)
+  cerradaEn    DateTime? @db.Timestamptz(3)
+  abiertaPorId String
+  abiertaPor   Usuario   @relation("OcupacionMesa_abiertaPor_Usuario", fields: [abiertaPorId], references: [id], onDelete: Restrict)
+
+  // Relaciones inversas (navegación Prisma)
+  ordenesComoOcupacionMesa Orden[] @relation("Orden_ocupacionMesa_OcupacionMesa")
+
+  @@index([mesaId, cerradaEn])
+}
+
+model Orden {
+  id              String            @id @default(cuid())
+  numero          String
+  sucursalId      String
+  sucursal        Sucursal          @relation("Orden_sucursal_Sucursal", fields: [sucursalId], references: [id], onDelete: Restrict)
+  ocupacionMesaId String?
+  ocupacionMesa   OcupacionMesa?    @relation("Orden_ocupacionMesa_OcupacionMesa", fields: [ocupacionMesaId], references: [id], onDelete: Restrict)
+  clienteId       String?
+  cliente         Cliente?          @relation("Orden_cliente_Cliente", fields: [clienteId], references: [id], onDelete: SetNull)
+  usuarioId       String?
+  usuario         Usuario?          @relation("Orden_usuario_Usuario", fields: [usuarioId], references: [id], onDelete: SetNull)
+  modalidad       ModalidadServicio
+  origen          OrigenOrden
+  estado          EstadoOrden       @default(ABIERTA)
+  version         Int               @default(1)
+  subtotal        Decimal           @default(0) @db.Decimal(18, 2)
+  descuentoTotal  Decimal           @default(0) @db.Decimal(18, 2)
+  total           Decimal           @default(0) @db.Decimal(18, 2)
+  observaciones   String?
+  abiertaEn       DateTime          @default(now()) @db.Timestamptz(3)
+  cerradaEn       DateTime?         @db.Timestamptz(3)
+  canceladaEn     DateTime?         @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  consumoOrdenesComoOrden      ConsumoOrden[]       @relation("ConsumoOrden_orden_Orden")
+  ordenLineasComoOrden         OrdenLinea[]         @relation("OrdenLinea_orden_Orden")
+  cuentasComoOrden             Cuenta[]             @relation("Cuenta_orden_Orden")
+  eventoOrdenesComoOrden       EventoOrden[]        @relation("EventoOrden_orden_Orden")
+  comandasComoOrden            Comanda[]            @relation("Comanda_orden_Orden")
+  entregasComoOrden            Entrega?             @relation("Entrega_orden_Orden")
+  sesionAutoserviciosComoOrden SesionAutoservicio[] @relation("SesionAutoservicio_orden_Orden")
+
+  @@unique([sucursalId, numero])
+  @@index([sucursalId, estado, abiertaEn])
+}
+
+model OrdenLinea {
+  id             String           @id @default(cuid())
+  ordenId        String
+  orden          Orden            @relation("OrdenLinea_orden_Orden", fields: [ordenId], references: [id], onDelete: Restrict)
+  varianteId     String
+  variante       VarianteProducto @relation("OrdenLinea_variante_VarianteProducto", fields: [varianteId], references: [id], onDelete: Restrict)
+  nombreSnapshot String
+  cantidad       Decimal          @db.Decimal(18, 3)
+  precioUnitario Decimal          @db.Decimal(18, 2)
+  descuento      Decimal          @default(0) @db.Decimal(18, 2)
+  subtotal       Decimal          @db.Decimal(18, 2)
+  notasCocina    String?
+  canceladaEn    DateTime?        @db.Timestamptz(3)
+  creadaEn       DateTime         @default(now()) @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  ordenLineaModificadoresComoOrdenLinea OrdenLineaModificador[] @relation("OrdenLineaModificador_ordenLinea_OrdenLinea")
+  cuentaLineasComoOrdenLinea            CuentaLinea[]           @relation("CuentaLinea_ordenLinea_OrdenLinea")
+  comandaLineasComoOrdenLinea           ComandaLinea[]          @relation("ComandaLinea_ordenLinea_OrdenLinea")
+  ventaLineasComoOrdenLinea             VentaLinea[]            @relation("VentaLinea_ordenLinea_OrdenLinea")
+
+  @@index([ordenId, creadaEn])
+}
+
+model OrdenLineaModificador {
+  id              String      @id @default(cuid())
+  ordenLineaId    String
+  ordenLinea      OrdenLinea  @relation("OrdenLineaModificador_ordenLinea_OrdenLinea", fields: [ordenLineaId], references: [id], onDelete: Restrict)
+  modificadorId   String
+  modificador     Modificador @relation("OrdenLineaModificador_modificador_Modificador", fields: [modificadorId], references: [id], onDelete: Restrict)
+  nombreSnapshot  String
+  cantidad        Int         @default(1)
+  recargoUnitario Decimal     @db.Decimal(18, 2)
+
+  @@index([ordenLineaId])
+}
+
+model Cuenta {
+  id        String       @id @default(cuid())
+  ordenId   String
+  orden     Orden        @relation("Cuenta_orden_Orden", fields: [ordenId], references: [id], onDelete: Restrict)
+  nombre    String?
+  estado    EstadoCuenta @default(ABIERTA)
+  total     Decimal      @default(0) @db.Decimal(18, 2)
+  pagado    Decimal      @default(0) @db.Decimal(18, 2)
+  abiertaEn DateTime     @default(now()) @db.Timestamptz(3)
+  cerradaEn DateTime?    @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  cuentaLineasComoCuenta CuentaLinea[] @relation("CuentaLinea_cuenta_Cuenta")
+  intentoPagosComoCuenta IntentoPago[] @relation("IntentoPago_cuenta_Cuenta")
+  pagosComoCuenta        Pago[]        @relation("Pago_cuenta_Cuenta")
+  ventasComoCuenta       Venta?        @relation("Venta_cuenta_Cuenta")
+
+  @@index([ordenId, estado])
+}
+
+model CuentaLinea {
+  id               String     @id @default(cuid())
+  cuentaId         String
+  cuenta           Cuenta     @relation("CuentaLinea_cuenta_Cuenta", fields: [cuentaId], references: [id], onDelete: Restrict)
+  ordenLineaId     String
+  ordenLinea       OrdenLinea @relation("CuentaLinea_ordenLinea_OrdenLinea", fields: [ordenLineaId], references: [id], onDelete: Restrict)
+  cantidadAsignada Decimal    @db.Decimal(18, 3)
+  importeAsignado  Decimal    @db.Decimal(18, 2)
+
+  @@unique([cuentaId, ordenLineaId])
+}
+
+model EventoOrden {
+  id        String   @id @default(cuid())
+  ordenId   String
+  orden     Orden    @relation("EventoOrden_orden_Orden", fields: [ordenId], references: [id], onDelete: Restrict)
+  usuarioId String?
+  usuario   Usuario? @relation("EventoOrden_usuario_Usuario", fields: [usuarioId], references: [id], onDelete: SetNull)
+  accion    String
+  detalles  Json?
+  creadoEn  DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([ordenId, creadoEn])
+}
+
+// ============================================================================
+// [S10] ESTACIONES, COMANDAS Y PREPARACIÓN
+// ============================================================================
+
+model EstacionPreparacion {
+  id                 String            @id @default(cuid())
+  sucursalId         String
+  sucursal           Sucursal          @relation("EstacionPreparacion_sucursal_Sucursal", fields: [sucursalId], references: [id], onDelete: Restrict)
+  nombre             String
+  activa             Boolean           @default(true)
+  ubicacionConsumoId String?
+  ubicacionConsumo   UbicacionAlmacen? @relation("EstacionPreparacion_ubicacionConsumo_UbicacionAlmacen", fields: [ubicacionConsumoId], references: [id], onDelete: SetNull)
+
+  // Relaciones inversas (navegación Prisma)
+  dispositivosComoEstacionPreparacion Dispositivo[]     @relation("Dispositivo_estacionPreparacion_EstacionPreparacion")
+  rutaPreparacionesComoEstacion       RutaPreparacion[] @relation("RutaPreparacion_estacion_EstacionPreparacion")
+  comandasComoEstacion                Comanda[]         @relation("Comanda_estacion_EstacionPreparacion")
+
+  @@unique([sucursalId, nombre])
+}
+
+model RutaPreparacion {
+  id          String              @id @default(cuid())
+  estacionId  String
+  estacion    EstacionPreparacion @relation("RutaPreparacion_estacion_EstacionPreparacion", fields: [estacionId], references: [id], onDelete: Restrict)
+  categoriaId String?
+  categoria   Categoria?          @relation("RutaPreparacion_categoria_Categoria", fields: [categoriaId], references: [id], onDelete: Restrict)
+  varianteId  String?
+  variante    VarianteProducto?   @relation("RutaPreparacion_variante_VarianteProducto", fields: [varianteId], references: [id], onDelete: Restrict)
+  prioridad   Int                 @default(0)
+  // Validar en servicio: exactamente una de categoriaId / varianteId.
+}
+
+model Comanda {
+  id          String              @id @default(cuid())
+  numero      String
+  ordenId     String
+  orden       Orden               @relation("Comanda_orden_Orden", fields: [ordenId], references: [id], onDelete: Restrict)
+  estacionId  String
+  estacion    EstacionPreparacion @relation("Comanda_estacion_EstacionPreparacion", fields: [estacionId], references: [id], onDelete: Restrict)
+  estado      EstadoComanda       @default(PENDIENTE)
+  enviadaEn   DateTime            @default(now()) @db.Timestamptz(3)
+  iniciadaEn  DateTime?           @db.Timestamptz(3)
+  listaEn     DateTime?           @db.Timestamptz(3)
+  canceladaEn DateTime?           @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  comandaLineasComoComanda  ComandaLinea[]  @relation("ComandaLinea_comanda_Comanda")
+  eventoComandasComoComanda EventoComanda[] @relation("EventoComanda_comanda_Comanda")
+
+  @@unique([estacionId, numero])
+  @@index([estacionId, estado, enviadaEn])
+}
+
+model ComandaLinea {
+  id            String     @id @default(cuid())
+  comandaId     String
+  comanda       Comanda    @relation("ComandaLinea_comanda_Comanda", fields: [comandaId], references: [id], onDelete: Restrict)
+  ordenLineaId  String
+  ordenLinea    OrdenLinea @relation("ComandaLinea_ordenLinea_OrdenLinea", fields: [ordenLineaId], references: [id], onDelete: Restrict)
+  cantidad      Decimal    @db.Decimal(18, 3)
+  notasSnapshot String?
+  listaEn       DateTime?  @db.Timestamptz(3)
+  entregadaEn   DateTime?  @db.Timestamptz(3)
+  canceladaEn   DateTime?  @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  consumoOrdenesComoComandaLinea ConsumoOrden[] @relation("ConsumoOrden_comandaLinea_ComandaLinea")
+
+  @@index([ordenLineaId])
+}
+
+model EventoComanda {
+  id        String   @id @default(cuid())
+  comandaId String
+  comanda   Comanda  @relation("EventoComanda_comanda_Comanda", fields: [comandaId], references: [id], onDelete: Restrict)
+  usuarioId String?
+  usuario   Usuario? @relation("EventoComanda_usuario_Usuario", fields: [usuarioId], references: [id], onDelete: SetNull)
+  accion    String
+  nota      String?
+  creadoEn  DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([comandaId, creadoEn])
+}
+
+// ============================================================================
+// [S11] CAJA, PAGOS, VENTAS Y GASTOS
+// ============================================================================
+
+model Caja {
+  id         String   @id @default(cuid())
+  sucursalId String
+  sucursal   Sucursal @relation("Caja_sucursal_Sucursal", fields: [sucursalId], references: [id], onDelete: Restrict)
+  codigo     String
+  nombre     String
+  activa     Boolean  @default(true)
+
+  // Relaciones inversas (navegación Prisma)
+  turnoCajasComoCaja TurnoCaja[] @relation("TurnoCaja_caja_Caja")
+
+  @@unique([sucursalId, codigo])
+}
+
+model TurnoCaja {
+  id               String    @id @default(cuid())
+  cajaId           String
+  caja             Caja      @relation("TurnoCaja_caja_Caja", fields: [cajaId], references: [id], onDelete: Restrict)
+  cajeroId         String
+  cajero           Usuario   @relation("TurnoCaja_cajero_Usuario", fields: [cajeroId], references: [id], onDelete: Restrict)
+  fechaOperativa   DateTime  @db.Date
+  fondoInicial     Decimal   @db.Decimal(18, 2)
+  efectivoEsperado Decimal?  @db.Decimal(18, 2)
+  efectivoContado  Decimal?  @db.Decimal(18, 2)
+  diferencia       Decimal?  @db.Decimal(18, 2)
+  abiertaEn        DateTime  @default(now()) @db.Timestamptz(3)
+  cerradaEn        DateTime? @db.Timestamptz(3)
+  notaCierre       String?
+
+  // Relaciones inversas (navegación Prisma)
+  pagoProveedoresComoTurnoCaja         PagoProveedor[]         @relation("PagoProveedor_turnoCaja_TurnoCaja")
+  movimientoCajasComoTurno             MovimientoCaja[]        @relation("MovimientoCaja_turno_TurnoCaja")
+  arqueoCajasComoTurno                 ArqueoCaja?             @relation("ArqueoCaja_turno_TurnoCaja")
+  pagosComoTurno                       Pago[]                  @relation("Pago_turno_TurnoCaja")
+  gastoOperativosComoTurno             GastoOperativo[]        @relation("GastoOperativo_turno_TurnoCaja")
+  liquidacionRepartidoresComoTurnoCaja LiquidacionRepartidor[] @relation("LiquidacionRepartidor_turnoCaja_TurnoCaja")
+
+  @@index([cajaId, cerradaEn])
+  @@index([fechaOperativa])
+}
+
+model MovimientoCaja {
+  id                      String                 @id @default(cuid())
+  turnoId                 String
+  turno                   TurnoCaja              @relation("MovimientoCaja_turno_TurnoCaja", fields: [turnoId], references: [id], onDelete: Restrict)
+  tipo                    TipoMovimientoCaja
+  monto                   Decimal                @db.Decimal(18, 2)
+  motivo                  String
+  pagoId                  String?                @unique
+  pago                    Pago?                  @relation("MovimientoCaja_pago_Pago", fields: [pagoId], references: [id], onDelete: Restrict)
+  reembolsoId             String?                @unique
+  reembolso               ReembolsoPago?         @relation("MovimientoCaja_reembolso_ReembolsoPago", fields: [reembolsoId], references: [id], onDelete: Restrict)
+  gastoId                 String?                @unique
+  gasto                   GastoOperativo?        @relation("MovimientoCaja_gasto_GastoOperativo", fields: [gastoId], references: [id], onDelete: Restrict)
+  pagoProveedorId         String?                @unique
+  pagoProveedor           PagoProveedor?         @relation("MovimientoCaja_pagoProveedor_PagoProveedor", fields: [pagoProveedorId], references: [id], onDelete: Restrict)
+  liquidacionRepartidorId String?                @unique
+  liquidacionRepartidor   LiquidacionRepartidor? @relation("MovimientoCaja_liquidacionRepartidor_LiquidacionRepartidor", fields: [liquidacionRepartidorId], references: [id], onDelete: Restrict)
+  usuarioId               String
+  usuario                 Usuario                @relation("MovimientoCaja_usuario_Usuario", fields: [usuarioId], references: [id], onDelete: Restrict)
+  creadoEn                DateTime               @default(now()) @db.Timestamptz(3)
+
+  @@index([turnoId, creadoEn])
+}
+
+model ArqueoCaja {
+  id             String    @id @default(cuid())
+  turnoId        String    @unique
+  turno          TurnoCaja @relation("ArqueoCaja_turno_TurnoCaja", fields: [turnoId], references: [id], onDelete: Restrict)
+  contado        Decimal   @db.Decimal(18, 2)
+  esperado       Decimal   @db.Decimal(18, 2)
+  diferencia     Decimal   @db.Decimal(18, 2)
+  realizadoPorId String
+  realizadoPor   Usuario   @relation("ArqueoCaja_realizadoPor_Usuario", fields: [realizadoPorId], references: [id], onDelete: Restrict)
+  nota           String?
+  realizadoEn    DateTime  @default(now()) @db.Timestamptz(3)
+}
+
+model ConfiguracionProveedorPago {
+  id                 String   @id @default(cuid())
+  sucursalId         String
+  sucursal           Sucursal @relation("ConfiguracionProveedorPago_sucursal_Sucursal", fields: [sucursalId], references: [id], onDelete: Restrict)
+  codigoProveedor    String
+  nombre             String
+  referenciaSecretos String? // Referencia a secret manager; NUNCA credenciales ni CVV.
+  activo             Boolean  @default(true)
+
+  // Relaciones inversas (navegación Prisma)
+  intentoPagosComoProveedor IntentoPago[] @relation("IntentoPago_proveedor_ConfiguracionProveedorPago")
+
+  @@unique([sucursalId, codigoProveedor])
+}
+
+model IntentoPago {
+  id                String                      @id @default(cuid())
+  cuentaId          String
+  cuenta            Cuenta                      @relation("IntentoPago_cuenta_Cuenta", fields: [cuentaId], references: [id], onDelete: Restrict)
+  proveedorId       String?
+  proveedor         ConfiguracionProveedorPago? @relation("IntentoPago_proveedor_ConfiguracionProveedorPago", fields: [proveedorId], references: [id], onDelete: Restrict)
+  metodo            MetodoPago
+  monto             Decimal                     @db.Decimal(18, 2)
+  estado            EstadoIntentoPago           @default(PENDIENTE)
+  claveIdempotencia String                      @unique
+  referenciaExterna String?
+  respuestaCodigo   String?
+  creadoEn          DateTime                    @default(now()) @db.Timestamptz(3)
+  actualizadoEn     DateTime                    @updatedAt @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  pagosComoIntento Pago? @relation("Pago_intento_IntentoPago")
+
+  @@index([proveedorId, referenciaExterna])
+}
+
+model Pago {
+  id                    String       @id @default(cuid())
+  cuentaId              String
+  cuenta                Cuenta       @relation("Pago_cuenta_Cuenta", fields: [cuentaId], references: [id], onDelete: Restrict)
+  intentoId             String?      @unique
+  intento               IntentoPago? @relation("Pago_intento_IntentoPago", fields: [intentoId], references: [id], onDelete: Restrict)
+  turnoId               String?
+  turno                 TurnoCaja?   @relation("Pago_turno_TurnoCaja", fields: [turnoId], references: [id], onDelete: Restrict)
+  cobradoPorId          String?
+  cobradoPor            Usuario?     @relation("Pago_cobradoPor_Usuario", fields: [cobradoPorId], references: [id], onDelete: SetNull)
+  metodo                MetodoPago
+  monto                 Decimal      @db.Decimal(18, 2)
+  referencia            String?
+  recibidoPorRepartidor Boolean      @default(false)
+  cobradoEn             DateTime     @default(now()) @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  movimientoCajasComoPago             MovimientoCaja?             @relation("MovimientoCaja_pago_Pago")
+  reembolsoPagosComoPago              ReembolsoPago[]             @relation("ReembolsoPago_pago_Pago")
+  liquidacionRepartidorLineasComoPago LiquidacionRepartidorLinea? @relation("LiquidacionRepartidorLinea_pago_Pago")
+
+  @@index([cuentaId, cobradoEn])
+}
+
+model ReembolsoPago {
+  id                String   @id @default(cuid())
+  pagoId            String
+  pago              Pago     @relation("ReembolsoPago_pago_Pago", fields: [pagoId], references: [id], onDelete: Restrict)
+  monto             Decimal  @db.Decimal(18, 2)
+  motivo            String
+  usuarioId         String
+  usuario           Usuario  @relation("ReembolsoPago_usuario_Usuario", fields: [usuarioId], references: [id], onDelete: Restrict)
+  referenciaExterna String?
+  creadoEn          DateTime @default(now()) @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  movimientoCajasComoReembolso MovimientoCaja? @relation("MovimientoCaja_reembolso_ReembolsoPago")
+
+  @@index([pagoId, creadoEn])
+}
+
+model Venta {
+  id             String   @id @default(cuid())
+  numero         String
+  cuentaId       String   @unique
+  cuenta         Cuenta   @relation("Venta_cuenta_Cuenta", fields: [cuentaId], references: [id], onDelete: Restrict)
+  sucursalId     String
+  sucursal       Sucursal @relation("Venta_sucursal_Sucursal", fields: [sucursalId], references: [id], onDelete: Restrict)
+  clienteId      String?
+  cliente        Cliente? @relation("Venta_cliente_Cliente", fields: [clienteId], references: [id], onDelete: SetNull)
+  total          Decimal  @db.Decimal(18, 2)
+  descuentoTotal Decimal  @default(0) @db.Decimal(18, 2)
+  cerradaEn      DateTime @default(now()) @db.Timestamptz(3)
+  // Registro interno de venta; NO es un documento FEL.
+
+  // Relaciones inversas (navegación Prisma)
+  ventaLineasComoVenta VentaLinea[] @relation("VentaLinea_venta_Venta")
+
+  @@unique([sucursalId, numero])
+  @@index([sucursalId, cerradaEn])
+}
+
+model VentaLinea {
+  id             String     @id @default(cuid())
+  ventaId        String
+  venta          Venta      @relation("VentaLinea_venta_Venta", fields: [ventaId], references: [id], onDelete: Restrict)
+  ordenLineaId   String
+  ordenLinea     OrdenLinea @relation("VentaLinea_ordenLinea_OrdenLinea", fields: [ordenLineaId], references: [id], onDelete: Restrict)
+  descripcion    String
+  cantidad       Decimal    @db.Decimal(18, 3)
+  precioUnitario Decimal    @db.Decimal(18, 2)
+  descuento      Decimal    @default(0) @db.Decimal(18, 2)
+  subtotal       Decimal    @db.Decimal(18, 2)
+
+  @@index([ventaId])
+}
+
+model CuentaFinanciera {
+  id         String    @id @default(cuid())
+  sucursalId String?
+  sucursal   Sucursal? @relation("CuentaFinanciera_sucursal_Sucursal", fields: [sucursalId], references: [id], onDelete: Restrict)
+  nombre     String
+  tipo       String // BANCO, TARJETA_EMPRESA, EFECTIVO_EXTERNO, etc.
+  moneda     String    @default("GTQ") @db.VarChar(3)
+  activa     Boolean   @default(true)
+
+  // Relaciones inversas (navegación Prisma)
+  pagoProveedoresComoCuentaFinanciera          PagoProveedor[]           @relation("PagoProveedor_cuentaFinanciera_CuentaFinanciera")
+  movimientoFinancierosComoCuenta              MovimientoFinanciero[]    @relation("MovimientoFinanciero_cuenta_CuentaFinanciera")
+  gastoOperativosComoCuentaFinanciera          GastoOperativo[]          @relation("GastoOperativo_cuentaFinanciera_CuentaFinanciera")
+  liquidacionCanalExternosComoCuentaFinanciera LiquidacionCanalExterno[] @relation("LiquidacionCanalExterno_cuentaFinanciera_CuentaFinanciera")
+}
+
+model MovimientoFinanciero {
+  id             String           @id @default(cuid())
+  cuentaId       String
+  cuenta         CuentaFinanciera @relation("MovimientoFinanciero_cuenta_CuentaFinanciera", fields: [cuentaId], references: [id], onDelete: Restrict)
+  monto          Decimal          @db.Decimal(18, 2) // firmado
+  referenciaTipo String
+  referenciaId   String
+  descripcion    String?
+  creadoEn       DateTime         @default(now()) @db.Timestamptz(3)
+
+  @@index([cuentaId, creadoEn])
+  @@index([referenciaTipo, referenciaId])
+}
+
+model GastoOperativo {
+  id                  String            @id @default(cuid())
+  sucursalId          String
+  sucursal            Sucursal          @relation("GastoOperativo_sucursal_Sucursal", fields: [sucursalId], references: [id], onDelete: Restrict)
+  proveedorId         String?
+  proveedor           Proveedor?        @relation("GastoOperativo_proveedor_Proveedor", fields: [proveedorId], references: [id], onDelete: SetNull)
+  cuentaFinancieraId  String?
+  cuentaFinanciera    CuentaFinanciera? @relation("GastoOperativo_cuentaFinanciera_CuentaFinanciera", fields: [cuentaFinancieraId], references: [id], onDelete: Restrict)
+  turnoId             String?
+  turno               TurnoCaja?        @relation("GastoOperativo_turno_TurnoCaja", fields: [turnoId], references: [id], onDelete: Restrict)
+  usuarioId           String
+  usuario             Usuario           @relation("GastoOperativo_usuario_Usuario", fields: [usuarioId], references: [id], onDelete: Restrict)
+  tipo                TipoGasto         @default(OPERATIVO)
+  categoria           String?
+  descripcion         String
+  monto               Decimal           @db.Decimal(18, 2)
+  documentoReferencia String?
+  registradoEn        DateTime          @default(now()) @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  movimientoCajasComoGasto MovimientoCaja? @relation("MovimientoCaja_gasto_GastoOperativo")
+}
+
+model CierreOperativo {
+  id             String   @id @default(cuid())
+  sucursalId     String
+  sucursal       Sucursal @relation("CierreOperativo_sucursal_Sucursal", fields: [sucursalId], references: [id], onDelete: Restrict)
+  fechaOperativa DateTime @db.Date
+  usuarioId      String
+  usuario        Usuario  @relation("CierreOperativo_usuario_Usuario", fields: [usuarioId], references: [id], onDelete: Restrict)
+  resumen        Json?
+  cerradoEn      DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([sucursalId, fechaOperativa])
+}
+
+// ============================================================================
+// [S12] DELIVERY Y CANALES EXTERNOS
+// ============================================================================
+
+model CanalExterno {
+  id     String  @id @default(cuid())
+  codigo String  @unique
+  nombre String
+  activo Boolean @default(true)
+
+  // Relaciones inversas (navegación Prisma)
+  entregasComoCanalExterno          Entrega[]                 @relation("Entrega_canalExterno_CanalExterno")
+  liquidacionCanalExternosComoCanal LiquidacionCanalExterno[] @relation("LiquidacionCanalExterno_canal_CanalExterno")
+}
+
+model Entrega {
+  id                    String            @id @default(cuid())
+  ordenId               String            @unique
+  orden                 Orden             @relation("Entrega_orden_Orden", fields: [ordenId], references: [id], onDelete: Restrict)
+  direccionId           String?
+  direccion             DireccionCliente? @relation("Entrega_direccion_DireccionCliente", fields: [direccionId], references: [id], onDelete: SetNull)
+  direccionTexto        String
+  referenciaDireccion   String?
+  telefonoContacto      String?
+  repartidorId          String?
+  repartidor            Usuario?          @relation("Entrega_repartidor_Usuario", fields: [repartidorId], references: [id], onDelete: SetNull)
+  canalExternoId        String?
+  canalExterno          CanalExterno?     @relation("Entrega_canalExterno_CanalExterno", fields: [canalExternoId], references: [id], onDelete: Restrict)
+  referenciaExterna     String?
+  estado                EstadoEntrega     @default(PENDIENTE)
+  costoEnvio            Decimal           @default(0) @db.Decimal(18, 2)
+  cobrableContraEntrega Decimal           @default(0) @db.Decimal(18, 2)
+  enRepartoEn           DateTime?         @db.Timestamptz(3)
+  entregadaEn           DateTime?         @db.Timestamptz(3)
+  nota                  String?
+
+  // Relaciones inversas (navegación Prisma)
+  liquidacionCanalExternoLineasComoEntrega LiquidacionCanalExternoLinea? @relation("LiquidacionCanalExternoLinea_entrega_Entrega")
+  liquidacionRepartidorLineasComoEntrega   LiquidacionRepartidorLinea[]  @relation("LiquidacionRepartidorLinea_entrega_Entrega")
+
+  @@index([repartidorId, estado])
+  @@index([canalExternoId, referenciaExterna])
+}
+
+model LiquidacionCanalExterno {
+  id                 String            @id @default(cuid())
+  canalId            String
+  canal              CanalExterno      @relation("LiquidacionCanalExterno_canal_CanalExterno", fields: [canalId], references: [id], onDelete: Restrict)
+  cuentaFinancieraId String?
+  cuentaFinanciera   CuentaFinanciera? @relation("LiquidacionCanalExterno_cuentaFinanciera_CuentaFinanciera", fields: [cuentaFinancieraId], references: [id], onDelete: Restrict)
+  periodoInicio      DateTime          @db.Date
+  periodoFin         DateTime          @db.Date
+  referencia         String?
+  totalBruto         Decimal           @db.Decimal(18, 2)
+  totalComision      Decimal           @default(0) @db.Decimal(18, 2)
+  totalNeto          Decimal           @db.Decimal(18, 2)
+  recibidaEn         DateTime?         @db.Timestamptz(3)
+  creadaEn           DateTime          @default(now()) @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  liquidacionCanalExternoLineasComoLiquidacion LiquidacionCanalExternoLinea[] @relation("LiquidacionCanalExternoLinea_liquidacion_LiquidacionCanalExterno")
+
+  @@index([canalId, periodoInicio])
+}
+
+model LiquidacionCanalExternoLinea {
+  id            String                  @id @default(cuid())
+  liquidacionId String
+  liquidacion   LiquidacionCanalExterno @relation("LiquidacionCanalExternoLinea_liquidacion_LiquidacionCanalExterno", fields: [liquidacionId], references: [id], onDelete: Restrict)
+  entregaId     String                  @unique
+  entrega       Entrega                 @relation("LiquidacionCanalExternoLinea_entrega_Entrega", fields: [entregaId], references: [id], onDelete: Restrict)
+  importeBruto  Decimal                 @db.Decimal(18, 2)
+  comision      Decimal                 @default(0) @db.Decimal(18, 2)
+  importeNeto   Decimal                 @db.Decimal(18, 2)
+}
+
+model LiquidacionRepartidor {
+  id             String            @id @default(cuid())
+  repartidorId   String
+  repartidor     Usuario           @relation("LiquidacionRepartidor_repartidor_Usuario", fields: [repartidorId], references: [id], onDelete: Restrict)
+  sucursalId     String
+  sucursal       Sucursal          @relation("LiquidacionRepartidor_sucursal_Sucursal", fields: [sucursalId], references: [id], onDelete: Restrict)
+  turnoCajaId    String?
+  turnoCaja      TurnoCaja?        @relation("LiquidacionRepartidor_turnoCaja_TurnoCaja", fields: [turnoCajaId], references: [id], onDelete: Restrict)
+  estado         EstadoLiquidacion @default(ABIERTA)
+  totalEsperado  Decimal           @default(0) @db.Decimal(18, 2)
+  totalEntregado Decimal           @default(0) @db.Decimal(18, 2)
+  creadaEn       DateTime          @default(now()) @db.Timestamptz(3)
+  cerradaEn      DateTime?         @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  movimientoCajasComoLiquidacionRepartidor   MovimientoCaja?              @relation("MovimientoCaja_liquidacionRepartidor_LiquidacionRepartidor")
+  liquidacionRepartidorLineasComoLiquidacion LiquidacionRepartidorLinea[] @relation("LiquidacionRepartidorLinea_liquidacion_LiquidacionRepartidor")
+}
+
+model LiquidacionRepartidorLinea {
+  id            String                @id @default(cuid())
+  liquidacionId String
+  liquidacion   LiquidacionRepartidor @relation("LiquidacionRepartidorLinea_liquidacion_LiquidacionRepartidor", fields: [liquidacionId], references: [id], onDelete: Restrict)
+  entregaId     String
+  entrega       Entrega               @relation("LiquidacionRepartidorLinea_entrega_Entrega", fields: [entregaId], references: [id], onDelete: Restrict)
+  pagoId        String                @unique
+  pago          Pago                  @relation("LiquidacionRepartidorLinea_pago_Pago", fields: [pagoId], references: [id], onDelete: Restrict)
+  monto         Decimal               @db.Decimal(18, 2)
+  // Cada pago de efectivo del repartidor puede liquidarse una sola vez.
+
+  @@index([liquidacionId, entregaId])
+}
+
+// ============================================================================
+// [S13] RESERVAS Y RECORDATORIOS
+// ============================================================================
+
+model Reserva {
+  id               String        @id @default(cuid())
+  sucursalId       String
+  sucursal         Sucursal      @relation("Reserva_sucursal_Sucursal", fields: [sucursalId], references: [id], onDelete: Restrict)
+  clienteId        String?
+  cliente          Cliente?      @relation("Reserva_cliente_Cliente", fields: [clienteId], references: [id], onDelete: SetNull)
+  nombreContacto   String
+  telefonoContacto String?
+  emailContacto    String?
+  personas         Int
+  inicio           DateTime      @db.Timestamptz(3)
+  fin              DateTime      @db.Timestamptz(3)
+  estado           EstadoReserva @default(PENDIENTE)
+  notas            String?
+  creadaPorId      String?
+  creadaPor        Usuario?      @relation("Reserva_creadaPor_Usuario", fields: [creadaPorId], references: [id], onDelete: SetNull)
+  creadaEn         DateTime      @default(now()) @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  ocupacionMesasComoReserva       OcupacionMesa[]       @relation("OcupacionMesa_reserva_Reserva")
+  reservaMesasComoReserva         ReservaMesa[]         @relation("ReservaMesa_reserva_Reserva")
+  eventoReservasComoReserva       EventoReserva[]       @relation("EventoReserva_reserva_Reserva")
+  recordatorioReservasComoReserva RecordatorioReserva[] @relation("RecordatorioReserva_reserva_Reserva")
+
+  @@index([sucursalId, inicio, estado])
+}
+
+model ReservaMesa {
+  id        String  @id @default(cuid())
+  reservaId String
+  reserva   Reserva @relation("ReservaMesa_reserva_Reserva", fields: [reservaId], references: [id], onDelete: Restrict)
+  mesaId    String
+  mesa      Mesa    @relation("ReservaMesa_mesa_Mesa", fields: [mesaId], references: [id], onDelete: Restrict)
+
+  @@unique([reservaId, mesaId])
+  @@index([mesaId])
+}
+
+model EventoReserva {
+  id        String   @id @default(cuid())
+  reservaId String
+  reserva   Reserva  @relation("EventoReserva_reserva_Reserva", fields: [reservaId], references: [id], onDelete: Restrict)
+  usuarioId String?
+  usuario   Usuario? @relation("EventoReserva_usuario_Usuario", fields: [usuarioId], references: [id], onDelete: SetNull)
+  accion    String
+  detalle   String?
+  creadoEn  DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([reservaId, creadoEn])
+}
+
+model RecordatorioReserva {
+  id             String             @id @default(cuid())
+  reservaId      String
+  reserva        Reserva            @relation("RecordatorioReserva_reserva_Reserva", fields: [reservaId], references: [id], onDelete: Restrict)
+  canal          CanalRecordatorio
+  destino        String
+  textoSnapshot  String
+  programadoPara DateTime           @db.Timestamptz(3)
+  estado         EstadoRecordatorio @default(PENDIENTE)
+  enviadoEn      DateTime?          @db.Timestamptz(3)
+  creadoEn       DateTime           @default(now()) @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  intentoRecordatoriosComoRecordatorio IntentoRecordatorio[] @relation("IntentoRecordatorio_recordatorio_RecordatorioReserva")
+
+  @@index([estado, programadoPara])
+}
+
+model IntentoRecordatorio {
+  id                  String              @id @default(cuid())
+  recordatorioId      String
+  recordatorio        RecordatorioReserva @relation("IntentoRecordatorio_recordatorio_RecordatorioReserva", fields: [recordatorioId], references: [id], onDelete: Restrict)
+  referenciaProveedor String?
+  exito               Boolean
+  error               String?
+  intentadoEn         DateTime            @default(now()) @db.Timestamptz(3)
+}
+
+// ============================================================================
+// [S14] AUTOSERVICIO Y EVENTOS TÉCNICOS
+// ============================================================================
+
+model AccesoMesaQR {
+  id        String    @id @default(cuid())
+  mesaId    String
+  mesa      Mesa      @relation("AccesoMesaQR_mesa_Mesa", fields: [mesaId], references: [id], onDelete: Restrict)
+  hashToken String    @unique
+  activo    Boolean   @default(true)
+  expiraEn  DateTime? @db.Timestamptz(3)
+  creadoEn  DateTime  @default(now()) @db.Timestamptz(3)
+
+  // Relaciones inversas (navegación Prisma)
+  sesionAutoserviciosComoAccesoMesaQr SesionAutoservicio[] @relation("SesionAutoservicio_accesoMesaQr_AccesoMesaQR")
+
+  @@index([mesaId, activo])
+}
+
+model SesionAutoservicio {
+  id             String                   @id @default(cuid())
+  sucursalId     String
+  sucursal       Sucursal                 @relation("SesionAutoservicio_sucursal_Sucursal", fields: [sucursalId], references: [id], onDelete: Restrict)
+  dispositivoId  String?
+  dispositivo    Dispositivo?             @relation("SesionAutoservicio_dispositivo_Dispositivo", fields: [dispositivoId], references: [id], onDelete: SetNull)
+  accesoMesaQrId String?
+  accesoMesaQr   AccesoMesaQR?            @relation("SesionAutoservicio_accesoMesaQr_AccesoMesaQR", fields: [accesoMesaQrId], references: [id], onDelete: SetNull)
+  ordenId        String?
+  orden          Orden?                   @relation("SesionAutoservicio_orden_Orden", fields: [ordenId], references: [id], onDelete: Restrict)
+  hashSesion     String                   @unique
+  estado         EstadoSesionAutoservicio @default(ACTIVA)
+  expiraEn       DateTime                 @db.Timestamptz(3)
+  creadaEn       DateTime                 @default(now()) @db.Timestamptz(3)
+}
+
+model EventoOutbox {
+  id               String       @id @default(cuid())
+  tipo             String
+  agregado         String
+  agregadoId       String
+  payload          Json
+  estado           EstadoEvento @default(PENDIENTE)
+  intentos         Int          @default(0)
+  proximoIntentoEn DateTime?    @db.Timestamptz(3)
+  creadoEn         DateTime     @default(now()) @db.Timestamptz(3)
+  procesadoEn      DateTime?    @db.Timestamptz(3)
+
+  @@index([estado, proximoIntentoEn])
+}
+
+model OperacionIdempotente {
+  id            String   @id @default(cuid())
+  clave         String   @unique
+  operacion     String
+  hashSolicitud String
+  resultado     Json?
+  finalizada    Boolean  @default(false)
+  expiraEn      DateTime @db.Timestamptz(3)
+  creadaEn      DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([expiraEn])
+}

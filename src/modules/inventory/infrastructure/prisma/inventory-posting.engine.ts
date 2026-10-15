@@ -94,6 +94,8 @@ export class InventoryPostingEngine{
     :[{cantidad:qty(count),costoUnitario:price(unit)}];
    await tx.existencia.update({where:{id:row.id},data:{cantidad:before.minus(count)}});
   }
+  if(total.greaterThan('99999999999999.999999'))
+   throw new BadRequestException('Valor total excede la precisión monetaria permitida');
   const movement=await tx.movimientoInventario.create({data:{
    articuloId:art.id,ubicacionId:l.id,loteId:batch,tipo:v.tipo,
    cantidad:v.direction==='IN'?count:count.negated(),costoUnitario:unit,costoTotal:total,
@@ -125,6 +127,21 @@ export class InventoryPostingEngine{
    sucursalId:l.almacen.sucursalId};
  }
  async tx<T>(callback:(tx:Tx)=>Promise<T>):Promise<T>{
-  return this.db.$transaction(callback,{isolationLevel:Prisma.TransactionIsolationLevel.Serializable,timeout:20000});
+  for(let attempt=0;attempt<3;attempt++){
+   try{
+    return await this.db.$transaction(callback,{
+     isolationLevel:Prisma.TransactionIsolationLevel.Serializable,timeout:20000});
+   }catch(err){
+    if(err instanceof Prisma.PrismaClientKnownRequestError){
+     // PostgreSQL 40001 serialization/write conflicts are safe to replay atomically.
+     // 23505 conflicts during position creation can also be resolved by replaying.
+     if((err.code==='P2034'||err.code==='P2002')&&attempt<2)continue;
+     if(err.code==='P2034'||err.code==='P2002')
+      throw new ConflictException('Operación concurrente: reintente con la misma clave');
+    }
+    throw err;
+   }
+  }
+  throw new ConflictException('No se pudo confirmar por concurrencia');
  }
 }

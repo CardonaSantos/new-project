@@ -159,7 +159,7 @@ export class InventoryOperationsStore{
   const direction=kind==='OPENING'||kind==='INBOUND'?'IN':'OUT';
   const op='INVENTORY_'+kind;
   const payload={kind,...dto,actor:u.id};const hash=createHash('sha256').update(JSON.stringify(payload)).digest('hex');
-  return this.engine.tx(async tx=>{
+  const posted=await this.engine.tx(async tx=>{
    const old=await tx.operacionIdempotente.findUnique({where:{clave:dto.claveOperacion}});
    if(old){
     if(old.operacion!==op||old.hashSolicitud!==hash||!old.finalizada)
@@ -170,15 +170,21 @@ export class InventoryOperationsStore{
     const l=await this.engine.location(tx,dto.ubicacionId);
     await this.engine.allowed(tx,u.id,'inventory.costs.manage',l.almacen.sucursalId);
    }
+   if(kind==='OPENING'&&await tx.movimientoInventario.count({where:{
+     articuloId:dto.articuloId,ubicacionId:dto.ubicacionId,loteId:dto.loteId??null}})>0)
+    throw new ConflictException('La posición ya tiene movimientos; saldo inicial no permitido');
    const result=await this.engine.post(tx,{actorId:u.id,articuloId:dto.articuloId,
     ubicacionId:dto.ubicacionId,loteId:dto.loteId,cantidad:dto.cantidad,direction,
     tipo:kind==='WASTE'?'MERMA':direction==='IN'?'AJUSTE_ENTRADA':'AJUSTE_SALIDA',
     costoUnitario:dto.costoUnitario,claveOperacion:dto.claveOperacion,
-    referenciaTipo:op,referenciaId:dto.claveOperacion,nota:dto.motivo,permission:'inventory.adjust'});
+    referenciaTipo:op,referenciaId:dto.claveOperacion,nota:dto.motivo,permission:'inventory.adjust',allowBlocked:kind==='WASTE'});
    await tx.operacionIdempotente.create({data:{clave:dto.claveOperacion,operacion:op,hashSolicitud:hash,
     finalizada:true,expiraEn:new Date(Date.now()+365*86400000),resultado:result as unknown as Prisma.InputJsonValue}});
    return result;
   });
+  const l=await this.db.ubicacionAlmacen.findUnique({where:{id:dto.ubicacionId},
+   include:{almacen:true}});
+  return sanitize(posted,!!l&&await this.costs(u,l.almacen.sucursalId));
  }
  async movements(u:Principal,q:StockQuery){
   await this.listScope(u,q);

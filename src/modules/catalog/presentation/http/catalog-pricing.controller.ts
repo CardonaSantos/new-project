@@ -1,4 +1,4 @@
-import {Body,Controller,Get,Param,Patch,Post,Put,Query} from '@nestjs/common';
+import {Body,Controller,Get,HttpCode,Param,Patch,Post,Put,Query} from '@nestjs/common';
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {CurrentUser} from '../../../auth/presentation/http/decorators/auth.decorators.js';
 import {CatalogService} from '../../application/catalog.service.js';
@@ -48,7 +48,7 @@ export class CatalogPricesController{
  @Get('variants/:id/resolve') resolve(@CurrentUser() a:Principal,@Param('id') id:string,@Query() q:PriceQueryDto){
   return this.service.price(a,id,q.sucursalId,q.fecha);
  }
- @Post('quote') quote(@CurrentUser() a:Principal,@Body() v:QuoteDto){
+ @Post('quote') @HttpCode(200) quote(@CurrentUser() a:Principal,@Body() v:QuoteDto){
   return this.service.quote(a,v.varianteId,v.sucursalId,v.modificadorIds,v.fecha);
  }
 }

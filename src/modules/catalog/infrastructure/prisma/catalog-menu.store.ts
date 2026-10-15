@@ -134,7 +134,7 @@ export class CatalogMenuStore{
    const menu=await tx.menu.findUnique({where:{id},include:menuInclude});
    if(!menu)throw new NotFoundException('Menú inexistente');
    if(!menu.activo)throw new ConflictException('No se puede publicar un menú inactivo');
-   if(!menu.sucursales.length||!menu.secciones.length)
+   if(!menu.sucursales.some(x=>x.activa)||!menu.secciones.length)
     throw new ConflictException('Menú sin sucursales o secciones');
    if(!menu.secciones.some(x=>x.activa&&x.items.some(y=>y.activo)))
     throw new ConflictException('Menú sin variantes activas');
@@ -182,6 +182,13 @@ export class CatalogMenuStore{
   ]);
   const priceMap=new Map(prices.map(p=>[p.varianteId,p.importe.toFixed(2)]));
   const availability=new Map(overrides.map(x=>[x.varianteId,x]));
+  const idsModificadores=[...new Set(menus.flatMap(m=>m.secciones.flatMap(sec=>sec.items.flatMap(item=>
+   item.variante.varianteGrupoModificadoresComoVariante.flatMap(link=>link.grupo.modificadoresComoGrupo.map(mod=>mod.id))))))];
+  const pricesMod=await this.db.precioModificador.findMany({where:{
+   modificadorId:{in:idsModificadores},sucursalId,vigenteDesde:{lte:at},
+   OR:[{vigenteHasta:null},{vigenteHasta:{gt:at}}]
+  }});
+  const overrideMod=new Map(pricesMod.map(x=>[x.modificadorId,x.importe.toFixed(2)]));
   const output:unknown[]=[];
   for(const menu of menus){
    const schedule=menu.horarios.filter(x=>x.activo);
@@ -196,7 +203,14 @@ export class CatalogMenuStore{
        p.tipo==='INVENTARIABLE'&&!v.articuloInventario?.activo)continue;
      const medias=[...v.medios,...p.medios];
      if(!medias.some(x=>x.media.tipo==='IMAGEN'&&!!x.media.confirmadaEn&&!x.media.eliminadaEn))continue;
-     items.push({id:item.id,orden:item.orden,variante:v,precio:priceMap.get(v.id),
+     const grupos=v.varianteGrupoModificadoresComoVariante.filter(link=>link.grupo.activo)
+      .map(link=>({grupoId:link.grupoId,grupo:link.grupo.nombre,orden:link.orden,
+       minimo:Math.max(link.grupo.minimo,link.obligatorio?1:0),
+       maximo:link.grupo.maximo,
+       opciones:link.grupo.modificadoresComoGrupo.map(mod=>({
+        id:mod.id,nombre:mod.nombre,recargo:overrideMod.get(mod.id)??mod.incrementoPrecio.toFixed(2)
+       }))}));
+     items.push({id:item.id,orden:item.orden,variante:v,gruposModificadores:grupos,precio:priceMap.get(v.id),
       moneda:config?.moneda??'GTQ',stock:'NO_VERIFICADO_HASTA_INV_B'});
     }
     if(items.length)sections.push({id:section.id,nombre:section.nombre,orden:section.orden,items});

@@ -32,7 +32,11 @@ export const groupInclude={modificadoresComoGrupo:{orderBy:{nombre:'asc' as cons
 const typeofVariantMinimal={
  producto:{include:{medios:{include:{media:true},orderBy:{orden:'asc' as const}}}},
  articuloInventario:{select:{id:true,activo:true}},
- medios:{include:{media:true},orderBy:{orden:'asc' as const}}
+ medios:{include:{media:true},orderBy:{orden:'asc' as const}},
+ varianteGrupoModificadoresComoVariante:{
+  include:{grupo:{include:{modificadoresComoGrupo:{where:{activo:true},orderBy:{nombre:'asc' as const}}}}},
+  orderBy:{orden:'asc' as const}
+ }
 } as const;
 
 export const menuInclude={

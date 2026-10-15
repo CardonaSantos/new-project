@@ -68,7 +68,7 @@ describe('CAT-A HTTP contracts',()=>{
  it('validates quote selection as a string array',async()=>{
   await request(app.getHttpServer()).post('/api/catalog/prices/quote').send({
    varianteId:'v1',sucursalId:'b1',modificadorIds:['m1']
-  }).expect(201);
+  }).expect(200);
   await request(app.getHttpServer()).post('/api/catalog/prices/quote').send({
    varianteId:'v1',sucursalId:'b1',modificadorIds:['m1','m1']
   }).expect(400);

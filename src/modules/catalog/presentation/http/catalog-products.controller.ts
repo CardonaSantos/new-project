@@ -45,8 +45,8 @@ export class CatalogProductsController{
  @Post(':id/variants') createVariant(@CurrentUser() a:Principal,@Param('id') id:string,@Body() v:VariantInputDto){
   return this.service.createVariant(a,id,v);
  }
- @Get(':id/readiness') readiness(@CurrentUser() a:Principal,@Param('id') id:string,@Query() q:BranchQueryDto){
-  return this.service.readiness(a,id,q.sucursalId??'',q.fecha);
+ @Get(':id/readiness') readiness(@CurrentUser() a:Principal,@Param('id') id:string,@Query() q:PriceQueryDto){
+  return this.service.readiness(a,id,q.sucursalId,q.fecha);
  }
 }
 @Controller('catalog/variants')

@@ -158,14 +158,15 @@ export class CatalogCommercialStore{
   try{return await this.db.$transaction(async tx=>{
    await permission(tx,actor,'catalog.manage',null);
    const old=await tx.producto.findUnique({where:{id},include:{
-    medios:{include:{media:true}},varianteProductosComoProducto:true}});
+    medios:{include:{media:true}},varianteProductosComoProducto:{include:{medios:{include:{media:true}}}}}});
    if(!old)throw new NotFoundException('Producto inexistente');
    if(input.categoriaId){
     const cat=await tx.categoria.findUnique({where:{id:input.categoriaId}});
     if(!cat||!cat.activa)throw new ConflictException('Categoría inactiva');
    }
    if(input.visibleEnMenu===true&&!old.visibleEnMenu){
-    const photos=old.medios.some(x=>x.media.tipo==='IMAGEN'&&!!x.media.confirmadaEn&&!x.media.eliminadaEn);
+    const photos=[...old.medios,...old.varianteProductosComoProducto.flatMap(v=>v.medios)]
+      .some(x=>x.media.tipo==='IMAGEN'&&!!x.media.confirmadaEn&&!x.media.eliminadaEn);
     if(!photos)throw new ConflictException('Producto visible requiere fotografía confirmada');
     if(!old.varianteProductosComoProducto.some(x=>x.activo))throw new ConflictException('Producto sin variantes activas');
    }

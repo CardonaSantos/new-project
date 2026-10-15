@@ -70,7 +70,7 @@ export class InventoryOperationsStore{
    const articles=[...new Set(rows.map(x=>x.articuloId))];
    const siblings=await this.db.existencia.findMany({where:{
     ubicacionId:{in:locations},articuloId:{in:articles}},
-    select:{id:true,articuloId:true,ubicacionId:true,cantidad:true}}});
+    select:{id:true,articuloId:true,ubicacionId:true,cantidad:true}});
    const books=await locationBookValues(this.db,locations);
    positionValues=allocatePoolBookValues(siblings,books);
   }

@@ -15,5 +15,9 @@ export function validateEnvironment(
       throw new Error(`Invalid environment variable: ${key}`);
     }
   }
+  if (values.SWAGGER_ENABLED !== undefined &&
+      !['true', 'false', ''].includes(String(values.SWAGGER_ENABLED))) {
+    throw new Error('Invalid environment variable: SWAGGER_ENABLED (true/false)');
+  }
   return values;
 }

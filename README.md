@@ -95,3 +95,42 @@ las volvía a instalar.
 - `src/generated/prisma/client.ts` se genera, no se comitea. `npm run start:dev` ahora ejecuta la generación primero. Si ves TS2307, ejecuta `npm run prisma:generate` y reinicia el TypeScript Server de VS Code.
 
 No se implementó aún la carga remota, la firma de URLs, los endpoints de Media ni la API de tarjetas: estas tablas solo preparan sus relaciones.
+
+## Swagger / OpenAPI
+
+El proyecto usa `@nestjs/swagger` y su plugin Nest CLI para documentar
+campos y validaciones de los DTOs automáticamente.
+
+Con el servidor iniciado (`npm run start:dev`), abrir:
+
+- **UI:** `http://localhost:3000/api/docs`
+- **JSON:** `http://localhost:3000/api/docs/openapi.json`
+- **YAML:** `http://localhost:3000/api/docs/openapi.yaml`
+
+La API sigue utilizando el prefijo `/api`. La documentación se agrupa por
+Auth, Users, Media, Organization e Inventory.
+
+`SWAGGER_ENABLED=true` habilita la documentación explícitamente y
+`SWAGGER_ENABLED=false` la deshabilita. Por defecto se habilita fuera de
+`NODE_ENV=production`, y en producción está deshabilitada. Si se habilita
+en producción, restringir el acceso a UI/JSON mediante VPN o proxy
+autenticado: estas rutas no están protegidas por el Bearer JWT del negocio.
+
+### Autorizar y probar
+
+1. Ejecutar `POST /api/auth/login` desde **Try it out**.
+2. Copiar `accessToken` de la respuesta.
+3. Pulsar **Authorize** y pegar **solo el token**, sin `Bearer`.
+4. En rutas con acceso por sucursal, usar `x-sucursal-id` cuando se necesite
+   seleccionar el contexto de autorización.
+5. Usar **Try it out** para consultar y crear recursos.
+
+Las rutas públicas se muestran sin requerimiento de Bearer. El refresh
+requiere la cookie HttpOnly establecida por el servidor.
+Si la cuenta usa contraseña temporal, cambiarla con
+`PATCH /api/auth/password` antes de acceder a otras operaciones.
+
+Swagger documenta la API; no reemplaza guards, permisos RBAC ni validación.
+El plugin agrega metadatos durante `nest build`, no durante el
+transpilado de Vitest. Los esquemas de respuestas se enriquecerán en
+los próximos checkpoints.

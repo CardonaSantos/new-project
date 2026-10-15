@@ -3,7 +3,7 @@ import type {Principal} from '../../../auth/application/auth.service.js';
 import {CurrentUser} from '../../../auth/presentation/http/decorators/auth.decorators.js';
 import {CatalogService} from '../../application/catalog.service.js';
 import {BranchQueryDto,BranchVariantDto,CategoryCreateDto,CategoryPatchDto,ImageIdsDto,
- OptionsDto,ProductCreateDto,ProductListDto,ProductOptionsDto,ProductPatchDto,StatusDto,
+ OptionsDto,ProductCreateDto,ProductListDto,ProductOptionsDto,ProductPatchDto,PriceQueryDto,StatusDto,
  VariantInputDto,VariantOptionDto,VariantPatchDto} from './dto/catalog.dto.js';
 
 @Controller('catalog/categories')

@@ -46,6 +46,7 @@ describe('UsersService',()=>{
  it('oculta roles de sucursales diferentes al manager',async()=>{
   const {service,repo,identities}=setup();
   vi.mocked(repo.isGlobalSuperAdmin).mockResolvedValue(false);
+  vi.mocked(identities.capabilities).mockResolvedValueOnce([]).mockResolvedValueOnce(['users.read']);
   const user=await service.detail(other,'u1','b1');
   expect(user.access.assignments).toHaveLength(1);
   expect(user.access.assignments[0].sucursalId).toBe('b1');

@@ -262,3 +262,23 @@ cantidades de los lotes. Las salidas se valorizan con el promedio consolidado
 vigente en la ubicación. El método FIFO usa en cambio las capas de costo del
 mismo artículo y ubicación, en orden cronológico; las selecciones físicas
 de lotes y las financieras de capas son independientes.
+
+### INV-B — ajuste de precisión y colisiones de lotes
+- El costo promedio de seis decimales sigue visible y compartido entre lotes
+  de un mismo artículo/ubicación, pero la valorización en promedio ponderado
+  se obtiene del saldo monetario del Kardex (entradas menos salidas).
+- Las salidas valoran contra el saldo monetario del artículo/ubicación; al
+  consumir toda una posición de valoración se liquida cualquier residuo.
+  El costo unitario mostrado, redondeado a seis posiciones, puede no
+  reproducir exactamente el costoTotal por multiplicación: este último
+  conserva la precisión monetaria contable.
+- Las posiciones distribuyen proporcionalmente el saldo monetario entre
+  lotes, asignando el resto de redondeo a la última posición para mantener
+  igualdad con summary y valuation, incluso con filtros/paginación.
+- No cambia el costeo FIFO ni las capas de costo; no requiere migración.
+- Un lote duplicado devuelve 409 con mensaje específico y no se trata como
+  error transitorio de concurrencia.
+- Los despachos de transferencias preservan el costoTotal exacto en cada tramo
+  monetario y la recepción lo reusa; nunca se revaloriza el tránsito a partir
+  de un costo unitario redondeado. Documentos históricos de un solo tramo usan
+  el total en tránsito persistido.

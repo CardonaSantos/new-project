@@ -1,15 +1,17 @@
 import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
 import {Prisma} from '../../../../generated/prisma/client.js';
 import {PrismaService} from '../../../../infrastructure/database/prisma/prisma.service.js';
-import {amount,locationAverage,price,qty,requireStock,localDate} from '../../domain/stock.policy.js';
+import {amount,price,qty,requireStock,localDate} from '../../domain/stock.policy.js';
+import {weightedAverageFromBook} from '../../domain/inventory-valuation.policy.js';
+import {locationBookValue} from './inventory-ledger.js';
 type Tx=Prisma.TransactionClient;
 export type StockPosting={
  actorId:string;ubicacionId:string;articuloId:string;loteId?:string|null;
  cantidad:string;direction:'IN'|'OUT';tipo:'AJUSTE_ENTRADA'|'AJUSTE_SALIDA'|'MERMA'|'TRANSFERENCIA_SALIDA'|'TRANSFERENCIA_ENTRADA';
- costoUnitario?:string;claveOperacion:string;referenciaTipo:string;referenciaId:string;nota?:string;
+ costoUnitario?:string;costoTotalOverride?:string;claveOperacion:string;referenciaTipo:string;referenciaId:string;nota?:string;
  permission:'inventory.adjust'|'inventory.transfer';allowBlocked?:boolean;
 };
-export type CostSlice={cantidad:string;costoUnitario:string};
+export type CostSlice={cantidad:string;costoUnitario:string;costoTotal?:string};
 @Injectable()
 export class InventoryPostingEngine{
  constructor(private readonly db:PrismaService){}
@@ -37,6 +39,8 @@ export class InventoryPostingEngine{
  }
  async post(tx:Tx,v:StockPosting){
   const count=amount(v.cantidad);
+  if(v.costoTotalOverride!==undefined&&(v.direction!=='IN'||v.tipo!=='TRANSFERENCIA_ENTRADA'))
+   throw new BadRequestException('Solo una recepción de transferencia puede fijar costoTotal');
   const l=await this.location(tx,v.ubicacionId);
   await this.allowed(tx,v.actorId,v.permission,l.almacen.sucursalId);
   const art=await tx.articuloInventario.findUnique({where:{id:v.articuloId}});
@@ -64,13 +68,17 @@ export class InventoryPostingEngine{
   if(v.direction==='IN'){
    if(v.costoUnitario===undefined)throw new BadRequestException('Entrada requiere costoUnitario explícito');
    unit=new Prisma.Decimal(v.costoUnitario);
-   total=count.mul(unit).toDecimalPlaces(6,Prisma.Decimal.ROUND_HALF_UP);
-   allocations=[{cantidad:qty(count),costoUnitario:price(unit)}];
+   total=v.costoTotalOverride===undefined?
+    count.mul(unit).toDecimalPlaces(6,Prisma.Decimal.ROUND_HALF_UP):
+    amount(v.costoTotalOverride,true);
+   allocations=[{cantidad:qty(count),costoUnitario:price(unit),costoTotal:price(total)}];
    // Weighted average is per article+location, not per lot. A physical lot is
    // tracked separately but its accounting price is shared at this valuation scope.
    const siblings=await tx.existencia.findMany({where:{articuloId:art.id,ubicacionId:l.id},
-    select:{cantidad:true,costoPromedio:true}});
-   const avg=locationAverage(siblings,count,unit);
+    select:{cantidad:true}});
+   const pooledQty=siblings.reduce((sum,x)=>sum.plus(x.cantidad),new Prisma.Decimal(0));
+   const oldBook=await locationBookValue(tx,art.id,l.id);
+   const avg=weightedAverageFromBook(pooledQty,oldBook,count,unit,total);
    if(row)await tx.existencia.update({where:{id:row.id},data:{cantidad:before.plus(count),costoPromedio:avg}});
    else await tx.existencia.create({data:{articuloId:art.id,ubicacionId:l.id,loteId:batch,cantidad:count,costoPromedio:avg}});
    await tx.existencia.updateMany({where:{articuloId:art.id,ubicacionId:l.id},
@@ -92,12 +100,20 @@ export class InventoryPostingEngine{
    consumed=used;
    for(const a of used)await tx.capaCostoInventario.update({where:{id:a.id},data:{cantidadRestante:{decrement:a.cantidad}}});
    const fifo=used.reduce((sum,a)=>sum.plus(a.cantidad.mul(a.cost)),new Prisma.Decimal(0));
-   total=(company.metodoValoracion==='FIFO'?fifo:count.mul(row.costoPromedio))
-     .toDecimalPlaces(6,Prisma.Decimal.ROUND_HALF_UP);
+   if(company.metodoValoracion==='FIFO')total=fifo.toDecimalPlaces(6,Prisma.Decimal.ROUND_HALF_UP);
+   else{
+    const pool=await tx.existencia.aggregate({where:{articuloId:art.id,ubicacionId:l.id},
+     _sum:{cantidad:true}});
+    const poolQty=pool._sum.cantidad??new Prisma.Decimal(0);
+    const book=await locationBookValue(tx,art.id,l.id);
+    // Consume the entire remaining book balance when the last quantity leaves.
+    total=poolQty.equals(count)?book:
+     book.mul(count).div(poolQty).toDecimalPlaces(6,Prisma.Decimal.ROUND_HALF_UP);
+   }
    unit=total.div(count).toDecimalPlaces(6,Prisma.Decimal.ROUND_HALF_UP);
    allocations=company.metodoValoracion==='FIFO'
     ?used.map(x=>({cantidad:qty(x.cantidad),costoUnitario:price(x.cost)}))
-    :[{cantidad:qty(count),costoUnitario:price(unit)}];
+    :[{cantidad:qty(count),costoUnitario:price(unit),costoTotal:price(total)}];
    await tx.existencia.update({where:{id:row.id},data:{cantidad:before.minus(count)}});
   }
   if(total.greaterThan('99999999999999.999999'))

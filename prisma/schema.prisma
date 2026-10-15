@@ -948,6 +948,7 @@ model ConteoInventarioLinea {
   lote            LoteInventario?    @relation("ConteoInventarioLinea_lote_LoteInventario", fields: [loteId], references: [id], onDelete: Restrict)
   cantidadTeorica Decimal            @db.Decimal(20, 6)
   cantidadContada Decimal            @db.Decimal(20, 6)
+  costoUnitarioEntrada Decimal?       @db.Decimal(18, 6)
   // Una línea de diferencia genera un movimiento al confirmar.
 
   @@index([conteoId, articuloId])
@@ -1313,6 +1314,8 @@ model TransferenciaInventarioLinea {
   lote               LoteInventario?         @relation("TransferenciaInventarioLinea_lote_LoteInventario", fields: [loteId], references: [id], onDelete: Restrict)
   cantidadEnviada    Decimal                 @db.Decimal(20, 6)
   cantidadRecibida   Decimal?                @db.Decimal(20, 6)
+  costoEnTransito    Decimal?                 @db.Decimal(20, 6)
+  capasEnTransito    Json?
 
   @@index([transferenciaId, articuloId])
 }

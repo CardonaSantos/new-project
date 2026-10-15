@@ -164,3 +164,69 @@ INV-B y vínculos transaccionales. INV-C añadirá conteos, ajustes y mermas.
 `CatalogModule` usará `InventoryRepositoryPort`/consultas públicas o
 puertos estrechos extraídos durante CAT-A para consultar artículos vinculados
 a variantes y unidades válidas, sin modificar directamente el stock.
+
+
+## INV-B — Operaciones y valorización (2026-10)
+
+Este checkpoint extiende INV-A con stock, lotes, Kardex, entradas y salidas manuales,
+mermas, conteos físicos, transferencias con tránsito, promedio ponderado/FIFO y reportes.
+Las órdenes, recepciones de compras y consumo de recetas quedan en sus módulos futuros.
+
+### Migración y precauciones
+
+`prisma/migrations/20261015201500_inventory_operational_engine/migration.sql` añade índices
+para posiciones sin lote, invariantes de cantidades y columnas de costos en tránsito.
+Verificar que no existan saldos negativos, capas inválidas o posiciones sin lote duplicadas
+antes de ejecutar `npx prisma migrate deploy`. No hay borrado automático de registros.
+
+### Rutas (prefijo global /api)
+
+- GET /inventory/stock?sucursalId=<id> — posiciones reales paginadas
+- GET /inventory/stock/summary?sucursalId=<id> — consolidado por artículo
+- POST /inventory/lots — lote global de un artículo que utiliza lotes
+- GET /inventory/lots?sucursalId=<id> — lotes con existencias en la sucursal
+- PATCH /inventory/lots/:id/block — cuarentena global por lote
+- POST /inventory/operations/opening, /inbound, /outbound, /waste — contabilización manual
+- GET /inventory/movements?sucursalId=<id>, /inventory/movements/:id — Kardex y detalle
+- POST /inventory/counts, POST /inventory/counts/:id/confirm, GET /inventory/counts/:id
+- POST /inventory/transfers, POST /inventory/transfers/:id/dispatch, /:id/receive, GET /:id
+- GET /inventory/reports/valuation?sucursalId=<id>
+- GET /inventory/reports/expiry?sucursalId=<id>
+- GET /inventory/reports/reconciliation?sucursalId=<id>
+
+### Reglas operativas
+
+Las cantidades y costos de entrada son cadenas decimal (hasta seis posiciones).
+Las salidas no aceptan costo suministrado por cliente; el motor aplica PROMEDIO_PONDERADO
+o FIFO según la empresa. Incluso con el flag de stock negativo activo, se rechazan
+saldos negativos: requieren una política de valoración excepcional aún no modelada.
+
+Todos los movimientos son inmutables y usan claveOperacion única; la API manual registra
+idempotencia asociada al usuario y cuerpo de la petición. El cambio de costo y saldo, las
+capas FIFO, las aplicaciones a capas y la auditoría se realizan en transacción serializable.
+Las referencias de movimientos manuales usan la claveOperacion como referencia documental.
+Las transferencias son BORRADOR -> EN_TRANSITO -> RECIBIDA; el despacho guarda cantidades
+y capas valorizadas en tránsito. La recepción actual es TOTAL; diferencias parciales
+requieren un flujo formal de discrepancia aún por integrar con abastecimiento interno.
+La recepción crea una capa por tramo de costo para preservar la trazabilidad FIFO.
+
+Los conteos capturan saldos teóricos al crear el documento. Confirmar valida que dichos
+saldos no hayan cambiado, genera un ajuste confirmado y movimientos de diferencia.
+No se sobrescriben saldos concurrentemente. Para ajustar al alza es obligatorio
+costoUnitarioEntrada, con permiso inventory.costs.manage.
+
+Los usuarios con inventory.read pueden ver cantidades y lotes; los costos se omiten
+si no tienen inventory.costs.read. Reportes monetarios requieren inventory.reports.read
+y inventory.costs.read. Los saldos y el Kardex no interpretan reservas de órdenes.
+
+### Prueba manual Swagger de ejemplo
+
+1. POST /inventory/lots con
+`{"articuloId":"<leche-id>","codigoLote":"PRUEBA-001","fechaVencimiento":"2026-11-30"}`.
+2. POST /inventory/operations/opening con
+`{"articuloId":"<leche-id>","ubicacionId":"<refrigeracion-id>","loteId":"<lot-id>","cantidad":"5000.000000","costoUnitario":"0.010000","claveOperacion":"INV:OPEN:TEST001","motivo":"Carga inicial validada"}`.
+3. GET /inventory/stock?sucursalId=<branch-id>, luego registrar outbound con otra clave.
+4. Consultar /inventory/movements y /inventory/reports/valuation.
+5. Ejecutar conteo y transferencia hacia otra ubicación distinta.
+
+No usar documentos reales de compra ni confirmar pagos desde estos endpoints manuales.

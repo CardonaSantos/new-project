@@ -6,10 +6,11 @@ export const bookKey=(articuloId:string,ubicacionId:string)=>articuloId+':'+ubic
 
 export function weightedAverageFromBook(
  currentQuantity:Prisma.Decimal,currentBookValue:Prisma.Decimal,
- incomingQuantity:Prisma.Decimal,incomingUnitCost:Prisma.Decimal){
+ incomingQuantity:Prisma.Decimal,incomingUnitCost:Prisma.Decimal,
+ incomingValue=incomingQuantity.mul(incomingUnitCost)){
  const total=currentQuantity.plus(incomingQuantity);
  if(total.isZero())return new Prisma.Decimal(0);
- return currentBookValue.plus(incomingQuantity.mul(incomingUnitCost))
+ return currentBookValue.plus(incomingValue)
   .div(total).toDecimalPlaces(6,Prisma.Decimal.ROUND_HALF_UP);
 }
 

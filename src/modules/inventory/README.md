@@ -278,3 +278,7 @@ de lotes y las financieras de capas son independientes.
 - No cambia el costeo FIFO ni las capas de costo; no requiere migración.
 - Un lote duplicado devuelve 409 con mensaje específico y no se trata como
   error transitorio de concurrencia.
+- Los despachos de transferencias preservan el costoTotal exacto en cada tramo
+  monetario y la recepción lo reusa; nunca se revaloriza el tránsito a partir
+  de un costo unitario redondeado. Documentos históricos de un solo tramo usan
+  el total en tránsito persistido.

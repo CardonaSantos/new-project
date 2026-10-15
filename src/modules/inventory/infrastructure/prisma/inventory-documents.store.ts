@@ -250,6 +250,10 @@ export class InventoryDocumentsStore{
      await this.engine.post(tx,{actorId:u.id,articuloId:line.articuloId,
       ubicacionId:line.ubicacionDestinoId,loteId:line.loteId,cantidad:slice.cantidad,
       direction:'IN',tipo:'TRANSFERENCIA_ENTRADA',costoUnitario:slice.costoUnitario,
+      // Preserve posted dispatch value rather than multiplying a rounded
+      // unit average during receipt. Older one-slice documents use transit total.
+      costoTotalOverride:slice.costoTotal??(slices.length===1&&line.costoEnTransito?
+       price(line.costoEnTransito):undefined),
       claveOperacion:'TR:'+id+':IN:'+line.id+':'+i,
       referenciaTipo:'TRANSFERENCIA',referenciaId:id,nota:row.nota??undefined,permission:'inventory.transfer'});
     }

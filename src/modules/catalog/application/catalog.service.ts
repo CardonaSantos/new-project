@@ -103,7 +103,7 @@ export class CatalogService{
  }
  async groupOptions(a:Principal,f:Options){
   await this.scope(a,'catalog.read');const r=await this.repo.groupOptions(f);
-  return {data:r.data,meta:options(r.nextCursor)};
+  return {data:await this.present(r.data),meta:options(r.nextCursor)};
  }
  async createGroup(a:Principal,v:GroupInput){
   await this.global(a,'catalog.manage');return this.present(await this.repo.createGroup(a.id,v));
@@ -113,7 +113,7 @@ export class CatalogService{
  }
  async modifiers(a:Principal,f:Paging&{grupoId?:string}){
   await this.scope(a,'catalog.read');const r=await this.repo.modifiers(f);
-  return {data:r.data,meta:paged(f,r.total)};
+  return {data:await this.present(r.data),meta:paged(f,r.total)};
  }
  async createModifier(a:Principal,v:ModifierInput){
   await this.global(a,'catalog.manage');

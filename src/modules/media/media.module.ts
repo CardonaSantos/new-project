@@ -22,6 +22,6 @@ import { MediaController } from './presentation/http/media.controller.js';
     MediaService,
     MediaMaintenanceService,
   ],
-  exports: [MediaService, MediaRepositoryPort],
+  exports: [MediaService, MediaRepositoryPort, FileStoragePort],
 })
 export class MediaModule {}

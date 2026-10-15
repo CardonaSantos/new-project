@@ -13,11 +13,10 @@ import { JwtSessionTokens } from './infrastructure/security/jwt-session-tokens.j
 import { AuthenticationGuard } from './presentation/http/guards/authentication.guard.js';
 import { PermissionsGuard } from './presentation/http/guards/permissions.guard.js';
 import { AuthController } from './presentation/http/controllers/auth.controller.js';
-import { UsersController } from './presentation/http/controllers/users.controller.js';
 
 @Module({
   imports: [PrismaModule],
-  controllers: [AuthController, UsersController],
+  controllers: [AuthController],
   providers: [
     AuthService,
     { provide: IdentityRepository, useClass: PrismaIdentityRepository },
@@ -26,6 +25,6 @@ import { UsersController } from './presentation/http/controllers/users.controlle
     { provide: APP_GUARD, useClass: AuthenticationGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
   ],
-  exports: [AuthService, IdentityRepository],
+  exports: [AuthService, IdentityRepository, PasswordHasher],
 })
 export class AuthModule {}

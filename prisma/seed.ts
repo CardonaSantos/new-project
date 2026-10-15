@@ -9,6 +9,9 @@ const email=(process.env.BOOTSTRAP_ADMIN_EMAIL??'admin@novasistemas.net').trim()
 const db=new PrismaClient({adapter:new PrismaPg({connectionString:url})});
 const permissions=[
  ['users.create','users'],['users.roles.assign','users'],['users.read','users'],['users.deactivate','users'],
+ ['users.update','users'],['users.status.manage','users'],['users.password.reset','users'],
+ ['users.sessions.read','users'],['users.sessions.revoke','users'],['users.audit.read','users'],
+ ['users.reports.read','users'],
  ['roles.read','roles'],['roles.manage','roles'],
  ['media.read','media'],['media.upload','media'],['media.delete','media'],['media.publish','media'],
  ['catalog.read','catalog'],['catalog.manage','catalog'],['orders.read','orders'],['orders.create','orders'],

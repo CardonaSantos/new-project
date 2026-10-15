@@ -89,7 +89,7 @@ export class InventoryService{
   if(input.costoReferencia!==undefined)await this.global(actor,'inventory.costs.manage');
   const r=await this.repo.createArticle(actor.id,{...input,codigo:code(input.codigo),nombre:requiredName(input.nombre),
    costoReferencia:input.costoReferencia==null?input.costoReferencia:nonNegativeDecimal(input.costoReferencia),
-   stockMinimo:input.stockMinimo==null?input.stockMinimo:nonNegativeDecimal(input.stockMinimo)});
+   stockMinimo:input.stockMinimo==null?input.stockMinimo:nonNegativeDecimal(input.stockMinimo,6,14)});
   return this.media.enrich(await this.hideCost(r,await this.costs(actor)));
  }
  async updateArticle(actor:Principal,id:string,input:ArticleUpdate){
@@ -98,7 +98,7 @@ export class InventoryService{
   const r=await this.repo.updateArticle(actor.id,id,{...input,
    nombre:input.nombre===undefined?undefined:requiredName(input.nombre),
    costoReferencia:input.costoReferencia==null?input.costoReferencia:nonNegativeDecimal(input.costoReferencia),
-   stockMinimo:input.stockMinimo==null?input.stockMinimo:nonNegativeDecimal(input.stockMinimo)});
+   stockMinimo:input.stockMinimo==null?input.stockMinimo:nonNegativeDecimal(input.stockMinimo,6,14)});
   return this.media.enrich(await this.hideCost(r,await this.costs(actor)));
  }
  async articleStatus(actor:Principal,id:string,activo:boolean,motivo:string){

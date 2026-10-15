@@ -246,6 +246,7 @@ export class PrismaInventoryRepository extends InventoryRepositoryPort{
  async createArticle(userId:string,input:ArticleInput){
   try{return await this.db.$transaction(async tx=>{
    await perm(tx,userId,'inventory.articles.manage',null);
+   if(input.costoReferencia!==undefined)await perm(tx,userId,'inventory.costs.manage',null);
    if(!await tx.unidadMedida.findUnique({where:{id:input.unidadBaseId}}))
     throw new NotFoundException('Unidad base no encontrada');
    const row=await tx.articuloInventario.create({data:{
@@ -259,6 +260,7 @@ export class PrismaInventoryRepository extends InventoryRepositoryPort{
  async updateArticle(userId:string,id:string,input:ArticleUpdate){
   return this.db.$transaction(async tx=>{
    await perm(tx,userId,'inventory.articles.manage',null);
+   if(input.costoReferencia!==undefined)await perm(tx,userId,'inventory.costs.manage',null);
    const before=await tx.articuloInventario.findUnique({where:{id}});
    if(!before)throw new NotFoundException('Artículo no encontrado');
    expirationRule(input.requiereLote??before.requiereLote,input.requiereVencimiento??before.requiereVencimiento);

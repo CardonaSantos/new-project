@@ -6,20 +6,20 @@ export function requiredName(value:string):string{
 }
 export function code(value:string):string{
  const s=value.trim().toUpperCase();
- if(!/^[A-Z][A-Z0-9_-]{1,49}$/.test(s))throw new BadRequestException('Código inválido');
+ if(!/^[A-Z][A-Z0-9_-]{0,49}$/.test(s))throw new BadRequestException('Código inválido');
  return s;
 }
 export function positiveDecimal(value:string,precision=6):string{
  if(!/^\d+(?:\.\d+)?$/.test(value))throw new BadRequestException('Cantidad decimal inválida');
  const [whole,fraction='']=value.split('.');
- if(fraction.length>precision||whole.length>20||!/[1-9]/.test(value))
+ if(fraction.length>precision||whole.length>14||!/[1-9]/.test(value))
   throw new BadRequestException('Cantidad debe ser positiva y respetar precisión');
  return value;
 }
-export function nonNegativeDecimal(value:string,precision=6):string{
+export function nonNegativeDecimal(value:string,precision=6,maxWhole=12):string{
  if(!/^\d+(?:\.\d+)?$/.test(value))throw new BadRequestException('Decimal inválido');
  const [whole,fraction='']=value.split('.');
- if(fraction.length>precision||whole.length>20)throw new BadRequestException('Precisión excedida');
+ if(fraction.length>precision||whole.length>maxWhole)throw new BadRequestException('Precisión excedida');
  return value;
 }
 export function requireChange(changes:object):void{

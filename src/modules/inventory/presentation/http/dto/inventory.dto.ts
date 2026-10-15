@@ -17,7 +17,7 @@ export class StatusDto {
  @IsString() @MinLength(3) @MaxLength(500) motivo!:string;
 }
 export class UnitDto{
- @IsString() @Matches(/^[A-Za-z][A-Za-z0-9_-]{1,49}$/) codigo!:string;
+ @IsString() @Matches(/^[A-Za-z][A-Za-z0-9_-]{0,49}$/) codigo!:string;
  @IsString() @MaxLength(120) @MinLength(1) nombre!:string;
  @IsIn(['UNIDAD','MASA','VOLUMEN','LONGITUD']) dimension!:Dimension;
  @IsOptional() @IsBoolean() esBase?:boolean;

@@ -7,6 +7,8 @@ import type {Principal} from '../../../auth/application/auth.service.js';
 import {amount,cost,price,qty,requireReference,validDay} from '../../domain/stock.policy.js';
 import {InventoryPostingEngine} from './inventory-posting.engine.js';
 import {InventoryDocumentsStore} from './inventory-documents.store.js';
+import {locationBookValues} from './inventory-ledger.js';
+import {bookKey,allocatePoolBookValues} from '../../domain/inventory-valuation.policy.js';
 import type {StockBranchDto,LotCreateDto,LotStatusDto,ManualPostingDto,CountCreateDto,TransferCreateDto} from '../../presentation/http/dto/inventory-operations.dto.js';
 type StockQuery=StockBranchDto;
 const meta=(page:number,limit:number,total:number)=>({page,limit,total,totalPages:Math.ceil(total/limit)});
@@ -60,6 +62,18 @@ export class InventoryOperationsStore{
   const withCosts=await this.costs(u,q.sucursalId);
   const company=await this.db.empresaConfiguracion.findFirst();
   const fifo=company?.metodoValoracion==='FIFO';
+  let positionValues=new Map<string,Prisma.Decimal>();
+  if(withCosts&&!fifo&&rows.length){
+   // Load all siblings, not just the current page: rounding must be stable
+   // when the same cost pool is split across pages or filtered by lot.
+   const locations=[...new Set(rows.map(x=>x.ubicacionId))];
+   const articles=[...new Set(rows.map(x=>x.articuloId))];
+   const siblings=await this.db.existencia.findMany({where:{
+    ubicacionId:{in:locations},articuloId:{in:articles}},
+    select:{id:true,articuloId:true,ubicacionId:true,cantidad:true}}});
+   const books=await locationBookValues(this.db,locations);
+   positionValues=allocatePoolBookValues(siblings,books);
+  }
   return {data:rows.map(x=>sanitize({id:x.id,articulo:{id:x.articulo.id,codigo:x.articulo.codigo,
    nombre:x.articulo.nombre,tipo:x.articulo.tipo,unidadBase:x.articulo.unidadBase.codigo,
    stockMinimo:x.articulo.stockMinimo?.toFixed(6)??null},ubicacion:{
@@ -68,7 +82,7 @@ export class InventoryOperationsStore{
    lote:x.lote?{id:x.lote.id,codigoLote:x.lote.codigoLote,bloqueado:x.lote.bloqueado,
     fechaVencimiento:x.lote.fechaVencimiento?.toISOString().slice(0,10)??null}:null,
    cantidad:qty(x.cantidad),costoPromedio:fifo?null:price(x.costoPromedio),
-   valor:fifo?null:price(x.cantidad.mul(x.costoPromedio))},withCosts)),meta:meta(q.page,q.limit,total),
+   valor:fifo?null:price(positionValues.get(x.id)??new Prisma.Decimal(0))},withCosts)),meta:meta(q.page,q.limit,total),
    nota:'Stock físico contabilizado. No contempla reservas de órdenes ni consumos de recetas.'};
  }
  async summary(u:Principal,q:StockQuery){
@@ -88,10 +102,17 @@ export class InventoryOperationsStore{
    existing.cantidad=existing.cantidad.plus(row.cantidad);
    if(row.lote?.bloqueado||row.lote?.fechaVencimiento&&row.lote.fechaVencimiento<new Date())
     existing.bloqueada=existing.bloqueada.plus(row.cantidad);
-   existing.valor=existing.valor.plus(row.cantidad.mul(row.costoPromedio));
    map.set(row.articuloId,existing);
   }
   const company=await this.db.empresaConfiguracion.findFirst();
+  if(company?.metodoValoracion!=='FIFO'){
+   const locations=[...new Set(positions.map(x=>x.ubicacionId))];
+   const books=await locationBookValues(this.db,locations);
+   for(const [key,value] of books){
+    const article=map.get(key.split(':')[0]);
+    if(article)article.valor=article.valor.plus(value);
+   }
+  }
   if(company?.metodoValoracion==='FIFO'){
    const layers=await this.db.capaCostoInventario.findMany({where:{
     ubicacion:{almacen:{sucursalId:q.sucursalId,...(q.almacenId?{id:q.almacenId}:{})}},
@@ -148,9 +169,18 @@ export class InventoryOperationsStore{
    const a=await tx.articuloInventario.findUnique({where:{id:dto.articuloId}});
    if(!a||!a.activo||!a.requiereLote)throw new ConflictException('Artículo no controla lotes');
    if(a.requiereVencimiento&&!dto.fechaVencimiento)throw new BadRequestException('Requiere fechaVencimiento');
-   const row=await tx.loteInventario.create({data:{articuloId:a.id,codigoLote,
-    fechaElaboracion:dto.fechaElaboracion?validDay(dto.fechaElaboracion):null,
-    fechaVencimiento:dto.fechaVencimiento?validDay(dto.fechaVencimiento):null}});
+   // Translate permanent uniqueness failures inside the callback; otherwise
+   // the transaction retry wrapper mistakes them for transient contention.
+   let row;
+   try{
+    row=await tx.loteInventario.create({data:{articuloId:a.id,codigoLote,
+     fechaElaboracion:dto.fechaElaboracion?validDay(dto.fechaElaboracion):null,
+     fechaVencimiento:dto.fechaVencimiento?validDay(dto.fechaVencimiento):null}});
+   }catch(error){
+    if(error instanceof Prisma.PrismaClientKnownRequestError&&error.code==='P2002')
+     throw new ConflictException('Código de lote duplicado para el artículo');
+    throw error;
+   }
    await tx.eventoAuditoria.create({data:{usuarioId:u.id,accion:'LOT_CREATED',entidad:'LoteInventario',
     entidadId:row.id,despues:{articuloId:a.id,codigoLote}}});
    return {id:row.id,codigoLote:row.codigoLote,articuloId:row.articuloId,
@@ -256,9 +286,13 @@ export class InventoryOperationsStore{
   const layers=FIFO?await this.db.capaCostoInventario.findMany({where:{ubicacionId:{in:locations},
    cantidadRestante:{gt:0},...(q.articuloId?{articuloId:q.articuloId}:{})}}):[];
   const map=new Map<string,Prisma.Decimal>();
-  for(const row of rows){
-   const key=row.articuloId;const val=map.get(key)??new Prisma.Decimal(0);
-   map.set(key,val.plus(FIFO?new Prisma.Decimal(0):row.cantidad.mul(row.costoPromedio)));
+  for(const row of rows)if(!map.has(row.articuloId))map.set(row.articuloId,new Prisma.Decimal(0));
+  if(!FIFO){
+   const books=await locationBookValues(this.db,locations);
+   for(const [key,value] of books){
+    const article=key.split(':')[0];
+    if(map.has(article))map.set(article,map.get(article)!.plus(value));
+   }
   }
   if(FIFO)for(const layer of layers){
    map.set(layer.articuloId,(map.get(layer.articuloId)??new Prisma.Decimal(0)).plus(

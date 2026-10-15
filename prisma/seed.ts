@@ -20,7 +20,11 @@ const permissions=[
  ['catalog.read','catalog'],['catalog.manage','catalog'],['orders.read','orders'],['orders.create','orders'],
  ['orders.manage','orders'],['kitchen.read','kitchen'],['kitchen.manage','kitchen'],
  ['tables.read','tables'],['tables.manage','tables'],['inventory.read','inventory'],
- ['inventory.adjust','inventory'],['inventory.transfer','inventory'],['purchases.manage','purchases'],
+ ['inventory.adjust','inventory'],['inventory.transfer','inventory'],
+ ['inventory.units.manage','inventory'],['inventory.articles.manage','inventory'],
+ ['inventory.warehouses.manage','inventory'],['inventory.reports.read','inventory'],
+ ['inventory.costs.read','inventory'],['inventory.costs.manage','inventory'],
+ ['purchases.manage','purchases'],
  ['cash.open','cash'],['cash.close','cash'],['payments.collect','payments'],
  ['payments.refund','payments'],['delivery.manage','delivery'],['reservations.manage','reservations'],
  ['reports.read','reports'],['settings.manage','settings']

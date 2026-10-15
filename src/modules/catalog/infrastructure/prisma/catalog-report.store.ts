@@ -20,7 +20,7 @@ export class CatalogReportStore{
    this.db.menu.count({where:{activo:true,publicadoEn:{not:null},
     sucursales:{some:{sucursalId:{in:ids},activa:true}}}}),
    this.db.producto.groupBy({by:['tipo'],_count:{_all:true},where:{activo:true}}),
-   this.db.producto.count({where:{activo:true,medios:{none:{}}}}),
+   this.db.producto.count({where:{activo:true,medios:{none:{media:{tipo:'IMAGEN',confirmadaEn:{not:null},eliminadaEn:null}}}}}),
    this.db.producto.count({where:{activo:true,visibleEnMenu:true}})
   ]);
   const coverage=await Promise.all(branches.map(b=>this.coverage(scope,b.id,new Date())));

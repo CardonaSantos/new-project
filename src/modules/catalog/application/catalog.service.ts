@@ -150,12 +150,8 @@ export class CatalogService{
  async menus(a:Principal,f:Paging,b?:string){
   const s=await this.scope(a,'catalog.read');
   if(b&&!s.global&&!s.branchIds.includes(b))throw new ForbiddenException();
-  const r=await this.repo.menus(f,b);
-  const filtered=s.global?r.data:r.data.filter((m)=>{
-   const o=m as {sucursales?:Array<{sucursalId:string}>};
-   return o.sucursales?.some(x=>s.branchIds.includes(x.sucursalId));
-  });
-  return {data:await this.present(filtered),meta:{...paged(f,s.global?r.total:filtered.length),alcance:s.global?'GLOBAL':'SUCURSAL'}};
+  const r=await this.repo.menus(f,b,s.global?undefined:s.branchIds);
+  return {data:await this.present(r.data),meta:{...paged(f,r.total),alcance:s.global?'GLOBAL':'SUCURSAL'}};
  }
  async menu(a:Principal,id:string){
   const s=await this.scope(a,'catalog.read');

@@ -45,7 +45,7 @@ export class PrismaCatalogRepository extends CatalogRepositoryPort{
  modifierPriceHistory(id:string,b:string){return this.pricing.modifierPriceHistory(id,b);}
  resolvePrice(id:string,b:string,at:Date){return this.pricing.resolvePrice(id,b,at);}
  quote(id:string,b:string,modifiers:string[],at:Date){return this.pricing.quote(id,b,modifiers,at);}
- menus(f:Paging,b?:string){return this.menuStore.menus(f,b);}
+ menus(f:Paging,b?:string,allowed?:string[]){return this.menuStore.menus(f,b,allowed);}
  menu(id:string){return this.menuStore.menu(id);}
  createMenu(a:string,v:MenuInput){return this.menuStore.createMenu(a,v);}
  updateMenu(a:string,id:string,v:{nombre?:string;descripcion?:string|null;activo?:boolean}){return this.menuStore.updateMenu(a,id,v);}

@@ -29,8 +29,11 @@ export const categoryInclude={parent:{select:{id:true,nombre:true,parentId:true}
  _count:{select:{productosComoCategoria:true,categoriasComoParent:true}}} as const;
 export const groupInclude={modificadoresComoGrupo:{orderBy:{nombre:'asc' as const}},
  _count:{select:{varianteGrupoModificadoresComoGrupo:true}}} as const;
-const typeofVariantMinimal={producto:{select:{id:true,nombre:true,codigo:true,activo:true,visibleEnMenu:true}},
- medios:{include:{media:true},orderBy:{orden:'asc' as const}}} as const;
+const typeofVariantMinimal={
+ producto:{include:{medios:{include:{media:true},orderBy:{orden:'asc' as const}}}},
+ articuloInventario:{select:{id:true,activo:true}},
+ medios:{include:{media:true},orderBy:{orden:'asc' as const}}
+} as const;
 
 export const menuInclude={
  sucursales:{include:{sucursal:{select:{id:true,codigo:true,nombre:true,activa:true}}}},

@@ -121,6 +121,12 @@ export class CatalogPricingStore{
    if(!variant||!variant.activo||!variant.producto.activo)throw new ConflictException('Variante o producto inactivo');
    const from=new Date(input.vigenteDesde),to=input.vigenteHasta?new Date(input.vigenteHasta):null;
    period(from,to);
+   const current=await tx.precioVariante.findFirst({where:{
+    varianteId:input.entityId,sucursalId:input.sucursalId,vigenteHasta:null,
+    vigenteDesde:{lt:from}},orderBy:{vigenteDesde:'desc'}});
+   if(current){
+    await tx.precioVariante.update({where:{id:current.id},data:{vigenteHasta:from}});
+   }
    const row=await tx.precioVariante.create({data:{
     varianteId:input.entityId,sucursalId:input.sucursalId,importe:decimalPrice(input.importe),
     vigenteDesde:from,vigenteHasta:to
@@ -139,6 +145,10 @@ export class CatalogPricingStore{
    if(!mod||!mod.activo||!mod.grupo.activo)throw new ConflictException('Modificador inactivo');
    const from=new Date(input.vigenteDesde),to=input.vigenteHasta?new Date(input.vigenteHasta):null;
    period(from,to);
+   const current=await tx.precioModificador.findFirst({where:{
+    modificadorId:input.entityId,sucursalId:input.sucursalId,vigenteHasta:null,
+    vigenteDesde:{lt:from}},orderBy:{vigenteDesde:'desc'}});
+   if(current)await tx.precioModificador.update({where:{id:current.id},data:{vigenteHasta:from}});
    const row=await tx.precioModificador.create({data:{
     modificadorId:input.entityId,sucursalId:input.sucursalId,importe:decimalPrice(input.importe),
     vigenteDesde:from,vigenteHasta:to

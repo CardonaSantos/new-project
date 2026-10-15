@@ -51,7 +51,7 @@ export abstract class CatalogRepositoryPort{
  abstract modifierPriceHistory(modifierId:string,sucursalId:string):Promise<unknown>;
  abstract resolvePrice(variantId:string,sucursalId:string,at:Date):Promise<unknown>;
  abstract quote(variantId:string,sucursalId:string,modifierIds:string[],at:Date):Promise<unknown>;
- abstract menus(f:Paging,sucursalId?:string):Promise<Page>;
+ abstract menus(f:Paging,sucursalId?:string,allowedBranchIds?:string[]):Promise<Page>;
  abstract menu(id:string):Promise<unknown|null>;
  abstract createMenu(actorId:string,input:MenuInput):Promise<unknown>;
  abstract updateMenu(actorId:string,id:string,input:{nombre?:string;descripcion?:string|null;activo?:boolean}):Promise<unknown>;

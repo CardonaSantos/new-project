@@ -3,16 +3,16 @@ import {Prisma} from '../../../../generated/prisma/client.js';
 import {PrismaService} from '../../../../infrastructure/database/prisma/prisma.service.js';
 import type {Paging,MenuInput,MenuLayout} from '../../application/ports/catalog.repository.port.js';
 import {catalogCode,catalogName,hourAt,validSchedule} from '../../domain/catalog.policy.js';
-import {activeBranch,audit,failUnique,menuInclude,permission,serial,variantPrice} from './catalog-prisma.shared.js';
+import {activeBranch,audit,failUnique,menuInclude,permission,serial,variantPrice,type Tx} from './catalog-prisma.shared.js';
 
 type MenuData=Prisma.MenuGetPayload<{include:typeof menuInclude}>;
 @Injectable()
 export class CatalogMenuStore{
  constructor(private readonly db:PrismaService){}
- async menus(f:Paging,sucursalId?:string){
+ async menus(f:Paging,sucursalId?:string,allowedBranchIds?:string[]){
   const where:Prisma.MenuWhereInput={
    ...(f.activo===undefined?{}:{activo:f.activo}),
-   ...(sucursalId?{sucursales:{some:{sucursalId,activa:true}}}:{}),
+   ...(sucursalId||allowedBranchIds?{sucursales:{some:{activa:true,...(sucursalId?{sucursalId}:{sucursalId:{in:allowedBranchIds}})}}}:{}),
    ...(f.search?{OR:[{codigo:{contains:f.search,mode:'insensitive'}},
     {nombre:{contains:f.search,mode:'insensitive'}}]}:{})
   };
@@ -95,15 +95,15 @@ export class CatalogMenuStore{
    return tx.menu.findUniqueOrThrow({where:{id},include:menuInclude});
   },serial);}catch(e){failUnique(e);}
  }
- async readiness(variantId:string,sucursalId:string,at:Date){
+ async readiness(variantId:string,sucursalId:string,at:Date,tx:Tx=this.db){
   const [v,b,price,over]=await Promise.all([
-   this.db.varianteProducto.findUnique({where:{id:variantId},include:{
+   tx.varianteProducto.findUnique({where:{id:variantId},include:{
     producto:{include:{medios:{include:{media:true}}}},
     medios:{include:{media:true}},articuloInventario:true
    }}),
-   this.db.sucursal.findUnique({where:{id:sucursalId}}),
-   variantPrice(this.db,variantId,sucursalId,at),
-   this.db.varianteSucursal.findUnique({where:{varianteId_sucursalId:{varianteId:variantId,sucursalId}}})
+   tx.sucursal.findUnique({where:{id:sucursalId}}),
+   variantPrice(tx,variantId,sucursalId,at),
+   tx.varianteSucursal.findUnique({where:{varianteId_sucursalId:{varianteId:variantId,sucursalId}}})
   ]);
   const warnings:string[]=[];
   if(!v){warnings.push('VARIANTE_NO_EXISTE');return {varianteId:variantId,sucursalId,lista:false,advertencias:warnings};}
@@ -142,7 +142,7 @@ export class CatalogMenuStore{
    for(const branch of menu.sucursales.filter(x=>x.activa)){
     await activeBranch(tx,branch.sucursalId);
     for(const variantId of ids){
-     const status=await this.readiness(variantId,branch.sucursalId,new Date());
+     const status=await this.readiness(variantId,branch.sucursalId,new Date(),tx);
      if(!status.lista)throw new ConflictException(
       `Menú incompleto: variante ${variantId}, sucursal ${branch.sucursal.codigo}: ${status.advertencias.join(', ')}`);
     }
@@ -173,6 +173,15 @@ export class CatalogMenuStore{
   const menus=await this.db.menu.findMany({where:{activo:true,publicadoEn:{not:null},
    sucursales:{some:{sucursalId,activa:true}}},
    include:menuInclude,orderBy:{nombre:'asc'}});
+  const variantIds=[...new Set(menus.flatMap(m=>m.secciones.flatMap(s=>s.items.map(i=>i.varianteId))))];
+  const [prices,overrides,config]=await Promise.all([
+   this.db.precioVariante.findMany({where:{varianteId:{in:variantIds},sucursalId,
+    vigenteDesde:{lte:at},OR:[{vigenteHasta:null},{vigenteHasta:{gt:at}}]}}),
+   this.db.varianteSucursal.findMany({where:{varianteId:{in:variantIds},sucursalId}}),
+   this.db.configuracionSucursal.findUnique({where:{sucursalId}})
+  ]);
+  const priceMap=new Map(prices.map(p=>[p.varianteId,p.importe.toFixed(2)]));
+  const availability=new Map(overrides.map(x=>[x.varianteId,x]));
   const output:unknown[]=[];
   for(const menu of menus){
    const schedule=menu.horarios.filter(x=>x.activo);
@@ -181,11 +190,14 @@ export class CatalogMenuStore{
    for(const section of menu.secciones.filter(x=>x.activa)){
     const items:unknown[]=[];
     for(const item of section.items.filter(x=>x.activo)){
-     const status=await this.readiness(item.varianteId,sucursalId,at);
-     if(!status.lista)continue;
-     items.push({id:item.id,orden:item.orden,variante:item.variante,precio:status.precio,
-      moneda:(await this.db.configuracionSucursal.findUnique({where:{sucursalId}}))?.moneda??'GTQ',
-      stock:'NO_VERIFICADO_HASTA_INV_B'});
+     const v=item.variante,p=v.producto,override=availability.get(v.id);
+     if(!v.activo||!p.activo||!p.visibleEnMenu||!priceMap.has(v.id)||
+       !(override?.habilitada??true)||(override?.pausadaHasta&&override.pausadaHasta>at)||
+       p.tipo==='INVENTARIABLE'&&!v.articuloInventario?.activo)continue;
+     const medias=[...v.medios,...p.medios];
+     if(!medias.some(x=>x.media.tipo==='IMAGEN'&&!!x.media.confirmadaEn&&!x.media.eliminadaEn))continue;
+     items.push({id:item.id,orden:item.orden,variante:v,precio:priceMap.get(v.id),
+      moneda:config?.moneda??'GTQ',stock:'NO_VERIFICADO_HASTA_INV_B'});
     }
     if(items.length)sections.push({id:section.id,nombre:section.nombre,orden:section.orden,items});
    }

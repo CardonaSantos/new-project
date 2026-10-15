@@ -1,7 +1,6 @@
 import {BadRequestException,ConflictException} from '@nestjs/common';
 export type Dimension='UNIDAD'|'MASA'|'VOLUMEN'|'LONGITUD';
 export type ArticleKind='INGREDIENTE'|'PREPARACION'|'PRODUCTO_TERMINADO'|'EMPAQUE'|'SUMINISTRO';
-export type Changes=Record<string,unknown>;
 export function requiredName(value:string):string{
  const s=value.trim();if(!s)throw new BadRequestException('Nombre vacío');return s;
 }
@@ -23,7 +22,7 @@ export function nonNegativeDecimal(value:string,precision=6):string{
  if(fraction.length>precision||whole.length>20)throw new BadRequestException('Precisión excedida');
  return value;
 }
-export function requireChange(changes:Changes):void{
+export function requireChange(changes:object):void{
  if(!Object.keys(changes).length)throw new BadRequestException('No hay campos para modificar');
 }
 export function expirationRule(lot:boolean,expiry:boolean):void{

@@ -7,7 +7,7 @@ import {expirationRule,sameDimension,type Dimension,type ArticleKind} from '../.
 
 type Tx=Prisma.TransactionClient;
 const serial={isolationLevel:Prisma.TransactionIsolationLevel.Serializable};
-const articleInclude={unidadBase:true,medios:{include:{media:true},orderBy:[{principal:'desc' as const},{orden:'asc' as const}]}} as const;
+const articleInclude={unidadBase:true,medios:{include:{media:true},orderBy:{orden:'asc' as const}}} as const;
 const warehouseInclude={sucursal:{select:{id:true,codigo:true,nombre:true,activa:true}},
  _count:{select:{ubicacionAlmacenesComoAlmacen:true}}} as const;
 const locationInclude={almacen:{include:{sucursal:{select:{id:true,codigo:true,nombre:true,activa:true}}}},

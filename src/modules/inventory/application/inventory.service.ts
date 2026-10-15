@@ -108,7 +108,7 @@ export class InventoryService{
  async articleMedia(actor:Principal,id:string,mediaIds:string[]){
   await this.global(actor,'inventory.articles.manage');
   if(new Set(mediaIds).size!==mediaIds.length)throw new ForbiddenException('Imágenes duplicadas');
-  return this.media.enrich(await this.repo.articleMedia(actor.id,id,mediaIds));
+  return this.media.enrich(await this.hideCost(await this.repo.articleMedia(actor.id,id,mediaIds),await this.costs(actor)));
  }
  async warehouses(actor:Principal,f:WarehouseFilter){
   const scope=await this.readScope(actor,'inventory.read');const r=await this.repo.listWarehouses(f,scope);

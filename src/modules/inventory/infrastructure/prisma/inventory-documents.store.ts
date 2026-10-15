@@ -14,7 +14,7 @@ const included={almacen:true,conteoInventarioLineasComoConteo:{include:{
 const transferInclude={almacenOrigen:{include:{sucursal:true}},almacenDestino:{include:{sucursal:true}},
  transferenciaInventarioLineasComoTransferencia:{include:{
   articulo:{select:{codigo:true,nombre:true}},lote:{select:{codigoLote:true}},
-  ubicacionOrigen:{select:{codigo:true,nombre:true}},ubicacionDestino:{select:{codigo:true,nombre:true}}}}}} as const;
+  ubicacionOrigen:{select:{codigo:true,nombre:true}},ubicacionDestino:{select:{codigo:true,nombre:true}}}}} as const;
 @Injectable()
 export class InventoryDocumentsStore{
  constructor(private readonly db:PrismaService,private readonly identity:IdentityRepository,

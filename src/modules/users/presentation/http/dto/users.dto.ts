@@ -15,6 +15,9 @@ export class UserFilterDto extends PageDto {
 export class BranchQueryDto {
  @IsOptional() @IsString() sucursalId?:string;
 }
+export class AuditQueryDto extends PageDto {
+ @IsOptional() @IsString() sucursalId?:string;
+}
 export class UserOptionDto {
  @IsOptional() @IsString() @MaxLength(100) search?:string;
  @IsOptional() @IsString() sucursalId?:string;

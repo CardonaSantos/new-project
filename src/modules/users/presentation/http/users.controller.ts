@@ -4,7 +4,7 @@ import type {Principal} from '../../../auth/application/auth.service.js';
 import {UsersService} from '../../application/users.service.js';
 import {
  UserFilterDto,UserOptionDto,BranchQueryDto,CreateUserDto,UpdateUserDto,
- SetStatusDto,AvatarDto,AssignmentDto,AssignmentsDto,PageDto,UserActivityDto,UserRangeDto
+ SetStatusDto,AvatarDto,AssignmentDto,AssignmentsDto,AuditQueryDto,UserActivityDto,UserRangeDto
 } from './dto/users.dto.js';
 
 @Controller('users')
@@ -59,8 +59,9 @@ export class UsersController {
  }
  @Get(':id/audit')
  @RequirePermissions('users.audit.read')
- audit(@CurrentUser() user:Principal,@Param('id') id:string,@Query() q:PageDto,
-  @Query('sucursalId') sucursalId?:string){return this.service.audit(user,id,sucursalId??null,q);}
+ audit(@CurrentUser() user:Principal,@Param('id') id:string,@Query() q:AuditQueryDto){
+  return this.service.audit(user,id,q.sucursalId??null,q);
+ }
  @Get(':id/overview')
  @RequirePermissions('users.reports.read')
  overview(@CurrentUser() user:Principal,@Param('id') id:string,@Query() q:UserRangeDto){

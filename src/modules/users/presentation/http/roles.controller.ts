@@ -9,7 +9,7 @@ export class RolesController {
  constructor(private readonly users:UsersService){}
  @Get('options')
  @RequirePermissions('roles.read')
- options(@CurrentUser() user:Principal){return this.users.roleOptions(user);}
+ options(@CurrentUser() user:Principal,@Query() query:RoleFilterDto){return this.users.roleOptions(user,query);}
  @Get()
  @RequirePermissions('roles.read')
  list(@CurrentUser() user:Principal,@Query() dto:RoleFilterDto){return this.users.roles(user,dto);}

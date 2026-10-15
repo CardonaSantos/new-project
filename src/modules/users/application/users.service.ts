@@ -160,12 +160,14 @@ export class UsersService {
   if(!role)throw new NotFoundException('Rol no encontrado');
   return role;
  }
- async roleOptions(actor:Principal){
+ async roleOptions(actor:Principal,input:Pagination&{search?:string}){
   await this.globalAdmin(actor);
-  const result=await this.repo.listRoles({activo:true,skip:0,take:100});
+  const result=await this.repo.listRoles({
+   activo:true,search:input.search,skip:(input.page-1)*input.limit,take:input.limit
+  });
   return {data:result.data.map(r=>({
    id:r.id,label:r.nombre,codigo:r.codigo,alcance:r.alcance
-  }))};
+  })),meta:meta(input.page,input.limit,result.total)};
  }
  async permissions(actor:Principal){
   await this.globalAdmin(actor);

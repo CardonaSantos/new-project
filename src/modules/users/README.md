@@ -50,7 +50,7 @@ Las rutas mantienen `/api` sin `/v1`, conforme al checkpoint.
 | GET | /api/users/:id/activity | Actividad combinada y paginada |
 | GET | /api/users/reports/summary | Reporte agregado de empleados |
 | GET | /api/roles | Roles paginados |
-| GET | /api/roles/options | Selector de roles |
+| GET | /api/roles/options | Selector paginado por búsqueda |
 | GET | /api/roles/:id | Detalle y permisos |
 | POST | /api/roles | Crear rol |
 | PATCH | /api/roles/:id | Actualizar rol |

@@ -78,19 +78,24 @@ export class PrismaUsersRepository extends UsersRepositoryPort {
   return {data:rows.map(UsersMapper.user),total};
  }
  async options(f:{search?:string;sucursalId:string|null;purpose?:string;cursor?:string;limit:number}){
-  const where:Prisma.UsuarioWhereInput={
-   activo:true,...(f.cursor?{id:{gt:f.cursor}}:{}),
-   ...(f.search?{OR:[{nombre:{contains:f.search,mode:'insensitive'}},
-    {email:{contains:f.search,mode:'insensitive'}},
-    {perfil:{is:{apellidos:{contains:f.search,mode:'insensitive'}}}}]}:{}),
-   usuarioRolesComoUsuario:{some:{
-    rol:{activo:true,...(f.purpose?{rolPermisosComoRol:{some:{permiso:{codigo:f.purpose}}}}:{})},
-    ...(f.sucursalId?{sucursalId:f.sucursalId}:
-      {sucursalId:null,rol:{alcance:'GLOBAL',activo:true,
-       ...(f.purpose?{rolPermisosComoRol:{some:{permiso:{codigo:f.purpose}}}}:{})}}})
-   }}
+  const roleWhere:Prisma.RolWhereInput={
+   activo:true,
+   ...(!f.sucursalId?{alcance:'GLOBAL' as const}:{}),
+   ...(f.purpose?{rolPermisosComoRol:{some:{permiso:{codigo:f.purpose}}}}:{})
   };
-  const rows=await this.db.usuario.findMany({where,include:userInclude,orderBy:{id:'asc'},take:f.limit+1});
+  const where:Prisma.UsuarioWhereInput={
+   activo:true,
+   ...(f.cursor?{id:{gt:f.cursor}}:{}),
+   ...(f.search?{OR:[
+    {nombre:{contains:f.search,mode:'insensitive'}},
+    {email:{contains:f.search,mode:'insensitive'}},
+    {perfil:{is:{apellidos:{contains:f.search,mode:'insensitive'}}}}
+   ]}:{}),
+   usuarioRolesComoUsuario:{some:{sucursalId:f.sucursalId,rol:roleWhere}}
+  };
+  const rows=await this.db.usuario.findMany({
+   where,include:userInclude,orderBy:{id:'asc'},take:f.limit+1
+  });
   const more=rows.length>f.limit;
   const sliced=more?rows.slice(0,f.limit):rows;
   return {data:sliced.map(row=>UsersMapper.option(row,f.sucursalId)),

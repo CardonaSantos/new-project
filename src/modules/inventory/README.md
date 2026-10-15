@@ -230,3 +230,25 @@ y inventory.costs.read. Los saldos y el Kardex no interpretan reservas de órden
 5. Ejecutar conteo y transferencia hacia otra ubicación distinta.
 
 No usar documentos reales de compra ni confirmar pagos desde estos endpoints manuales.
+
+### Cierre y cancelación documental
+
+Se permite cancelar conteos y transferencias únicamente en BORRADOR:
+`POST /api/inventory/counts/:id/cancel` y
+`POST /api/inventory/transfers/:id/cancel`.
+Después de despacho/confirmación no se eliminan movimientos ni se
+simulan reversas; las discrepancias se resuelven mediante nuevos documentos
+justificados y la integración formal de abastecimiento.
+
+Las respuestas de stock aplican valoración por capas cuando la empresa usa FIFO.
+En FIFO, el costo promedio de una posición individual no representa valoración,
+por lo que las fichas individuales no publican una valoración ficticia.
+El resumen y el reporte monetario resuelven el valor desde las capas FIFO.
+
+Limitación deliberada: no existe reserva de stock ni disponibilidad prometida
+para órdenes. El motor rechaza negativos incluso si la bandera de sucursal
+permiteStockNegativo está activada, porque FIFO/regularización de costos
+negativos requeriría reglas adicionales. Transferencias reciben la totalidad
+sin aceptar silenciosamente faltantes; las recepciones parciales quedarán para
+el módulo de abastecimiento y discrepancias. No gestionar consumidores externos
+de movimientos sin su propio documento de negocio.

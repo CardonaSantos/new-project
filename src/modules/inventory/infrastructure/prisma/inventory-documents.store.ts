@@ -83,6 +83,18 @@ export class InventoryDocumentsStore{
   await this.read(u,row.almacen.sucursalId);
   return this.countDetail(row,u);
  }
+ async cancelCount(u:Principal,id:string){
+  return this.engine.tx(async tx=>{
+   const row=await tx.conteoInventario.findUnique({where:{id},include:{almacen:true}});
+   if(!row)throw new NotFoundException('Conteo inexistente');
+   await this.engine.allowed(tx,u.id,'inventory.adjust',row.almacen.sucursalId);
+   if(row.estado!=='BORRADOR')throw new ConflictException('Solo se cancela un conteo en borrador');
+   const changed=await tx.conteoInventario.update({where:{id},data:{estado:'CANCELADO'}});
+   await tx.eventoAuditoria.create({data:{usuarioId:u.id,sucursalId:row.almacen.sucursalId,
+    accion:'COUNT_CANCELLED',entidad:'ConteoInventario',entidadId:id}});
+   return {id,estado:changed.estado};
+  });
+ }
  async confirmCount(u:Principal,id:string){
   return this.engine.tx(async tx=>{
    const row=await tx.conteoInventario.findUnique({where:{id},include:included});
@@ -182,6 +194,19 @@ export class InventoryDocumentsStore{
   await this.read(u,row.almacenOrigen.sucursalId);
   await this.read(u,row.almacenDestino.sucursalId);
   return this.transferView(row,u);
+ }
+ async cancelTransfer(u:Principal,id:string){
+  return this.engine.tx(async tx=>{
+   const row=await tx.transferenciaInventario.findUnique({where:{id},
+    include:{almacenOrigen:true}});
+   if(!row)throw new NotFoundException('Transferencia inexistente');
+   await this.engine.allowed(tx,u.id,'inventory.transfer',row.almacenOrigen.sucursalId);
+   if(row.estado!=='BORRADOR')throw new ConflictException('Solo se cancela antes de despachar');
+   const changed=await tx.transferenciaInventario.update({where:{id},data:{estado:'CANCELADA'}});
+   await tx.eventoAuditoria.create({data:{usuarioId:u.id,sucursalId:row.almacenOrigen.sucursalId,
+    accion:'TRANSFER_CANCELLED',entidad:'TransferenciaInventario',entidadId:id}});
+   return {id,estado:changed.estado};
+  });
  }
  async dispatch(u:Principal,id:string){
   return this.engine.tx(async tx=>{

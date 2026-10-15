@@ -52,6 +52,8 @@ export class InventoryOperationsStore{
    this.db.existencia.count({where})
   ]);
   const withCosts=await this.costs(u,q.sucursalId);
+  const company=await this.db.empresaConfiguracion.findFirst();
+  const fifo=company?.metodoValoracion==='FIFO';
   return {data:rows.map(x=>sanitize({id:x.id,articulo:{id:x.articulo.id,codigo:x.articulo.codigo,
    nombre:x.articulo.nombre,tipo:x.articulo.tipo,unidadBase:x.articulo.unidadBase.codigo,
    stockMinimo:x.articulo.stockMinimo?.toFixed(6)??null},ubicacion:{
@@ -59,8 +61,8 @@ export class InventoryOperationsStore{
     almacen:{id:x.ubicacion.almacen.id,codigo:x.ubicacion.almacen.codigo,nombre:x.ubicacion.almacen.nombre}},
    lote:x.lote?{id:x.lote.id,codigoLote:x.lote.codigoLote,bloqueado:x.lote.bloqueado,
     fechaVencimiento:x.lote.fechaVencimiento?.toISOString().slice(0,10)??null}:null,
-   cantidad:qty(x.cantidad),costoPromedio:price(x.costoPromedio),
-   valor:price(x.cantidad.mul(x.costoPromedio))},withCosts)),meta:meta(q.page,q.limit,total),
+   cantidad:qty(x.cantidad),costoPromedio:fifo?null:price(x.costoPromedio),
+   valor:fifo?null:price(x.cantidad.mul(x.costoPromedio))},withCosts)),meta:meta(q.page,q.limit,total),
    nota:'Stock físico contabilizado. No contempla reservas de órdenes ni consumos de recetas.'};
  }
  async summary(u:Principal,q:StockQuery){
@@ -83,6 +85,19 @@ export class InventoryOperationsStore{
    existing.valor=existing.valor.plus(row.cantidad.mul(row.costoPromedio));
    map.set(row.articuloId,existing);
   }
+  const company=await this.db.empresaConfiguracion.findFirst();
+  if(company?.metodoValoracion==='FIFO'){
+   const layers=await this.db.capaCostoInventario.findMany({where:{
+    ubicacion:{almacen:{sucursalId:q.sucursalId,...(q.almacenId?{id:q.almacenId}:{})}},
+    ...(q.articuloId?{articuloId:q.articuloId}:{}),
+    cantidadRestante:{gt:0}
+   }});
+   for(const x of map.values())x.valor=new Prisma.Decimal(0);
+   for(const layer of layers){
+    const entry=map.get(layer.articuloId);
+    if(entry)entry.valor=entry.valor.plus(layer.cantidadRestante.mul(layer.costoUnitario));
+   }
+  }
   const canCost=await this.costs(u,q.sucursalId);
   const data=[...map.values()].map(x=>sanitize({articuloId:x.articuloId,codigo:x.codigo,nombre:x.nombre,
    unidad:x.unidad,cantidad:qty(x.cantidad),cantidadBloqueada:qty(x.bloqueada),
@@ -90,7 +105,8 @@ export class InventoryOperationsStore{
    bajoMinimo:x.stockMinimo!==null&&x.cantidad.lessThan(new Prisma.Decimal(x.stockMinimo)),
    valor:price(x.valor)},canCost));
   return {sucursalId:q.sucursalId,totalArticulos:data.length,data,
-   nota:'La suma de valores de posición refleja promedio por ubicación/lote; FIFO debe valorarse por capas.'};
+   metodoValoracion:company?.metodoValoracion??null,
+   nota:'Valoración según el método empresarial; no incluye tránsito ni reservas de órdenes.'};
  }
  async lots(u:Principal,q:StockQuery){
   await this.listScope(u,q);
@@ -291,9 +307,11 @@ export class InventoryOperationsStore{
  }
  createCount(u:Principal,d:CountCreateDto){return this.docs.createCount(u,d);}
  count(u:Principal,id:string){return this.docs.count(u,id);}
+ cancelCount(u:Principal,id:string){return this.docs.cancelCount(u,id);}
  confirmCount(u:Principal,id:string){return this.docs.confirmCount(u,id);}
  createTransfer(u:Principal,d:TransferCreateDto){return this.docs.createTransfer(u,d);}
  transfer(u:Principal,id:string){return this.docs.transfer(u,id);}
+ cancelTransfer(u:Principal,id:string){return this.docs.cancelTransfer(u,id);}
  dispatch(u:Principal,id:string){return this.docs.dispatch(u,id);}
  receive(u:Principal,id:string){return this.docs.receive(u,id);}
 }

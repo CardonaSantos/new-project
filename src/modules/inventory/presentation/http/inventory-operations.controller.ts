@@ -38,12 +38,14 @@ export class InventoryCountsController{
  @Post() create(@CurrentUser() u:Principal,@Body() dto:CountCreateDto){return this.store.createCount(u,dto);}
  @Get(':id') detail(@CurrentUser() u:Principal,@Param('id') id:string){return this.store.count(u,id);}
  @Post(':id/confirm') confirm(@CurrentUser() u:Principal,@Param('id') id:string){return this.store.confirmCount(u,id);}
+ @Post(':id/cancel') cancel(@CurrentUser() u:Principal,@Param('id') id:string){return this.store.cancelCount(u,id);}
 }
 @Controller('inventory/transfers')
 export class InventoryTransfersController{
  constructor(private readonly store:InventoryOperationsStore){}
  @Post() create(@CurrentUser() u:Principal,@Body() dto:TransferCreateDto){return this.store.createTransfer(u,dto);}
  @Get(':id') detail(@CurrentUser() u:Principal,@Param('id') id:string){return this.store.transfer(u,id);}
+ @Post(':id/cancel') cancel(@CurrentUser() u:Principal,@Param('id') id:string){return this.store.cancelTransfer(u,id);}
  @Post(':id/dispatch') dispatch(@CurrentUser() u:Principal,@Param('id') id:string){
   return this.store.dispatch(u,id);
  }

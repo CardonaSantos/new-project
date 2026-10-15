@@ -22,6 +22,8 @@ describe('INV-B HTTP validation and route contracts',()=>{
   count:vi.fn().mockResolvedValue({id:'c1'}),
   createTransfer:vi.fn().mockResolvedValue({id:'t1'}),transfer:vi.fn().mockResolvedValue({id:'t1'}),
   dispatch:vi.fn().mockResolvedValue({estado:'EN_TRANSITO'}),receive:vi.fn().mockResolvedValue({estado:'RECIBIDA'}),
+  cancelCount:vi.fn().mockResolvedValue({id:'c1',estado:'CANCELADO'}),
+  cancelTransfer:vi.fn().mockResolvedValue({id:'t1',estado:'CANCELADA'}),
   valuation:vi.fn().mockResolvedValue({valorInventario:'0.000000'}),
   expiry:vi.fn().mockResolvedValue({lotes:[]}),reconciliation:vi.fn().mockResolvedValue({conciliado:true}),
   blockLot:vi.fn().mockResolvedValue({bloqueado:true})
@@ -69,6 +71,14 @@ describe('INV-B HTTP validation and route contracts',()=>{
    almacenId:'w1',nota:'Conteo físico',
    lineas:[{articuloId:'a1',ubicacionId:'l1',cantidadContada:'0'}]
   }).expect(201);
+ });
+ it('supports cancelling draft documents without posting stock',async()=>{
+  await request(app.getHttpServer()).post('/api/inventory/counts/c1/cancel')
+   .expect(201).expect({id:'c1',estado:'CANCELADO'});
+  await request(app.getHttpServer()).post('/api/inventory/transfers/t1/cancel')
+   .expect(201).expect({id:'t1',estado:'CANCELADA'});
+  expect(store.cancelCount).toHaveBeenCalledWith(actor,'c1');
+  expect(store.cancelTransfer).toHaveBeenCalledWith(actor,'t1');
  });
  it('keeps valuation and reconciliation routes distinct',async()=>{
   await request(app.getHttpServer()).get('/api/inventory/reports/valuation?sucursalId=b1')

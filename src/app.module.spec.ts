@@ -4,6 +4,7 @@ import {AppModule} from './app.module.js';
 import {UsersModule} from './modules/users/users.module.js';
 import {AuthModule} from './modules/auth/auth.module.js';
 import {MediaModule} from './modules/media/media.module.js';
+import {OrganizationModule} from './modules/organization/organization.module.js';
 
 describe('AppModule registration',()=>{
  it('registers user administration, authentication and media contexts',()=>{
@@ -11,5 +12,6 @@ describe('AppModule registration',()=>{
   expect(imports).toContain(UsersModule);
   expect(imports).toContain(AuthModule);
   expect(imports).toContain(MediaModule);
+  expect(imports).toContain(OrganizationModule);
  });
 });

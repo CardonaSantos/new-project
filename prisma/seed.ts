@@ -13,6 +13,9 @@ const permissions=[
  ['users.sessions.read','users'],['users.sessions.revoke','users'],['users.audit.read','users'],
  ['users.reports.read','users'],
  ['roles.read','roles'],['roles.manage','roles'],
+ ['organization.read','organization'],['organization.manage','organization'],
+ ['branches.read','organization'],['branches.manage','organization'],
+ ['devices.read','organization'],['devices.manage','organization'],
  ['media.read','media'],['media.upload','media'],['media.delete','media'],['media.publish','media'],
  ['catalog.read','catalog'],['catalog.manage','catalog'],['orders.read','orders'],['orders.create','orders'],
  ['orders.manage','orders'],['kitchen.read','kitchen'],['kitchen.manage','kitchen'],
@@ -29,9 +32,11 @@ try{
    nombreComercial:process.env.BOOTSTRAP_COMPANY_NAME??'Gastro Core',
    moneda:'GTQ',zonaHoraria:'America/Guatemala'
   }});
-  await tx.sucursal.upsert({where:{codigo:'PRINCIPAL'},update:{},create:{
+  const principal=await tx.sucursal.upsert({where:{codigo:'PRINCIPAL'},update:{},create:{
    codigo:'PRINCIPAL',nombre:'Sucursal principal'
   }});
+  await tx.configuracionSucursal.upsert({where:{sucursalId:principal.id},update:{},
+   create:{sucursalId:principal.id,moneda:'GTQ'}});
   const rol=await tx.rol.upsert({where:{codigo:'SUPER_ADMIN'},update:{alcance:'GLOBAL',activo:true},create:{
    codigo:'SUPER_ADMIN',nombre:'Superadministrador',alcance:'GLOBAL'
   }});

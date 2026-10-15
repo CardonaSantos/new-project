@@ -1,4 +1,4 @@
-import {Body,Controller,Get,Param,Patch,Post,Put,Query} from '@nestjs/common';
+import {Body,Controller,Get,Header,Param,Patch,Post,Put,Query} from '@nestjs/common';
 import {CurrentUser,RequirePermissions} from '../../../auth/presentation/http/decorators/auth.decorators.js';
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {UsersService} from '../../application/users.service.js';
@@ -17,6 +17,7 @@ export class UsersController {
  @Get()
  list(@CurrentUser() user:Principal,@Query() q:UserFilterDto){return this.service.list(user,q);}
  @Post()
+ @Header('Cache-Control','no-store')
  @RequirePermissions('users.create')
  create(@CurrentUser() user:Principal,@Body() dto:CreateUserDto){return this.service.create(user,dto);}
  @Get(':id')

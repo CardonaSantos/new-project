@@ -1,20 +1,21 @@
-import {Body,Controller,Delete,Get,Param,Post} from '@nestjs/common';
+import {Body,Controller,Delete,Get,Param,Post,Query,Header} from '@nestjs/common';
 import {CurrentUser,RequirePermissions} from '../../../auth/presentation/http/decorators/auth.decorators.js';
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {UsersService} from '../../application/users.service.js';
-import {ReasonDto} from './dto/users.dto.js';
+import {PageDto,ReasonDto} from './dto/users.dto.js';
 @Controller('users')
 export class UserSecurityController {
  constructor(private readonly service:UsersService){}
  @Post(':id/password/reset')
+ @Header('Cache-Control','no-store')
  @RequirePermissions('users.password.reset')
  resetPassword(@CurrentUser() actor:Principal,@Param('id') id:string,@Body() dto:ReasonDto){
   return this.service.resetPassword(actor,id,dto.motivo);
  }
  @Get(':id/sessions')
  @RequirePermissions('users.sessions.read')
- sessions(@CurrentUser() actor:Principal,@Param('id') id:string){
-  return this.service.sessions(actor,id);
+ sessions(@CurrentUser() actor:Principal,@Param('id') id:string,@Query() q:PageDto){
+  return this.service.sessions(actor,id,q);
  }
  @Delete(':id/sessions')
  @RequirePermissions('users.sessions.revoke')

@@ -1,5 +1,5 @@
 import {ConflictException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
-import {Prisma,PrismaClient} from '../../../../generated/prisma/client.js';
+import {Prisma} from '../../../../generated/prisma/client.js';
 import {PrismaService} from '../../../../infrastructure/database/prisma/prisma.service.js';
 import {UsersRepositoryPort} from '../../application/ports/users.repository.port.js';
 import type {UserFilters,UserRecord,RoleScope} from '../../domain/user.types.js';
@@ -34,6 +34,13 @@ async function verifyAssignments(tx:Client,items:{rolId:string;sucursalId:string
    if(!branch?.activa)throw new ConflictException('La sucursal no está activa');
   }
  }
+}
+async function assertPrivilegedActor(tx:Client,actorId:string):Promise<void>{
+ const admin=await tx.usuarioRol.findFirst({where:{
+  usuarioId:actorId,sucursalId:null,usuario:{activo:true},
+  rol:{codigo:'SUPER_ADMIN',activo:true,alcance:'GLOBAL'}
+ }});
+ if(!admin)throw new ForbiddenException('La sesión no conserva privilegios de SUPER_ADMIN');
 }
 function activeAdminCount(tx:Client){
  return tx.usuario.count({where:{activo:true,usuarioRolesComoUsuario:{some:{
@@ -104,6 +111,7 @@ export class PrismaUsersRepository extends UsersRepositoryPort {
  async create(input:{actorId:string;email:string;nombre:string;hash:string;apellidos?:string;
   telefono?:string;rolIds:{rolId:string;sucursalId:string|null}[]}):Promise<string>{
   return this.db.$transaction(async tx=>{
+   await assertPrivilegedActor(tx,input.actorId);
    if(await tx.usuario.findUnique({where:{email:input.email}}))throw new ConflictException('Correo registrado');
    await verifyAssignments(tx,input.rolIds);
    const user=await tx.usuario.create({data:{
@@ -119,6 +127,7 @@ export class PrismaUsersRepository extends UsersRepositoryPort {
  async update(input:{actorId:string;userId:string;email?:string;nombre?:string;apellidos?:string|null;
   telefono?:string|null;idioma?:string;zonaHoraria?:string}):Promise<void>{
   await this.db.$transaction(async tx=>{
+   await assertPrivilegedActor(tx,input.actorId);
    const before=await tx.usuario.findUnique({where:{id:input.userId},include:{perfil:true}});
    if(!before)throw new NotFoundException('Usuario no encontrado');
    const updated=await tx.usuario.update({where:{id:input.userId},data:{
@@ -131,6 +140,11 @@ export class PrismaUsersRepository extends UsersRepositoryPort {
      idioma:input.idioma,zonaHoraria:input.zonaHoraria
     }}}
    }});
+   if(input.email&&input.email!==before.email){
+    await tx.usuario.update({where:{id:input.userId},data:{versionAutorizacion:{increment:1}}});
+    await tx.sesionUsuario.updateMany({where:{usuarioId:input.userId,revocadaEn:null},
+     data:{revocadaEn:new Date(),revocacionMotivo:'ADMIN_EMAIL_CHANGED'}});
+   }
    await audit(tx,input.actorId,'USER_UPDATED','Usuario',input.userId,
     {email:before.email,nombre:before.nombre},
     {email:updated.email,nombre:updated.nombre,perfilActualizado:true});
@@ -138,6 +152,7 @@ export class PrismaUsersRepository extends UsersRepositoryPort {
  }
  async setActive(input:{actorId:string;userId:string;activo:boolean;motivo:string}):Promise<void>{
   await this.db.$transaction(async tx=>{
+   await assertPrivilegedActor(tx,input.actorId);
    const user=await tx.usuario.findUnique({where:{id:input.userId},include:{usuarioRolesComoUsuario:{include:{rol:true}}}});
    if(!user)throw new NotFoundException('Usuario no encontrado');
    if(user.activo===input.activo)return;
@@ -152,6 +167,7 @@ export class PrismaUsersRepository extends UsersRepositoryPort {
  }
  async resetPassword(input:{actorId:string;userId:string;hash:string;motivo:string}):Promise<void>{
   await this.db.$transaction(async tx=>{
+   await assertPrivilegedActor(tx,input.actorId);
    const user=await tx.usuario.findUnique({where:{id:input.userId}});
    if(!user)throw new NotFoundException('Usuario no encontrado');
    await tx.usuario.update({where:{id:input.userId},data:{
@@ -165,6 +181,7 @@ export class PrismaUsersRepository extends UsersRepositoryPort {
  }
  async revokeSessions(input:{actorId:string;userId:string;sessionId?:string;motivo:string}):Promise<number>{
   return this.db.$transaction(async tx=>{
+   await assertPrivilegedActor(tx,input.actorId);
    const changed=await tx.sesionUsuario.updateMany({where:{
     usuarioId:input.userId,revocadaEn:null,...(input.sessionId?{id:input.sessionId}:{})
    },data:{revocadaEn:new Date(),revocacionMotivo:'ADMIN_REVOKED'}});
@@ -173,15 +190,19 @@ export class PrismaUsersRepository extends UsersRepositoryPort {
    return changed.count;
   });
  }
- async sessions(userId:string){
-  const rows=await this.db.sesionUsuario.findMany({where:{usuarioId:userId},include:{dispositivo:true},
-   orderBy:{creadaEn:'desc'},take:100});
-  return rows.map(s=>({id:s.id,dispositivoId:s.dispositivoId,dispositivoNombre:s.dispositivo?.nombre??null,
+ async sessions(userId:string,page:number,limit:number){
+  const [rows,total]=await this.db.$transaction([
+   this.db.sesionUsuario.findMany({where:{usuarioId:userId},include:{dispositivo:true},
+    orderBy:[{creadaEn:'desc'},{id:'desc'}],skip:(page-1)*limit,take:limit}),
+   this.db.sesionUsuario.count({where:{usuarioId:userId}})
+  ]);
+  return {data:rows.map(s=>({id:s.id,dispositivoId:s.dispositivoId,dispositivoNombre:s.dispositivo?.nombre??null,
    userAgent:s.userAgent,ipCreacion:s.ipCreacion,creadaEn:s.creadaEn,ultimoUsoEn:s.ultimoUsoEn,
-   expiraEn:s.expiraEn,revocadaEn:s.revocadaEn,revocacionMotivo:s.revocacionMotivo}));
+   expiraEn:s.expiraEn,revocadaEn:s.revocadaEn,revocacionMotivo:s.revocacionMotivo})),total};
  }
  async setAvatar(input:{actorId:string;userId:string;mediaId:string|null}):Promise<void>{
   await this.db.$transaction(async tx=>{
+   await assertPrivilegedActor(tx,input.actorId);
    if(input.mediaId){
     const asset=await tx.media.findUnique({where:{id:input.mediaId}});
     if(!asset||asset.tipo!=='IMAGEN'||asset.contexto!=='PERFIL'||!asset.confirmadaEn||asset.eliminadaEn)
@@ -199,6 +220,7 @@ export class PrismaUsersRepository extends UsersRepositoryPort {
  }
  async replaceAssignments(input:{actorId:string;userId:string;assignments:{rolId:string;sucursalId:string|null}[]}):Promise<void>{
   await this.db.$transaction(async tx=>{
+   await assertPrivilegedActor(tx,input.actorId);
    const user=await tx.usuario.findUnique({where:{id:input.userId}});
    if(!user)throw new NotFoundException('Usuario no encontrado');
    await verifyAssignments(tx,input.assignments);
@@ -249,6 +271,7 @@ export class PrismaUsersRepository extends UsersRepositoryPort {
  }
  async createRole(input:{actorId:string;codigo:string;nombre:string;descripcion?:string;alcance:RoleScope}):Promise<string>{
   return this.db.$transaction(async tx=>{
+   await assertPrivilegedActor(tx,input.actorId);
    if(input.codigo==='SUPER_ADMIN')throw new ForbiddenException('El rol SUPER_ADMIN está reservado');
    if(await tx.rol.findUnique({where:{codigo:input.codigo}}))throw new ConflictException('Código de rol registrado');
    const role=await tx.rol.create({data:{codigo:input.codigo,nombre:input.nombre,
@@ -259,6 +282,7 @@ export class PrismaUsersRepository extends UsersRepositoryPort {
  }
  async updateRole(input:{actorId:string;roleId:string;nombre?:string;descripcion?:string|null;activo?:boolean}):Promise<void>{
   await this.db.$transaction(async tx=>{
+   await assertPrivilegedActor(tx,input.actorId);
    const role=await tx.rol.findUnique({where:{id:input.roleId}});
    if(!role)throw new NotFoundException('Rol no encontrado');
    if(role.codigo==='SUPER_ADMIN')throw new ForbiddenException('SUPER_ADMIN es un rol protegido');
@@ -278,6 +302,7 @@ export class PrismaUsersRepository extends UsersRepositoryPort {
  }
  async replaceRolePermissions(input:{actorId:string;roleId:string;permisos:string[]}):Promise<void>{
   await this.db.$transaction(async tx=>{
+   await assertPrivilegedActor(tx,input.actorId);
    const role=await tx.rol.findUnique({where:{id:input.roleId},include:{rolPermisosComoRol:{include:{permiso:true}}}});
    if(!role)throw new NotFoundException('Rol no encontrado');
    if(role.codigo==='SUPER_ADMIN')throw new ForbiddenException('No se editan los permisos del SUPER_ADMIN');

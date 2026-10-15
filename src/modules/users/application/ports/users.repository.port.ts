@@ -11,7 +11,7 @@ export abstract class UsersRepositoryPort {
  abstract setActive(input:{actorId:string;userId:string;activo:boolean;motivo:string}):Promise<void>;
  abstract resetPassword(input:{actorId:string;userId:string;hash:string;motivo:string}):Promise<void>;
  abstract revokeSessions(input:{actorId:string;userId:string;sessionId?:string;motivo:string}):Promise<number>;
- abstract sessions(userId:string):Promise<SessionInfo[]>;
+ abstract sessions(userId:string,page:number,limit:number):Promise<{data:SessionInfo[];total:number}>;
  abstract setAvatar(input:{actorId:string;userId:string;mediaId:string|null}):Promise<void>;
  abstract replaceAssignments(input:{actorId:string;userId:string;assignments:{rolId:string;sucursalId:string|null}[]}):Promise<void>;
  abstract countActiveSuperAdmins():Promise<number>;

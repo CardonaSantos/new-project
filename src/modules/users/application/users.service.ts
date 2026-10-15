@@ -34,6 +34,10 @@ export class UsersService {
   if(!permissions.includes('users.read'))throw new ForbiddenException('Sin permiso para consultar personal');
   return {global:false,branch};
  }
+ private async requirePermission(actor:Principal,code:string,branch:string|null){
+  const perms=await this.identities.capabilities(actor.id,branch);
+  if(!perms.includes(code))throw new ForbiddenException('Permiso insuficiente');
+ }
  private async visibleUser(actor:Principal,id:string,branch:string|null):Promise<UserRecord>{
   const scope=await this.readScope(actor,branch);
   const user=await this.repo.getUser(id);
@@ -112,12 +116,12 @@ export class UsersService {
    hash:await this.passwords.hash(temporaryPassword),motivo});
   return {id,temporaryPassword,requiresPasswordChange:true,sessionsRevoked:true};
  }
- async sessions(actor:Principal,id:string){
+ async sessions(actor:Principal,id:string,input:Pagination){
   await this.globalAdmin(actor);
   if(!await this.repo.getUser(id))throw new NotFoundException('Usuario no encontrado');
-  return {data:(await this.repo.sessions(id)).map(s=>({
-   ...s,active:!s.revocadaEn&&s.expiraEn>new Date()
-  }))};
+  const result=await this.repo.sessions(id,input.page,input.limit);
+  return {data:result.data.map(s=>({...s,active:!s.revocadaEn&&s.expiraEn>new Date()})),
+   meta:meta(input.page,input.limit,result.total)};
  }
  async revokeSessions(actor:Principal,id:string,motivo:string,sessionId?:string){
   await this.globalAdmin(actor);
@@ -138,6 +142,7 @@ export class UsersService {
   return this.response((await this.repo.getUser(id))!);
  }
  async audit(actor:Principal,id:string,branch:string|null,input:Pagination){
+  await this.requirePermission(actor,'users.audit.read',branch);
   await this.visibleUser(actor,id,branch);
   const {data,total}=await this.repo.getAudit({userId:id,skip:(input.page-1)*input.limit,take:input.limit});
   return {data,meta:meta(input.page,input.limit,total)};
@@ -194,10 +199,12 @@ export class UsersService {
   return {from:start,to:end,sucursalId:branch??null};
  }
  async overview(actor:Principal,id:string,input:{from?:string;to?:string;sucursalId?:string}){
+  await this.requirePermission(actor,'users.reports.read',input.sucursalId??null);
   await this.visibleUser(actor,id,input.sucursalId??null);
   return this.activity.overview(id,this.dateRange(input.from,input.to,input.sucursalId));
  }
  async activityList(actor:Principal,id:string,input:Pagination&{from?:string;to?:string;sucursalId?:string;kind?:ActivityItem['kind']}){
+  await this.requirePermission(actor,'users.reports.read',input.sucursalId??null);
   await this.visibleUser(actor,id,input.sucursalId??null);
   return this.activity.activity(id,this.dateRange(input.from,input.to,input.sucursalId),input);
  }

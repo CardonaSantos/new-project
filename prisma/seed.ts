@@ -5,12 +5,12 @@ import {argon2id,hash} from 'argon2';
 const url=process.env.DIRECT_URL??process.env.DATABASE_URL;
 const password=process.env.BOOTSTRAP_ADMIN_PASSWORD;
 if(!url)throw Error('DATABASE_URL (o DIRECT_URL) requerido para seed');
-if(!password||password.length<12)throw Error('BOOTSTRAP_ADMIN_PASSWORD debe tener al menos 12 caracteres');
 const email=(process.env.BOOTSTRAP_ADMIN_EMAIL??'admin@novasistemas.net').trim().toLowerCase();
 const db=new PrismaClient({adapter:new PrismaPg({connectionString:url})});
 const permissions=[
  ['users.create','users'],['users.roles.assign','users'],['users.read','users'],['users.deactivate','users'],
  ['roles.read','roles'],['roles.manage','roles'],
+ ['media.read','media'],['media.upload','media'],['media.delete','media'],['media.publish','media'],
  ['catalog.read','catalog'],['catalog.manage','catalog'],['orders.read','orders'],['orders.create','orders'],
  ['orders.manage','orders'],['kitchen.read','kitchen'],['kitchen.manage','kitchen'],
  ['tables.read','tables'],['tables.manage','tables'],['inventory.read','inventory'],
@@ -44,6 +44,7 @@ try{
    }});
    if(!alreadyAdmin)throw Error('El correo de bootstrap ya pertenece a una cuenta sin SUPER_ADMIN global; seed detenido');
   }else{
+   if(!password||password.length<12)throw Error('BOOTSTRAP_ADMIN_PASSWORD debe tener al menos 12 caracteres para el primer usuario');
    admin=await tx.usuario.create({data:{
     email,nombre:'Administrador',hashContrasena:await hash(password,{
      type:argon2id,memoryCost:19456,timeCost:2,parallelism:1

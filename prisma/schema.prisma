@@ -288,6 +288,7 @@ model Sucursal {
 
   // Relaciones inversas (navegación Prisma)
   configuracionSucursalesComoSucursal     ConfiguracionSucursal?       @relation("ConfiguracionSucursal_sucursal_Sucursal")
+  mediosComoSucursal Media[] @relation("Media_sucursal_Sucursal")
   dispositivosComoSucursal                Dispositivo[]                @relation("Dispositivo_sucursal_Sucursal")
   usuarioRolesComoSucursal                UsuarioRol[]                 @relation("UsuarioRol_sucursal_Sucursal")
   eventoAuditoriasComoSucursal            EventoAuditoria[]            @relation("EventoAuditoria_sucursal_Sucursal")
@@ -2128,10 +2129,15 @@ model OperacionIdempotente {
 enum TipoMedia {
   IMAGEN
   VIDEO
+  DOCUMENTO
 }
 
 model Media {
   id               String    @id @default(cuid())
+  sucursalId       String?
+  sucursal         Sucursal? @relation("Media_sucursal_Sucursal", fields: [sucursalId], references: [id], onDelete: Restrict)
+  contexto         String    @default("GENERAL") @db.VarChar(32)
+  publico          Boolean   @default(false)
   proveedor        String    @default("DIGITALOCEAN_SPACES")
   bucket           String    @db.VarChar(255)
   region           String?   @db.VarChar(64)
@@ -2162,6 +2168,7 @@ model Media {
   @@unique([proveedor, bucket, claveObjeto])
   @@index([eliminadaEn])
   @@index([tipo, creadoEn])
+  @@index([sucursalId, contexto, creadoEn])
 }
 
 model PerfilUsuario {

@@ -309,6 +309,9 @@ model Sucursal {
   liquidacionRepartidoresComoSucursal     LiquidacionRepartidor[]      @relation("LiquidacionRepartidor_sucursal_Sucursal")
   reservasComoSucursal                    Reserva[]                    @relation("Reserva_sucursal_Sucursal")
   sesionAutoserviciosComoSucursal         SesionAutoservicio[]         @relation("SesionAutoservicio_sucursal_Sucursal")
+  menusAsignados MenuSucursal[]
+  variantesSucursal VarianteSucursal[]
+  preciosModificador PrecioModificador[]
 }
 
 model ConfiguracionSucursal {
@@ -541,6 +544,8 @@ model VarianteProducto {
   @@unique([productoId, nombre])
 
   medios VarianteProductoMedia[] @relation("VarianteProductoMedia_variante_VarianteProducto")
+  itemsMenu MenuItem[]
+  configuracionesSucursal VarianteSucursal[]
 }
 
 model PrecioVariante {
@@ -581,6 +586,7 @@ model Modificador {
   ordenLineaModificadoresComoModificador OrdenLineaModificador[] @relation("OrdenLineaModificador_modificador_Modificador")
 
   @@unique([grupoId, nombre])
+  preciosSucursal PrecioModificador[]
 }
 
 model VarianteGrupoModificador {
@@ -2259,4 +2265,85 @@ model IntentoAcceso {
 enum AlcanceRol {
   GLOBAL
   SUCURSAL
+}
+
+// CAT-A: menú comercial, asignación por sucursal y programación horaria.
+// Las categorías describen taxonomía; MenuSeccion representa presentación.
+model Menu {
+  id String @id @default(cuid())
+  codigo String @unique
+  nombre String
+  descripcion String?
+  activo Boolean @default(true)
+  publicadoEn DateTime? @db.Timestamptz(3)
+  version Int @default(1)
+  creadoEn DateTime @default(now()) @db.Timestamptz(3)
+  actualizadoEn DateTime @updatedAt @db.Timestamptz(3)
+  sucursales MenuSucursal[]
+  secciones MenuSeccion[]
+  horarios MenuHorario[]
+}
+model MenuSucursal {
+  menuId String
+  menu Menu @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  sucursalId String
+  sucursal Sucursal @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
+  activa Boolean @default(true)
+  @@id([menuId, sucursalId])
+  @@index([sucursalId, activa])
+}
+model MenuSeccion {
+  id String @id @default(cuid())
+  menuId String
+  menu Menu @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  nombre String
+  orden Int @default(0)
+  activa Boolean @default(true)
+  items MenuItem[]
+  @@unique([menuId, nombre])
+  @@index([menuId, orden])
+}
+model MenuItem {
+  id String @id @default(cuid())
+  seccionId String
+  seccion MenuSeccion @relation(fields: [seccionId], references: [id], onDelete: Cascade)
+  varianteId String
+  variante VarianteProducto @relation(fields: [varianteId], references: [id], onDelete: Restrict)
+  orden Int @default(0)
+  activo Boolean @default(true)
+  @@unique([seccionId, varianteId])
+  @@index([varianteId])
+}
+model MenuHorario {
+  id String @id @default(cuid())
+  menuId String
+  menu Menu @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  diaSemana Int
+  desde String @db.VarChar(5)
+  hasta String @db.VarChar(5)
+  activo Boolean @default(true)
+  @@index([menuId, diaSemana, activo])
+}
+model VarianteSucursal {
+  varianteId String
+  variante VarianteProducto @relation(fields: [varianteId], references: [id], onDelete: Restrict)
+  sucursalId String
+  sucursal Sucursal @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
+  habilitada Boolean @default(true)
+  pausadaHasta DateTime? @db.Timestamptz(3)
+  motivo String?
+  actualizadoEn DateTime @updatedAt @db.Timestamptz(3)
+  @@id([varianteId, sucursalId])
+  @@index([sucursalId, habilitada])
+}
+model PrecioModificador {
+  id String @id @default(cuid())
+  modificadorId String
+  modificador Modificador @relation(fields: [modificadorId], references: [id], onDelete: Restrict)
+  sucursalId String
+  sucursal Sucursal @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
+  importe Decimal @db.Decimal(18, 2)
+  vigenteDesde DateTime @default(now()) @db.Timestamptz(3)
+  vigenteHasta DateTime? @db.Timestamptz(3)
+  @@index([modificadorId, sucursalId, vigenteDesde])
 }

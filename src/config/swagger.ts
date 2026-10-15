@@ -34,6 +34,14 @@ function tagFor(path: string): string {
   if (path.startsWith('/api/inventory/warehouses')) return 'Inventario · Almacenes';
   if (path.startsWith('/api/inventory/locations')) return 'Inventario · Ubicaciones';
   if (path.startsWith('/api/inventory/reports')) return 'Inventario · Reportería INV-A';
+  if (path.startsWith('/api/catalog/reports')) return 'Catálogo · Reportería';
+  if (path.startsWith('/api/catalog/categories')) return 'Catálogo · Categorías';
+  if (path.startsWith('/api/catalog/products')) return 'Catálogo · Productos';
+  if (path.startsWith('/api/catalog/variants')) return 'Catálogo · Variantes';
+  if (path.startsWith('/api/catalog/modifier-groups')) return 'Catálogo · Grupos';
+  if (path.startsWith('/api/catalog/modifiers')) return 'Catálogo · Modificadores';
+  if (path.startsWith('/api/catalog/prices')) return 'Catálogo · Precios';
+  if (path.startsWith('/api/catalog/menus')||path.startsWith('/api/catalog/menu')) return 'Catálogo · Menús';
   if (path.startsWith('/api/health')) return 'Sistema';
   return 'Otros';
 }

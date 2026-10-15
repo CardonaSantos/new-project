@@ -7,6 +7,7 @@ import {MediaModule} from './modules/media/media.module.js';
 import {UsersModule} from './modules/users/users.module.js';
 import {OrganizationModule} from './modules/organization/organization.module.js';
 import {InventoryModule} from './modules/inventory/inventory.module.js';
+import {CatalogModule} from './modules/catalog/catalog.module.js';
 @Module({
  imports:[
   ConfigModule.forRoot({isGlobal:true,cache:true,validate:validateEnvironment}),
@@ -15,6 +16,7 @@ import {InventoryModule} from './modules/inventory/inventory.module.js';
   UsersModule,
   OrganizationModule,
   InventoryModule,
+  CatalogModule,
   CoreModule,
  ],
 })

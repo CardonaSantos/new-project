@@ -101,10 +101,10 @@ export class PrismaOrganizationRepository extends OrganizationRepositoryPort{
     if(await tx.movimientoInventario.count())throw new ConflictException('No se puede cambiar la valoración con movimientos existentes');
    }
    if(changes.moneda&&changes.moneda!==current.moneda){
-    const [sales,payments,financial]=await Promise.all([
-     tx.venta.count(),tx.pago.count(),tx.movimientoFinanciero.count()
+    const [sales,payments,financial,orders]=await Promise.all([
+     tx.venta.count(),tx.pago.count(),tx.movimientoFinanciero.count(),tx.orden.count()
     ]);
-    if(sales+payments+financial)throw new ConflictException('No se puede cambiar la moneda base con transacciones monetarias');
+    if(sales+payments+financial+orders)throw new ConflictException('No se puede cambiar la moneda base con transacciones monetarias');
    }
    if(changes.zonaHoraria&&changes.zonaHoraria!==current.zonaHoraria){
     if(await tx.cierreOperativo.count())throw new ConflictException('No se puede modificar la zona horaria con cierres existentes');

@@ -1,6 +1,6 @@
 import {describe,expect,it} from 'vitest';
 import {BadRequestException,ConflictException} from '@nestjs/common';
-import {branchCode,deviceCode,timezone,currency,cutoff,deviceStationPolicy,requireChanges} from './organization.policy.js';
+import {branchCode,deviceCode,timezone,currency,cutoff,deviceStationPolicy,requireChanges,name} from './organization.policy.js';
 
 describe('Organization domain policies',()=>{
  it('normaliza códigos y moneda',()=>{
@@ -27,5 +27,7 @@ describe('Organization domain policies',()=>{
  it('impide parches sin cambios',()=>{
   expect(()=>requireChanges({})).toThrow(BadRequestException);
   expect(()=>requireChanges({nombre:'Activo'})).not.toThrow();
+  expect(()=>name('   ')).toThrow(BadRequestException);
+  expect(name('  Norte ')).toBe('Norte');
  });
 });

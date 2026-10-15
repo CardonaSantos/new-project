@@ -28,6 +28,11 @@ export function cutoff(value:string):string{
 export function deviceStationPolicy(tipo:DeviceType,station:string|null):void {
  if(station&&tipo!=='KDS')throw new ConflictException('Solo dispositivos KDS pueden vincularse a estaciones');
 }
+export function name(value:string):string{
+ const result=value.trim();
+ if(!result)throw new BadRequestException('El nombre no puede estar vacío');
+ return result;
+}
 export function requireChanges(values:Record<string,unknown>):void {
  if(!Object.keys(values).length)throw new BadRequestException('No se enviaron campos para actualizar');
 }

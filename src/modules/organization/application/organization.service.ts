@@ -2,7 +2,7 @@ import {ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
 import {IdentityRepository} from '../../auth/application/ports/identity.repository.js';
 import type {Principal} from '../../auth/application/auth.service.js';
 import type {BranchChanges,CompanyChanges,ConfigChanges,DeviceChanges,DeviceFilter,DeviceType,ListFilter} from '../domain/organization.types.js';
-import {branchCode,currency,cutoff,deviceCode,requireChanges,timezone} from '../domain/organization.policy.js';
+import {branchCode,currency,cutoff,deviceCode,name,requireChanges,timezone} from '../domain/organization.policy.js';
 import {OrganizationRepositoryPort,type AccessScope} from './ports/organization.repository.port.js';
 
 const pagination=(page:number,limit:number,total:number)=>({page,limit,total,totalPages:Math.ceil(total/limit)});
@@ -36,7 +36,7 @@ export class OrganizationService{
   requireChanges(changes);
   await this.global(actor,'organization.manage');
   return this.repo.updateCompany(actor.id,{
-   ...changes,
+   ...changes,nombreComercial:changes.nombreComercial===undefined?undefined:name(changes.nombreComercial),
    moneda:changes.moneda===undefined?undefined:currency(changes.moneda),
    zonaHoraria:changes.zonaHoraria===undefined?undefined:timezone(changes.zonaHoraria)
   });
@@ -60,13 +60,13 @@ export class OrganizationService{
  async createBranch(actor:Principal,input:{codigo:string;nombre:string;direccion?:string;telefono?:string;zonaHoraria?:string}){
   await this.global(actor,'branches.manage');
   return this.repo.createBranch(actor.id,{...input,codigo:branchCode(input.codigo),
-   nombre:input.nombre.trim(),zonaHoraria:input.zonaHoraria?timezone(input.zonaHoraria):undefined});
+   nombre:name(input.nombre),zonaHoraria:input.zonaHoraria?timezone(input.zonaHoraria):undefined});
  }
  async updateBranch(actor:Principal,id:string,changes:BranchChanges){
   requireChanges(changes);
   await this.forBranch(actor,'branches.manage',id);
   return this.repo.updateBranch(actor.id,id,{...changes,
-   nombre:changes.nombre?.trim(),zonaHoraria:changes.zonaHoraria===undefined?undefined:timezone(changes.zonaHoraria)});
+   nombre:changes.nombre===undefined?undefined:name(changes.nombre),zonaHoraria:changes.zonaHoraria===undefined?undefined:timezone(changes.zonaHoraria)});
  }
  async status(actor:Principal,id:string,active:boolean,reason:string){
   await this.forBranch(actor,'branches.manage',id);
@@ -104,14 +104,14 @@ export class OrganizationService{
  }
  async createDevice(actor:Principal,input:{sucursalId:string;codigo:string;nombre:string;tipo:DeviceType;estacionPreparacionId?:string|null}){
   await this.forBranch(actor,'devices.manage',input.sucursalId);
-  return this.repo.createDevice(actor.id,{...input,codigo:deviceCode(input.codigo),nombre:input.nombre.trim()});
+  return this.repo.createDevice(actor.id,{...input,codigo:deviceCode(input.codigo),nombre:name(input.nombre)});
  }
  async updateDevice(actor:Principal,id:string,changes:DeviceChanges){
   requireChanges(changes);
   const item=await this.repo.device(id);
   if(!item)throw new NotFoundException('Dispositivo no encontrado');
   await this.forBranch(actor,'devices.manage',item.sucursalId);
-  return this.repo.updateDevice(actor.id,id,{...changes,nombre:changes.nombre?.trim()});
+  return this.repo.updateDevice(actor.id,id,{...changes,nombre:changes.nombre===undefined?undefined:name(changes.nombre)});
  }
  async deviceStatus(actor:Principal,id:string,active:boolean,reason:string){
   const item=await this.repo.device(id);

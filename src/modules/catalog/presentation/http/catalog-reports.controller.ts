@@ -1,7 +1,7 @@
 import {Controller,Get,Query} from '@nestjs/common';
-import type {Principal} from '../../auth/application/auth.service.js';
-import {CurrentUser} from '../../auth/presentation/http/decorators/auth.decorators.js';
-import {CatalogService} from '../application/catalog.service.js';
+import type {Principal} from '../../../auth/application/auth.service.js';
+import {CurrentUser} from '../../../auth/presentation/http/decorators/auth.decorators.js';
+import {CatalogService} from '../../application/catalog.service.js';
 import {BranchQueryDto} from './dto/catalog.dto.js';
 @Controller('catalog/reports')
 export class CatalogReportsController{

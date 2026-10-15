@@ -102,14 +102,14 @@ export class CatalogPricingStore{
     if((g.obligatorio||group.minimo>0)&&await tx.modificador.count({where:{grupoId:g.grupoId,activo:true}})<
       Math.max(1,group.minimo))throw new ConflictException('Grupo obligatorio sin suficientes opciones activas');
    }
-   const before=await tx.varianteGrupoModificador.findMany({where:{varianteId}});
-   await tx.varianteGrupoModificador.deleteMany({where:{varianteId}});
+   const before=await tx.varianteGrupoModificador.findMany({where:{varianteId:variantId}});
+   await tx.varianteGrupoModificador.deleteMany({where:{varianteId:variantId}});
    if(groups.length)await tx.varianteGrupoModificador.createMany({data:groups.map(x=>({
-    varianteId,grupoId:x.grupoId,orden:x.orden,obligatorio:x.obligatorio
+    varianteId:variantId,grupoId:x.grupoId,orden:x.orden,obligatorio:x.obligatorio
    }))});
    await audit(tx,actor,'VARIANT_MODIFIERS_UPDATED','VarianteProducto',variantId,null,
     {grupos:before.map(x=>x.grupoId)},{grupos:groups.map(x=>x.grupoId)});
-   return tx.varianteGrupoModificador.findMany({where:{varianteId},
+   return tx.varianteGrupoModificador.findMany({where:{varianteId:variantId},
     include:{grupo:{include:{modificadoresComoGrupo:true}}},orderBy:{orden:'asc'}});
   },serial);
  }
@@ -149,10 +149,10 @@ export class CatalogPricingStore{
   },serial);}catch(e){failUnique(e);}
  }
  async variantPriceHistory(variantId:string,sucursalId:string){
-  return this.db.precioVariante.findMany({where:{varianteId,sucursalId},orderBy:{vigenteDesde:'desc'}});
+  return this.db.precioVariante.findMany({where:{varianteId:variantId,sucursalId},orderBy:{vigenteDesde:'desc'}});
  }
  async modifierPriceHistory(modifierId:string,sucursalId:string){
-  return this.db.precioModificador.findMany({where:{modificadorId,sucursalId},orderBy:{vigenteDesde:'desc'}});
+  return this.db.precioModificador.findMany({where:{modificadorId:modifierId,sucursalId},orderBy:{vigenteDesde:'desc'}});
  }
  async resolvePrice(variantId:string,sucursalId:string,at:Date){
   const [v,b,price,over]=await Promise.all([
@@ -164,7 +164,7 @@ export class CatalogPricingStore{
   if(!v)throw new NotFoundException('Variante inexistente');
   if(!b)throw new NotFoundException('Sucursal inexistente');
   const active=v.activo&&v.producto.activo&&b.activa&&(over?.habilitada??true)&&(!over?.pausadaHasta||over.pausadaHasta<=at);
-  return {varianteId,sucursalId,moneda:b.configuracionSucursalesComoSucursal?.moneda??'GTQ',
+  return {varianteId:variantId,sucursalId,moneda:b.configuracionSucursalesComoSucursal?.moneda??'GTQ',
    importe:price?.importe.toFixed(2)??null,vigenteDesde:price?.vigenteDesde??null,
    vigenteHasta:price?.vigenteHasta??null,habilitada:active,motivo:!active?'NO_HABILITADA':!price?'SIN_PRECIO':null};
  }
@@ -174,7 +174,7 @@ export class CatalogPricingStore{
   const base=await this.resolvePrice(variantId,sucursalId,at);
   if(!base.habilitada||base.importe===null)throw new ConflictException('Variante no vendible o sin precio vigente');
   const [links,mods]=await Promise.all([
-   this.db.varianteGrupoModificador.findMany({where:{varianteId},include:{grupo:true}}),
+   this.db.varianteGrupoModificador.findMany({where:{varianteId:variantId},include:{grupo:true}}),
    this.db.modificador.findMany({where:{id:{in:modifierIds}},include:{grupo:true}})
   ]);
   if(mods.length!==modifierIds.length||mods.some(x=>!x.activo||!x.grupo.activo))
@@ -195,7 +195,7 @@ export class CatalogPricingStore{
    incremento:money(await modifierPrice(this.db,mod.id,sucursalId,at))
   })));
   const total=priced.reduce((sum,x)=>sum.plus(x.incremento),new Prisma.Decimal(base.importe));
-  return {varianteId,sucursalId,fecha:at.toISOString(),moneda:base.moneda,
+  return {varianteId:variantId,sucursalId,fecha:at.toISOString(),moneda:base.moneda,
    precioBase:base.importe,modificadores:priced,total:total.toFixed(2),
    advertencia:'Cotización comercial; no verifica stock ni consume ingredientes'};
  }

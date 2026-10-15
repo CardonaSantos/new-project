@@ -1,8 +1,8 @@
 import {Body,Controller,Get,Param,Patch,Post,Put,Query} from '@nestjs/common';
-import type {Principal} from '../../auth/application/auth.service.js';
-import {CurrentUser} from '../../auth/presentation/http/decorators/auth.decorators.js';
-import {CatalogService} from '../application/catalog.service.js';
-import {BranchQueryDto,MenuCreateDto,MenuLayoutDto,MenuListDto,MenuPatchDto,PublishDto} from './dto/catalog.dto.js';
+import type {Principal} from '../../../auth/application/auth.service.js';
+import {CurrentUser} from '../../../auth/presentation/http/decorators/auth.decorators.js';
+import {CatalogService} from '../../application/catalog.service.js';
+import {BranchQueryDto,MenuCreateDto,MenuLayoutDto,MenuListDto,MenuPatchDto,PublishDto,PriceQueryDto} from './dto/catalog.dto.js';
 @Controller('catalog/menus')
 export class CatalogMenusController{
  constructor(private readonly service:CatalogService){}

@@ -1,7 +1,7 @@
 import {Body,Controller,Get,Param,Patch,Post,Put,Query} from '@nestjs/common';
-import type {Principal} from '../../auth/application/auth.service.js';
-import {CurrentUser} from '../../auth/presentation/http/decorators/auth.decorators.js';
-import {CatalogService} from '../application/catalog.service.js';
+import type {Principal} from '../../../auth/application/auth.service.js';
+import {CurrentUser} from '../../../auth/presentation/http/decorators/auth.decorators.js';
+import {CatalogService} from '../../application/catalog.service.js';
 import {BranchQueryDto,BranchVariantDto,CategoryCreateDto,CategoryPatchDto,ImageIdsDto,
  OptionsDto,ProductCreateDto,ProductListDto,ProductOptionsDto,ProductPatchDto,StatusDto,
  VariantInputDto,VariantOptionDto,VariantPatchDto} from './dto/catalog.dto.js';

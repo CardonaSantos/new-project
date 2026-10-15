@@ -60,8 +60,12 @@ export class ProductPatchDto{
  @IsOptional() @IsString() categoriaId?:string|null;
  @ValidateIf((_,v)=>v!==undefined) @IsBoolean() visibleEnMenu?:boolean;
 }
-export class VariantPatchDto extends VariantInputDto{
- @IsOptional() @IsBoolean() activo?:boolean;
+export class VariantPatchDto {
+ @ValidateIf((_,v)=>v!==undefined) @IsString() @MinLength(1) @MaxLength(120) nombre?:string;
+ @IsOptional() @IsString() @MaxLength(50) sku?:string|null;
+ @IsOptional() @IsString() articuloInventarioId?:string|null;
+ @IsOptional() @IsInt() @Min(0) orden?:number;
+ @ValidateIf((_,v)=>v!==undefined) @IsBoolean() activo?:boolean;
 }
 export class VariantOptionDto extends ProductOptionsDto{
  @IsOptional() @IsString() productoId?:string;

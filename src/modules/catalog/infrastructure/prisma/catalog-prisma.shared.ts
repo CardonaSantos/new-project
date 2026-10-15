@@ -14,7 +14,7 @@ export const productInclude={
   varianteGrupoModificadoresComoVariante:{include:{
    grupo:{include:{modificadoresComoGrupo:true}}
   },orderBy:{orden:'asc' as const}}
- },orderBy:[{orden:'asc' as const},{id:'asc' as const}]}
+ },orderBy:{orden:'asc' as const}}
 } as const;
 export const variantInclude={
  producto:{select:{id:true,nombre:true,codigo:true,tipo:true,activo:true,visibleEnMenu:true}},
@@ -34,12 +34,12 @@ const typeofVariantMinimal={producto:{select:{id:true,nombre:true,codigo:true,ac
 
 export const menuInclude={
  sucursales:{include:{sucursal:{select:{id:true,codigo:true,nombre:true,activa:true}}}},
- horarios:{orderBy:[{diaSemana:'asc' as const},{desde:'asc' as const}]},
- secciones:{orderBy:[{orden:'asc' as const},{id:'asc' as const}],include:{
-  items:{orderBy:[{orden:'asc' as const},{id:'asc' as const}],
+ horarios:{orderBy:{diaSemana:'asc' as const}},
+ secciones:{orderBy:{orden:'asc' as const},include:{
+  items:{orderBy:{orden:'asc' as const},
    include:{variante:{include:typeofVariantMinimal}}}
  }}
-};
+} as const;
 export function failUnique(e:unknown):never{
  if(e instanceof Prisma.PrismaClientKnownRequestError){
   if(e.code==='P2002'||e.code==='P2004')throw new ConflictException('Registro duplicado o restricción comercial incumplida');

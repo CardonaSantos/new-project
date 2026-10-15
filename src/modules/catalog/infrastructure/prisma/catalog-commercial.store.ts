@@ -197,11 +197,11 @@ export class CatalogCommercialStore{
    if(!product||!product.activo)throw new ConflictException('Producto inexistente o inactivo');
    await validateLink(tx,product.tipo,input.articuloInventarioId);
    const row=await tx.varianteProducto.create({data:{
-    productoId,nombre:catalogName(input.nombre),sku:input.sku?catalogCode(input.sku):null,
+    productoId:productId,nombre:catalogName(input.nombre),sku:input.sku?catalogCode(input.sku):null,
     articuloInventarioId:input.articuloInventarioId??null,orden:input.orden??0
    },include:variantInclude});
    await audit(tx,actor,'VARIANT_CREATED','VarianteProducto',row.id,null,null,
-    {nombre:row.nombre,productoId,sku:row.sku});
+    {nombre:row.nombre,productoId:productId,sku:row.sku});
    return row;
   },serial);}catch(e){failUnique(e);}
  }

@@ -106,7 +106,7 @@ export class CatalogMenuStore{
    this.db.varianteSucursal.findUnique({where:{varianteId_sucursalId:{varianteId:variantId,sucursalId}}})
   ]);
   const warnings:string[]=[];
-  if(!v){warnings.push('VARIANTE_NO_EXISTE');return {varianteId,sucursalId,lista:false,advertencias:warnings};}
+  if(!v){warnings.push('VARIANTE_NO_EXISTE');return {varianteId:variantId,sucursalId,lista:false,advertencias:warnings};}
   if(!b?.activa)warnings.push('SUCURSAL_INACTIVA');
   if(!v.activo||!v.producto.activo)warnings.push('PRODUCTO_O_VARIANTE_INACTIVA');
   if(!v.producto.visibleEnMenu)warnings.push('OCULTA_EN_MENU');
@@ -117,7 +117,7 @@ export class CatalogMenuStore{
    warnings.push('SIN_FOTOGRAFIA_CONFIRMADA');
   if(v.producto.tipo==='INVENTARIABLE'&&(!v.articuloInventario||!v.articuloInventario.activo))
    warnings.push('ARTICULO_FISICO_INVALIDO');
-  return {varianteId,sucursalId,lista:warnings.length===0,advertencias:warnings,
+  return {varianteId:variantId,sucursalId,lista:warnings.length===0,advertencias:warnings,
    precio:price?.importe.toFixed(2)??null,
    receta:'NO_VERIFICADA_HASTA_REC_A',stock:'NO_VERIFICADO_HASTA_INV_B'};
  }

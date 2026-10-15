@@ -34,7 +34,7 @@ export class CatalogService{
  }
  async categoryOptions(a:Principal,f:Options){
   await this.scope(a,'catalog.read');const r=await this.repo.categoryOptions(f);
-  return {data:r.data,meta:options(r.nextCursor)};
+  return {data:await this.present(r.data),meta:options(r.nextCursor)};
  }
  async categoryTree(a:Principal){await this.scope(a,'catalog.read');return this.present(await this.repo.categoryTree());}
  async category(a:Principal,id:string){await this.scope(a,'catalog.read');
@@ -99,17 +99,17 @@ export class CatalogService{
  }
  async groups(a:Principal,f:Paging){
   await this.scope(a,'catalog.read');const r=await this.repo.modifierGroups(f);
-  return {data:r.data,meta:paged(f,r.total)};
+  return {data:await this.present(r.data),meta:paged(f,r.total)};
  }
  async groupOptions(a:Principal,f:Options){
   await this.scope(a,'catalog.read');const r=await this.repo.groupOptions(f);
   return {data:r.data,meta:options(r.nextCursor)};
  }
  async createGroup(a:Principal,v:GroupInput){
-  await this.global(a,'catalog.manage');return this.repo.createGroup(a.id,v);
+  await this.global(a,'catalog.manage');return this.present(await this.repo.createGroup(a.id,v));
  }
  async updateGroup(a:Principal,id:string,v:Partial<GroupInput>&{activo?:boolean}){
-  requirePatch(v);await this.global(a,'catalog.manage');return this.repo.updateGroup(a.id,id,v);
+  requirePatch(v);await this.global(a,'catalog.manage');return this.present(await this.repo.updateGroup(a.id,id,v));
  }
  async modifiers(a:Principal,f:Paging&{grupoId?:string}){
   await this.scope(a,'catalog.read');const r=await this.repo.modifiers(f);
@@ -117,14 +117,14 @@ export class CatalogService{
  }
  async createModifier(a:Principal,v:ModifierInput){
   await this.global(a,'catalog.manage');
-  return this.repo.createModifier(a.id,{...v,incrementoPrecio:decimalPrice(v.incrementoPrecio)});
+  return this.present(await this.repo.createModifier(a.id,{...v,incrementoPrecio:decimalPrice(v.incrementoPrecio)}));
  }
  async updateModifier(a:Principal,id:string,v:Partial<Omit<ModifierInput,'grupoId'>>&{activo?:boolean}){
   requirePatch(v);await this.global(a,'catalog.manage');
-  return this.repo.updateModifier(a.id,id,v);
+  return this.present(await this.repo.updateModifier(a.id,id,v));
  }
  async attachGroups(a:Principal,id:string,v:Array<{grupoId:string;orden:number;obligatorio:boolean}>){
-  await this.global(a,'catalog.manage');return this.repo.attachGroups(a.id,id,v);
+  await this.global(a,'catalog.manage');return this.present(await this.repo.attachGroups(a.id,id,v));
  }
  async createPrice(a:Principal,kind:'variant'|'modifier',v:PriceInput){
   await this.branch(a,v.sucursalId,'catalog.prices.manage');
@@ -134,7 +134,7 @@ export class CatalogService{
  }
  async priceHistory(a:Principal,kind:'variant'|'modifier',id:string,b:string){
   await this.branch(a,b,'catalog.read');
-  return kind==='variant'?this.repo.variantPriceHistory(id,b):this.repo.modifierPriceHistory(id,b);
+  return this.present(kind==='variant'?await this.repo.variantPriceHistory(id,b):await this.repo.modifierPriceHistory(id,b));
  }
  async price(a:Principal,id:string,b:string,when?:string){
   await this.branchQuery(a,b);return this.repo.resolvePrice(id,b,this.date(when));

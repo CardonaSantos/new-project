@@ -1,4 +1,5 @@
 import {Injectable} from '@nestjs/common';
+import {Prisma} from '../../../generated/prisma/client.js';
 import {MediaRepositoryPort} from '../../media/application/ports/media-repository.port.js';
 import {FileStoragePort} from '../../media/application/ports/file-storage.port.js';
 @Injectable()
@@ -6,6 +7,9 @@ export class CatalogMediaService{
  constructor(private readonly media:MediaRepositoryPort,private readonly storage:FileStoragePort){}
  async enrich<T>(value:T):Promise<T>{
   const visit=async(obj:unknown):Promise<unknown>=>{
+   // Prisma.Decimal has enumerable internals (s/e/d): never walk it like a plain object.
+   // Every Decimal in CAT-A represents a monetary amount with scale 2.
+   if(Prisma.Decimal.isDecimal(obj))return obj.toFixed(2);
    if(!obj||typeof obj!=='object'||obj instanceof Date)return obj;
    if(Array.isArray(obj))return Promise.all(obj.map(visit));
    const item=obj as Record<string,unknown>;

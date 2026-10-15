@@ -1,7 +1,7 @@
 import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
 import {Prisma} from '../../../../generated/prisma/client.js';
 import {PrismaService} from '../../../../infrastructure/database/prisma/prisma.service.js';
-import {amount,combineAverage,price,qty,requireStock,localDate} from '../../domain/stock.policy.js';
+import {amount,locationAverage,price,qty,requireStock,localDate} from '../../domain/stock.policy.js';
 type Tx=Prisma.TransactionClient;
 export type StockPosting={
  actorId:string;ubicacionId:string;articuloId:string;loteId?:string|null;
@@ -66,9 +66,15 @@ export class InventoryPostingEngine{
    unit=new Prisma.Decimal(v.costoUnitario);
    total=count.mul(unit).toDecimalPlaces(6,Prisma.Decimal.ROUND_HALF_UP);
    allocations=[{cantidad:qty(count),costoUnitario:price(unit)}];
-   const avg=combineAverage(before,row?.costoPromedio??new Prisma.Decimal(0),count,unit);
+   // Weighted average is per article+location, not per lot. A physical lot is
+   // tracked separately but its accounting price is shared at this valuation scope.
+   const siblings=await tx.existencia.findMany({where:{articuloId:art.id,ubicacionId:l.id},
+    select:{cantidad:true,costoPromedio:true}});
+   const avg=locationAverage(siblings,count,unit);
    if(row)await tx.existencia.update({where:{id:row.id},data:{cantidad:before.plus(count),costoPromedio:avg}});
    else await tx.existencia.create({data:{articuloId:art.id,ubicacionId:l.id,loteId:batch,cantidad:count,costoPromedio:avg}});
+   await tx.existencia.updateMany({where:{articuloId:art.id,ubicacionId:l.id},
+    data:{costoPromedio:avg}});
   }else{
    requireStock(before,count);
    if(!row)throw new ConflictException('Sin existencia');

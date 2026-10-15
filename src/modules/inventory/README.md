@@ -252,3 +252,13 @@ negativos requeriría reglas adicionales. Transferencias reciben la totalidad
 sin aceptar silenciosamente faltantes; las recepciones parciales quedarán para
 el módulo de abastecimiento y discrepancias. No gestionar consumidores externos
 de movimientos sin su propio documento de negocio.
+
+### Alcance del promedio ponderado
+
+El promedio se calcula por `articuloId + ubicacionId`, agregando todos los
+lotes físicos del artículo en la misma ubicación. El ingreso de una nueva
+partida recalcula el promedio de todas esas posiciones, sin alterar las
+cantidades de los lotes. Las salidas se valorizan con el promedio consolidado
+vigente en la ubicación. El método FIFO usa en cambio las capas de costo del
+mismo artículo y ubicación, en orden cronológico; las selecciones físicas
+de lotes y las financieras de capas son independientes.

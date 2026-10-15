@@ -20,6 +20,14 @@ export function combineAverage(q:StockAmount,unit:StockAmount,added:StockAmount,
  if(total.isZero())return new Prisma.Decimal(0);
  return q.mul(unit).plus(added.mul(entryCost)).div(total).toDecimalPlaces(6,Prisma.Decimal.ROUND_HALF_UP);
 }
+export function locationAverage(
+ positions:Array<{cantidad:StockAmount;costoPromedio:StockAmount}>,
+ added:StockAmount,entryCost:StockAmount){
+ const oldQty=positions.reduce((sum,x)=>sum.plus(x.cantidad),new Prisma.Decimal(0));
+ const oldValue=positions.reduce((sum,x)=>sum.plus(x.cantidad.mul(x.costoPromedio)),new Prisma.Decimal(0));
+ return oldValue.plus(added.mul(entryCost)).div(oldQty.plus(added))
+  .toDecimalPlaces(6,Prisma.Decimal.ROUND_HALF_UP);
+}
 export function requireStock(current:StockAmount,requested:StockAmount){
  if(current.lessThan(requested))throw new ConflictException('Existencia insuficiente; no se permiten saldos negativos sin valoración definida');
 }

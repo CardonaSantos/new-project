@@ -26,6 +26,12 @@ function sanitize<T>(value:T,allowed:boolean):T{
 export class InventoryOperationsStore{
  constructor(private readonly db:PrismaService,private readonly identity:IdentityRepository,
   private readonly engine:InventoryPostingEngine,private readonly docs:InventoryDocumentsStore){}
+ private async globalTx(tx:Prisma.TransactionClient,u:Principal,permission:string){
+  const role=await tx.usuarioRol.findFirst({where:{usuarioId:u.id,usuario:{activo:true},
+   sucursalId:null,rol:{activo:true,alcance:'GLOBAL',
+    rolPermisosComoRol:{some:{permiso:{codigo:permission}}}}}});
+  if(!role)throw new ForbiddenException('Permiso global requerido');
+ }
  private async permission(u:Principal,branch:string,permission:string){
   if(!(await this.identity.capabilities(u.id,branch)).includes(permission))throw new ForbiddenException('Acceso denegado a sucursal');
  }
@@ -138,6 +144,7 @@ export class InventoryOperationsStore{
   if(dto.fechaElaboracion&&dto.fechaVencimiento&&dto.fechaElaboracion>dto.fechaVencimiento)
    throw new BadRequestException('Elaboración posterior al vencimiento');
   try{return await this.engine.tx(async tx=>{
+   await this.globalTx(tx,u,'inventory.articles.manage');
    const a=await tx.articuloInventario.findUnique({where:{id:dto.articuloId}});
    if(!a||!a.activo||!a.requiereLote)throw new ConflictException('Artículo no controla lotes');
    if(a.requiereVencimiento&&!dto.fechaVencimiento)throw new BadRequestException('Requiere fechaVencimiento');
@@ -156,6 +163,7 @@ export class InventoryOperationsStore{
    throw new ForbiddenException('Requiere gestión global de artículos');
   if(dto.motivo.trim().length<3)throw new BadRequestException('Motivo obligatorio');
   return this.engine.tx(async tx=>{
+   await this.globalTx(tx,u,'inventory.articles.manage');
    const old=await tx.loteInventario.findUnique({where:{id}});
    if(!old)throw new NotFoundException('Lote inexistente');
    const result=await tx.loteInventario.update({where:{id},data:{bloqueado:dto.bloqueado}});

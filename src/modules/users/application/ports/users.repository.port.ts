@@ -6,6 +6,8 @@ export abstract class UsersRepositoryPort {
  abstract options(input:{search?:string;sucursalId:string|null;purpose?:string;cursor?:string;limit:number}):Promise<{data:UserOption[];nextCursor:string|null}>;
  abstract create(input:{actorId:string;email:string;nombre:string;hash:string;
   apellidos?:string;telefono?:string;rolIds:{rolId:string;sucursalId:string|null}[]}):Promise<string>;
+ abstract updateOwnProfile(userId:string,input:{apellidos?:string|null;telefono?:string|null;idioma?:string;zonaHoraria?:string}):Promise<void>;
+ abstract setOwnAvatar(userId:string,mediaId:string|null):Promise<void>;
  abstract update(input:{actorId:string;userId:string;email?:string;nombre?:string;
   apellidos?:string|null;telefono?:string|null;idioma?:string;zonaHoraria?:string}):Promise<void>;
  abstract setActive(input:{actorId:string;userId:string;activo:boolean;motivo:string}):Promise<void>;

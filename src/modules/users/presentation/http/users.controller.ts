@@ -4,12 +4,23 @@ import type {Principal} from '../../../auth/application/auth.service.js';
 import {UsersService} from '../../application/users.service.js';
 import {
  UserFilterDto,UserOptionDto,BranchQueryDto,CreateUserDto,UpdateUserDto,
- SetStatusDto,AvatarDto,AssignmentDto,AssignmentsDto,AuditQueryDto,UserActivityDto,UserRangeDto
+ SetStatusDto,AvatarDto,SelfProfileDto,AssignmentDto,AssignmentsDto,AuditQueryDto,UserActivityDto,UserRangeDto
 } from './dto/users.dto.js';
 
 @Controller('users')
 export class UsersController {
  constructor(private readonly service:UsersService){}
+
+ @Get('me/profile')
+ myProfile(@CurrentUser() actor:Principal){return this.service.me(actor);}
+ @Patch('me/profile')
+ updateMyProfile(@CurrentUser() actor:Principal,@Body() dto:SelfProfileDto){
+  return this.service.updateMyProfile(actor,dto);
+ }
+ @Put('me/avatar')
+ updateMyAvatar(@CurrentUser() actor:Principal,@Body() dto:AvatarDto){
+  return this.service.updateMyAvatar(actor,dto.mediaId);
+ }
  @Get('options')
  options(@CurrentUser() user:Principal,@Query() q:UserOptionDto){
   return this.service.options(user,{...q,sucursalId:q.sucursalId??null});

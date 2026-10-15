@@ -63,6 +63,20 @@ export class UsersService {
    ])).values()]}
   };
  }
+
+ async me(actor:Principal){
+  const user=await this.repo.getUser(actor.id);
+  if(!user||!user.activo)throw new NotFoundException('Usuario no encontrado');
+  return this.response(user);
+ }
+ async updateMyProfile(actor:Principal,input:{apellidos?:string|null;telefono?:string|null;idioma?:string;zonaHoraria?:string}){
+  await this.repo.updateOwnProfile(actor.id,input);
+  return this.me(actor);
+ }
+ async updateMyAvatar(actor:Principal,mediaId:string|null){
+  await this.repo.setOwnAvatar(actor.id,mediaId);
+  return this.me(actor);
+ }
  async list(actor:Principal,input:Pagination&{search?:string;activo?:boolean;rolId?:string;sucursalId?:string}){
   const branch=input.sucursalId??null,scope=await this.readScope(actor,branch);
   const result=await this.repo.listUsers({search:input.search,activo:input.activo,rolId:input.rolId,

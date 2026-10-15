@@ -124,6 +124,32 @@ export class PrismaUsersRepository extends UsersRepositoryPort {
    return user.id;
   },serializable);
  }
+
+ async updateOwnProfile(userId:string,input:{apellidos?:string|null;telefono?:string|null;idioma?:string;zonaHoraria?:string}):Promise<void>{
+  await this.db.$transaction(async tx=>{
+   const user=await tx.usuario.findUnique({where:{id:userId},select:{activo:true}});
+   if(!user?.activo)throw new ForbiddenException('Usuario inactivo');
+   await tx.perfilUsuario.upsert({where:{usuarioId:userId},
+    create:{usuarioId:userId,apellidos:input.apellidos??undefined,
+     telefono:input.telefono??undefined,idioma:input.idioma,zonaHoraria:input.zonaHoraria},
+    update:input});
+   await audit(tx,userId,'USER_SELF_PROFILE_UPDATED','Usuario',userId,
+    undefined,{campos:Object.keys(input)});
+  });
+ }
+ async setOwnAvatar(userId:string,mediaId:string|null):Promise<void>{
+  await this.db.$transaction(async tx=>{
+   if(mediaId){
+    const image=await tx.media.findUnique({where:{id:mediaId}});
+    if(!image||image.tipo!=='IMAGEN'||image.contexto!=='PERFIL'||!image.confirmadaEn||
+     image.eliminadaEn||image.subidaPorId!==userId)
+     throw new ConflictException('El avatar debe ser una imagen de perfil propia y confirmada');
+   }
+   await tx.perfilUsuario.upsert({where:{usuarioId:userId},
+    create:{usuarioId:userId,avatarMediaId:mediaId},update:{avatarMediaId:mediaId}});
+   await audit(tx,userId,'USER_SELF_AVATAR_UPDATED','Usuario',userId,undefined,{mediaId});
+  });
+ }
  async update(input:{actorId:string;userId:string;email?:string;nombre?:string;apellidos?:string|null;
   telefono?:string|null;idioma?:string;zonaHoraria?:string}):Promise<void>{
   await this.db.$transaction(async tx=>{

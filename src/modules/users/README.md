@@ -32,6 +32,9 @@ Las rutas mantienen `/api` sin `/v1`, conforme al checkpoint.
 | Verbo | Ruta | Descripción |
 | --- | --- | --- |
 | GET | /api/users | Lista paginada, búsqueda por nombre/correo y filtros |
+| GET | /api/users/me/profile | Perfil propio, sin permisos de administrador |
+| PATCH | /api/users/me/profile | Editar datos personales propios |
+| PUT | /api/users/me/avatar | Cambiar avatar propio (Media confirmada) |
 | GET | /api/users/options | Selector paginado por cursor, sucursal y finalidad |
 | GET | /api/users/:id | Perfil y roles por sucursal |
 | POST | /api/users | Crear usuario y credencial temporal |
@@ -124,3 +127,7 @@ pero no se bloquea el uso inicial.
 Las pruebas unitarias son independientes de PostgreSQL; se requiere realizar
 pruebas de integración con la base de desarrollo y el cliente Angular antes
 de usar estas funcionalidades en producción.
+
+El empleado puede actualizar solamente campos de `PerfilUsuario`; no puede
+modificar por este endpoint su correo, roles, estado o credenciales.
+El avatar propio exige que él haya subido el objeto a Media con contexto PERFIL.

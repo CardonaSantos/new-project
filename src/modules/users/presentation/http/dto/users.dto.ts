@@ -45,6 +45,12 @@ export class UpdateUserDto {
  @IsOptional() @IsString() @MaxLength(16) idioma?:string;
  @IsOptional() @IsString() @MaxLength(64) zonaHoraria?:string;
 }
+export class SelfProfileDto {
+ @IsOptional() @IsString() @MaxLength(100) apellidos?:string|null;
+ @IsOptional() @IsString() @MaxLength(30) telefono?:string|null;
+ @IsOptional() @IsString() @MaxLength(16) idioma?:string;
+ @IsOptional() @IsString() @MaxLength(64) zonaHoraria?:string;
+}
 export class SetStatusDto {
  @IsBoolean() activo!:boolean;
  @IsString() @MinLength(3) @MaxLength(500) motivo!:string;

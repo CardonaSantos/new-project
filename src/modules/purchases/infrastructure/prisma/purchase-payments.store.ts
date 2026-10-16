@@ -65,6 +65,22 @@ export class PurchasePaymentsStore{
   if(!p.sucursalId)throw new ConflictException('Pago sin sucursal');
   await scope(tx,u,p.sucursalId,'purchases.payments.confirm');
   if(p.estado!=='PENDIENTE')throw new ConflictException('Pago no pendiente');
+  // Revalidate at settlement time: two independently drafted payments cannot
+  // settle the same outstanding invoice twice.
+  const applications=await tx.aplicacionPagoProveedor.findMany({where:{pagoId:id}});
+  for(const ap of applications){
+   const invoice=await tx.facturaProveedor.findUniqueOrThrow({where:{id:ap.facturaId}});
+   if(invoice.estado!=='CONFIRMADA'||invoice.proveedorId!==p.proveedorId||
+      invoice.sucursalId!==p.sucursalId)
+    throw new ConflictException('Factura no disponible para liquidación');
+   const [payments,credits]=await Promise.all([
+    tx.aplicacionPagoProveedor.aggregate({where:{facturaId:ap.facturaId,
+     pago:{estado:'CONFIRMADO'}},_sum:{monto:true}}),
+    tx.aplicacionNotaCreditoProveedor.aggregate({where:{facturaId:ap.facturaId,
+     nota:{estado:'CONFIRMADA'}},_sum:{monto:true}})]);
+   covered(ap.monto,invoice.total.minus(payments._sum.monto??0).minus(credits._sum.monto??0),
+    'Factura liquidada por otra operación; no se puede confirmar doble pago');
+  }
   if(p.metodo==='EFECTIVO'){
    if(!p.turnoCajaId)throw new ConflictException('Efectivo requiere turno');
    const shift=await this.cashStore.shiftTx(tx,u,p.turnoCajaId,'purchases.payments.confirm',false);
@@ -82,7 +98,7 @@ export class PurchasePaymentsStore{
   return {id,estado:'CONFIRMADO'};
  }
  async create(u:Actor,d:SupplierPaymentDto){
-  return atomic(this.db,async tx=>{
+  return atomic(this.db,tx=>once(tx,u,d.claveOperacion,'PUR_PAYMENT_CREATE',d,async()=>{
    await scope(tx,u,d.sucursalId,'purchases.payments.create');
    if(!await tx.proveedor.findFirst({where:{id:d.proveedorId,activo:true}}))
     throw new ConflictException('Proveedor no disponible');
@@ -99,7 +115,7 @@ export class PurchasePaymentsStore{
    await audit(tx,u,d.sucursalId,'PUR_PAYMENT_CREATED','PagoProveedor',row.id,
     {metodo:d.metodo,monto:d.monto});
    return {id:row.id,estado:'PENDIENTE'};
-  });
+  }));
  }
  async apply(u:Actor,id:string,d:ApplyDto){
   return atomic(this.db,tx=>once(tx,u,d.claveOperacion,'PUR_PAYMENT_APPLY',{id,...d},async()=>{

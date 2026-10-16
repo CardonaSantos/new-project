@@ -93,7 +93,7 @@ export class InvoiceDto{
  @Type(()=>InvoiceLineDto) lineas!:InvoiceLineDto[];
 }
 export class PaymentApplicationDto{@IsString() facturaId!:string;@Matches(amount) monto!:string;}
-export class SupplierPaymentDto{
+export class SupplierPaymentDto extends KeyDto{
  @IsString() proveedorId!:string;
  @IsString() sucursalId!:string;
  @IsEnum(['EFECTIVO','TARJETA','TRANSFERENCIA','OTRO']) metodo!:'EFECTIVO'|'TARJETA'|'TRANSFERENCIA'|'OTRO';

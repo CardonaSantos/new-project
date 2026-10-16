@@ -29,3 +29,8 @@ ALTER TABLE "OrdenLinea" ADD CONSTRAINT "OrdenLinea_enviada_no_negativa"
  CHECK ("cantidad">0 AND "cantidadEnviada">=0 AND "cantidadEnviada"<="cantidad");
 ALTER TABLE "ComandaLinea" ADD CONSTRAINT "ComandaLinea_preparada_no_negativa"
  CHECK ("cantidad">0 AND "cantidadPreparada">=0 AND "cantidadPreparada"<="cantidad");
+
+-- Efficient incremental updates to authenticated kitchen screens.
+CREATE INDEX "EventoOutbox_kitchen_branch_cursor_idx"
+ ON "EventoOutbox" ((payload->>'sucursalId'), "creadoEn", "id")
+ WHERE "tipo" IN ('KITCHEN_TICKET_CREATED','KITCHEN_TICKET_UPDATED');

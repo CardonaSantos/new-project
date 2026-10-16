@@ -275,4 +275,54 @@ export class RecipeStore{
     include:{reglaEmpaqueLineasComoRegla:{include:{articulo:{select:publicArticle}}}}});
   });
  }
+ async packagingOne(u:Principal,id:string){
+  await this.global(u,'recipes.read');
+  const row=await this.db.reglaEmpaque.findUnique({where:{id},include:{
+   variante:true,sucursal:true,reglaEmpaqueLineasComoRegla:{include:{articulo:{select:publicArticle}}}}});
+  if(!row)throw new NotFoundException('Regla de empaque inexistente');
+  return row;
+ }
+ async replacePackaging(u:Principal,id:string,d:PackagingRuleDto){
+  await this.global(u,'recipes.manage');
+  return this.engine.tx(async tx=>{
+   await this.edit(tx,u);
+   const old=await tx.reglaEmpaque.findUnique({where:{id}});
+   if(!old)throw new NotFoundException('Regla de empaque inexistente');
+   if(d.nombre.trim().length<3)throw new BadRequestException('Nombre mínimo 3 caracteres');
+   if(d.alcance==='ARTICULO'&&!d.varianteId||d.alcance==='ORDEN'&&d.varianteId)
+    throw new BadRequestException('Alcance y variante incompatibles');
+   ensureUnique(d.lineas,x=>x.articuloId,'Material de empaque');
+   if(d.varianteId&&!await tx.varianteProducto.findUnique({where:{id:d.varianteId}}))
+    throw new NotFoundException('Variante inexistente');
+   if(d.sucursalId&&!await tx.sucursal.findUnique({where:{id:d.sucursalId}}))
+    throw new NotFoundException('Sucursal inexistente');
+   for(const line of d.lineas){
+    quantity(line.cantidad);
+    const article=await tx.articuloInventario.findUnique({where:{id:line.articuloId}});
+    if(!article||!article.activo||article.tipo!=='EMPAQUE')
+     throw new ConflictException('Material de empaque inválido');
+   }
+   await tx.reglaEmpaqueLinea.deleteMany({where:{reglaId:id}});
+   const updated=await tx.reglaEmpaque.update({where:{id},data:{
+    nombre:d.nombre.trim(),alcance:d.alcance,modalidad:d.modalidad,
+    varianteId:d.varianteId??null,sucursalId:d.sucursalId??null,
+    reglaEmpaqueLineasComoRegla:{create:d.lineas.map(l=>({
+     articuloId:l.articuloId,cantidad:new Prisma.Decimal(l.cantidad)}))}
+   },include:{reglaEmpaqueLineasComoRegla:{include:{articulo:{select:publicArticle}}}}});
+   await audit(tx,u,'PACKAGING_RULE_UPDATED','ReglaEmpaque',id);
+   return updated;
+  });
+ }
+ async packagingStatus(u:Principal,id:string,activa:boolean){
+  await this.global(u,'recipes.manage');
+  return this.engine.tx(async tx=>{
+   await this.edit(tx,u);
+   if(!await tx.reglaEmpaque.findUnique({where:{id}}))
+    throw new NotFoundException('Regla de empaque inexistente');
+   const updated=await tx.reglaEmpaque.update({where:{id},data:{activa}});
+   await audit(tx,u,'PACKAGING_RULE_STATUS_CHANGED','ReglaEmpaque',id,{activa});
+   return {id,activa:updated.activa};
+  });
+ }
+
 }

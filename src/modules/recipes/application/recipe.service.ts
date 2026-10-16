@@ -20,6 +20,9 @@ export class RecipeService{
  setModifier(u:Principal,id:string,d:ModifierCompositionDto){return this.recipes.setModifier(u,id,d);}
  packaging(u:Principal,d:PackagingQueryDto){return this.recipes.packaging(u,d);}
  createPackaging(u:Principal,d:PackagingRuleDto){return this.recipes.createPackaging(u,d);}
+ packagingOne(u:Principal,id:string){return this.recipes.packagingOne(u,id);}
+ replacePackaging(u:Principal,id:string,d:PackagingRuleDto){return this.recipes.replacePackaging(u,id,d);}
+ packagingStatus(u:Principal,id:string,active:boolean){return this.recipes.packagingStatus(u,id,active);}
  preview(u:Principal,id:string,d:PreviewDto){return this.productionStore.preview(u,id,d);}
  quote(u:Principal,d:QuoteDto){return this.productionStore.preview(u,d.recetaVersionId,d);}
  productions(u:Principal,d:ListProductionsDto){return this.productionStore.list(u,d);}

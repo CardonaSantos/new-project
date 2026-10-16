@@ -62,6 +62,9 @@ export class PackagingRuleDto{
  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(100) @ValidateNested({each:true})
  @Type(()=>PackagingItemDto) lineas!:PackagingItemDto[];
 }
+export class PackagingStatusDto{
+ @IsBoolean() activa!:boolean;
+}
 export class PackagingQueryDto{
  @IsOptional() @IsString() sucursalId?:string;
  @IsOptional() @IsString() varianteId?:string;

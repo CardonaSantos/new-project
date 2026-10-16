@@ -35,6 +35,7 @@ entrada de inventario, costo exacto y auditoría en una transacción serializabl
 - GET /recipes/modifiers/:id/components
 - PUT /recipes/modifiers/:id/components — composición de extras
 - GET/POST /recipes/packaging — reglas de empaque
+- GET/PUT /recipes/packaging/:id y PATCH /:id/status — edición y activación sin recrear
 - GET /recipes/reports/coverage — cobertura de recetas
 - GET/POST /production/batches — paginado y alta en borrador
 - POST /production/batches/execute — flujo rápido atómico

@@ -3,7 +3,7 @@ import {CurrentUser} from '../../../auth/presentation/http/decorators/auth.decor
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {RecipeService} from '../../application/recipe.service.js';
 import {CreateRecipeDto,UpdateRecipeDto,VersionDto,ListRecipesDto,PreviewDto,
- ModifierCompositionDto,PackagingRuleDto,PackagingQueryDto,QuoteDto,ExecuteProductionDto,ListProductionsDto} from './dto/recipe.dto.js';
+ ModifierCompositionDto,PackagingRuleDto,PackagingQueryDto,PackagingStatusDto,QuoteDto,ExecuteProductionDto,ListProductionsDto} from './dto/recipe.dto.js';
 @Controller('recipes')
 export class RecipesController{
  constructor(private readonly s:RecipeService){}
@@ -21,6 +21,12 @@ export class RecipesController{
   return this.s.packaging(u,q);}
  @Post('packaging') createPackaging(@CurrentUser() u:Principal,@Body() d:PackagingRuleDto){
   return this.s.createPackaging(u,d);}
+ @Get('packaging/:id') packagingOne(@CurrentUser() u:Principal,@Param('id') id:string){
+  return this.s.packagingOne(u,id);}
+ @Put('packaging/:id') replacePackaging(@CurrentUser() u:Principal,@Param('id') id:string,
+  @Body() d:PackagingRuleDto){return this.s.replacePackaging(u,id,d);}
+ @Patch('packaging/:id/status') packagingStatus(@CurrentUser() u:Principal,
+  @Param('id') id:string,@Body() d:PackagingStatusDto){return this.s.packagingStatus(u,id,d.activa);}
  @Get('versions/:id/preview') preview(@CurrentUser() u:Principal,@Param('id') id:string,
   @Query() q:PreviewDto){return this.s.preview(u,id,q);}
  @Put('versions/:id') revise(@CurrentUser() u:Principal,@Param('id') id:string,

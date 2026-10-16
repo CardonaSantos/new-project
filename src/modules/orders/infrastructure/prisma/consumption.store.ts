@@ -4,6 +4,7 @@ import type {Principal} from '../../../auth/application/auth.service.js';
 import {PrismaService} from '../../../../infrastructure/database/prisma/prisma.service.js';
 import {InventoryPostingEngine} from '../../../inventory/infrastructure/prisma/inventory-posting.engine.js';
 import {ProductionStore} from '../../../recipes/infrastructure/prisma/production.store.js';
+import type {OrderModifierComponent} from '../../../recipes/infrastructure/prisma/production.store.js';
 import {localDate} from '../../../inventory/domain/stock.policy.js';
 import {sha} from '../../domain/order.policy.js';
 import type {Tx} from './order-shared.js';
@@ -68,9 +69,28 @@ export class ConsumptionStore{
  }
  async recipe(tx:Tx,u:Principal,orderId:string,orderLineId:string,ticketLineId:string,
   versionId:string,quantity:Prisma.Decimal,locationId:string,
-  modifiers:string[],modality:Mode,previous:Prisma.Decimal){
+  modifiers:string[],modality:Mode,previous:Prisma.Decimal,
+  frozen:Prisma.JsonValue|null){
   const clave='ORD:RECIPE:'+ticketLineId+':'+previous.toFixed(3);
-  const planned=await this.recipes.planForOrder(tx,versionId,quantity,locationId,modifiers,modality);
+  let components:OrderModifierComponent[]|undefined;
+  if(frozen!==null){
+   if(!Array.isArray(frozen))throw new ConflictException('Snapshot de modificadores inválido');
+   components=frozen.map(raw=>{
+    if(!raw||typeof raw!=='object'||Array.isArray(raw))
+     throw new ConflictException('Snapshot de modificadores inválido');
+    const o=raw as Record<string,unknown>;
+    if(typeof o.modificadorId!=='string'||typeof o.articuloId!=='string'||
+     typeof o.unidadId!=='string'||typeof o.cantidad!=='string'||
+     !['SUMAR','RESTAR','SUSTITUIR'].includes(String(o.efecto))||
+     o.sustituyeArticuloId!==null&&typeof o.sustituyeArticuloId!=='string')
+     throw new ConflictException('Snapshot de modificadores incompleto');
+    return {modificadorId:o.modificadorId,articuloId:o.articuloId,unidadId:o.unidadId,
+     cantidad:o.cantidad,efecto:o.efecto as OrderModifierComponent['efecto'],
+     sustituyeArticuloId:o.sustituyeArticuloId as string|null};
+   });
+  }
+  const planned=await this.recipes.planForOrder(tx,versionId,quantity,locationId,
+   modifiers,modality,components);
   if(planned.short.length)throw new ConflictException({
    message:'Ingredientes insuficientes o no utilizables',insuficientes:planned.short
   });

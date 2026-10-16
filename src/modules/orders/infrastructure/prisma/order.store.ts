@@ -11,9 +11,13 @@ import {audit,outbox,runOnce,orderInclude,type Tx} from './order-shared.js';
 import {TableStore} from './table.store.js';
 import {KitchenStore} from './kitchen.store.js';
 import type {CreateOrderDto,AddItemsDto,OrderItemDto,EditLineDto,EditOrderDto,OrderListDto,ReasonDto,SendDto} from '../../presentation/http/dto/orders.dto.js';
+export type IngredientModifierSnapshot={modificadorId:string;articuloId:string;
+ unidadId:string;cantidad:string;efecto:'SUMAR'|'RESTAR'|'SUSTITUIR';
+ sustituyeArticuloId:string|null};
 type ModifierSnapshot={id:string;nombre:string;unit:Prisma.Decimal};
 type QuotedLine={varianteId:string;nombre:string;cantidad:Prisma.Decimal;unit:Prisma.Decimal;
- total:Prisma.Decimal;discount:Prisma.Decimal;recetaVersionId:string|null;modifiers:ModifierSnapshot[];notas:string|null};
+ total:Prisma.Decimal;discount:Prisma.Decimal;recetaVersionId:string|null;
+ modifiers:ModifierSnapshot[];composition:IngredientModifierSnapshot[];notas:string|null};
 @Injectable()
 export class OrderStore{
  constructor(private readonly db:PrismaService,private readonly engine:InventoryPostingEngine,
@@ -63,6 +67,14 @@ export class OrderStore{
     g.grupo.maximo!==null&&selected>g.grupo.maximo)
     throw new ConflictException('Selección inválida en grupo '+g.grupo.nombre);
   }
+  const compositions=chosen.length?await tx.modificadorComponente.findMany({
+   where:{modificadorId:{in:chosen}},select:{modificadorId:true,articuloId:true,
+    unidadId:true,cantidad:true,efecto:true,sustituyeArticuloId:true}}):[];
+  const snapshot:IngredientModifierSnapshot[]=compositions.map(x=>({
+   modificadorId:x.modificadorId,articuloId:x.articuloId,unidadId:x.unidadId,
+   cantidad:x.cantidad.toFixed(6),efecto:x.efecto,
+   sustituyeArticuloId:x.sustituyeArticuloId
+  }));
   const prices=await Promise.all(mods.map(async m=>({
    id:m.id,nombre:m.nombre,unit:await modifierPrice(tx,m.id,branch,now)
   })));
@@ -84,13 +96,15 @@ export class OrderStore{
    throw new ConflictException('Variante inventariable sin artículo asociado');
   return {varianteId:variant.id,nombre:variant.producto.nombre+
    (variant.nombre? ' — '+variant.nombre:''),cantidad:count,unit,total,
-   discount,recetaVersionId:recipeId,modifiers:prices,notas:item.notasCocina?.trim()??null};
+   discount,recetaVersionId:recipeId,modifiers:prices,composition:snapshot,
+   notas:item.notasCocina?.trim()??null};
  }
  private async insertLine(tx:Tx,orderId:string,q:QuotedLine){
   const line=await tx.ordenLinea.create({data:{
    ordenId:orderId,varianteId:q.varianteId,nombreSnapshot:q.nombre,
    cantidad:q.cantidad,precioUnitario:q.unit,subtotal:q.total,descuento:q.discount,
    recetaVersionId:q.recetaVersionId,
+   composicionSnapshot:q.composition as unknown as Prisma.InputJsonValue,
    notasCocina:q.notas,
    ...(q.modifiers.length?{ordenLineaModificadoresComoOrdenLinea:{
     create:q.modifiers.map(m=>({modificadorId:m.id,nombreSnapshot:m.nombre,
@@ -243,6 +257,7 @@ export class OrderStore{
      await this.engine.allowed(tx,u.id,'orders.discount',order.sucursalId);
     await tx.ordenLinea.update({where:{id:line.id},data:{
      cantidad:qtyNew,subtotal,descuento:discount,
+     ...(snapshot?{composicionSnapshot:snapshot.composition as unknown as Prisma.InputJsonValue}:{}),
      ...(d.notasCocina!==undefined?{notasCocina:d.notasCocina}:{})
     }});
     await this.recalc(tx,id);

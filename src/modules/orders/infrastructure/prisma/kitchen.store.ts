@@ -7,7 +7,7 @@ import {InventoryPostingEngine} from '../../../inventory/infrastructure/prisma/i
 import {decimal,distinct,qty} from '../../domain/order.policy.js';
 import {audit,outbox,runOnce,ticketInclude,type Tx} from './order-shared.js';
 import {ConsumptionStore} from './consumption.store.js';
-import type {RouteDto,StartLineDto,StationDto,StationUpdateDto,TicketListDto} from '../../presentation/http/dto/orders.dto.js';
+import type {RouteDto,RouteUpdateDto,KitchenChangesDto,StartLineDto,StationDto,StationUpdateDto,TicketListDto} from '../../presentation/http/dto/orders.dto.js';
 type Perm='orders.create'|'orders.manage';
 @Injectable()
 export class KitchenStore{
@@ -88,6 +88,57 @@ export class KitchenStore{
    }});
    await audit(tx,u,'KITCHEN_ROUTE_CREATED','RutaPreparacion',row.id,station.sucursalId);
    return row;
+  });
+ }
+
+ async editRoute(u:Principal,id:string,d:RouteUpdateDto){
+  return this.engine.tx(async tx=>{
+   const old=await tx.rutaPreparacion.findUnique({where:{id},include:{estacion:true}});
+   if(!old)throw new NotFoundException('Ruta inexistente');
+   await this.engine.allowed(tx,u.id,'kitchen.manage',old.estacion.sucursalId);
+   if(d.estacionId){
+    const target=await tx.estacionPreparacion.findUnique({where:{id:d.estacionId}});
+    if(!target?.activa||target.sucursalId!==old.estacion.sucursalId)
+     throw new ConflictException('Estación nueva no pertenece a la sucursal');
+   }
+   const row=await tx.rutaPreparacion.update({where:{id},data:{
+    ...(d.estacionId!==undefined?{estacionId:d.estacionId}:{}),
+    ...(d.prioridad!==undefined?{prioridad:d.prioridad}:{})
+   }});
+   await audit(tx,u,'KITCHEN_ROUTE_UPDATED','RutaPreparacion',id,old.estacion.sucursalId);
+   return row;
+  });
+ }
+ async removeRoute(u:Principal,id:string){
+  return this.engine.tx(async tx=>{
+   const old=await tx.rutaPreparacion.findUnique({where:{id},include:{estacion:true}});
+   if(!old)throw new NotFoundException('Ruta inexistente');
+   await this.engine.allowed(tx,u.id,'kitchen.manage',old.estacion.sucursalId);
+   await tx.rutaPreparacion.delete({where:{id}});
+   await audit(tx,u,'KITCHEN_ROUTE_REMOVED','RutaPreparacion',id,old.estacion.sucursalId);
+   return {id,eliminada:true};
+  });
+ }
+ async changes(u:Principal,q:KitchenChangesDto){
+  return this.engine.tx(async tx=>{
+   await this.engine.allowed(tx,u.id,'kitchen.read',q.sucursalId);
+   const eventFilter:Prisma.EventoOutboxWhereInput={
+    tipo:{in:['KITCHEN_TICKET_CREATED','KITCHEN_TICKET_UPDATED']},
+    payload:{path:['sucursalId'],equals:q.sucursalId}
+   };
+   let after:Prisma.EventoOutboxWhereInput={};
+   if(q.cursor){
+    const anchor=await tx.eventoOutbox.findFirst({where:{...eventFilter,id:q.cursor}});
+    if(!anchor)throw new NotFoundException('Cursor de eventos inexistente');
+    after={OR:[{creadoEn:{gt:anchor.creadoEn}},
+     {creadoEn:anchor.creadoEn,id:{gt:anchor.id}}]};
+   }
+   const rows=await tx.eventoOutbox.findMany({where:{AND:[eventFilter,after]},
+    select:{id:true,tipo:true,agregadoId:true,payload:true,creadoEn:true},
+    orderBy:[{creadoEn:'asc'},{id:'asc'}],take:q.limit+1});
+   const more=rows.length>q.limit;
+   const data=rows.slice(0,q.limit);
+   return {data,meta:{hasMore:more,nextCursor:more?data[data.length-1].id:null}};
   });
  }
  private async choose(tx:Tx,branch:string,varianteId:string,categoriaId:string|null){

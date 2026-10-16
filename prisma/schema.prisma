@@ -1769,6 +1769,8 @@ model Pago {
   referencia            String?
   codigoAutorizacion String?
   terminalReferencia String?
+  efectivoRecibido Decimal? @db.Decimal(18, 2)
+  vuelto           Decimal? @db.Decimal(18, 2)
   recibidoPorRepartidor Boolean      @default(false)
   cobradoEn             DateTime     @default(now()) @db.Timestamptz(3)
 

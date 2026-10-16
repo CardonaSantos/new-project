@@ -3,7 +3,7 @@ import {PrismaService} from '../../../../infrastructure/database/prisma/prisma.s
 import {InventoryPostingEngine} from '../../../inventory/infrastructure/prisma/inventory-posting.engine.js';
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {audit,outbox,type Tx} from './order-shared.js';
-import type {RoomDto,TableDto} from '../../presentation/http/dto/orders.dto.js';
+import type {RoomDto,TableDto,RoomUpdateDto,TableUpdateDto} from '../../presentation/http/dto/orders.dto.js';
 @Injectable()
 export class TableStore{
  constructor(private readonly db:PrismaService,private readonly engine:InventoryPostingEngine){}
@@ -76,4 +76,47 @@ export class TableStore{
    return {id,cerrada:true};
   });
  }
+ async updateRoom(u:Principal,id:string,d:RoomUpdateDto){
+  return this.engine.tx(async tx=>{
+   const old=await tx.sala.findUnique({where:{id}});
+   if(!old)throw new NotFoundException('Sala inexistente');
+   await this.engine.allowed(tx,u.id,'tables.manage',old.sucursalId);
+   if(d.activa===false){
+    const occupied=await tx.ocupacionMesa.count({where:{
+     mesa:{salaId:id},cerradaEn:null
+    }});
+    if(occupied)throw new ConflictException('Sala con mesas ocupadas');
+   }
+   if(d.nombre&&await tx.sala.findFirst({where:{
+    sucursalId:old.sucursalId,nombre:d.nombre.trim(),id:{not:id}
+   }}))throw new ConflictException('Nombre de sala duplicado');
+   const row=await tx.sala.update({where:{id},data:{
+    ...(d.nombre!==undefined?{nombre:d.nombre.trim()}:{}),
+    ...(d.activa!==undefined?{activa:d.activa}:{})
+   }});
+   await audit(tx,u,'TABLE_ROOM_UPDATED','Sala',id,old.sucursalId);
+   return row;
+  });
+ }
+ async updateTable(u:Principal,id:string,d:TableUpdateDto){
+  return this.engine.tx(async tx=>{
+   const old=await tx.mesa.findUnique({where:{id},include:{sala:true}});
+   if(!old)throw new NotFoundException('Mesa inexistente');
+   await this.engine.allowed(tx,u.id,'tables.manage',old.sala.sucursalId);
+   if(d.activa===false&&await tx.ocupacionMesa.count({where:{mesaId:id,cerradaEn:null}}))
+    throw new ConflictException('No puede desactivar mesa ocupada');
+   if(d.numero&&await tx.mesa.findFirst({where:{
+    salaId:old.salaId,numero:d.numero.trim(),id:{not:id}
+   }}))throw new ConflictException('Número de mesa duplicado');
+   const row=await tx.mesa.update({where:{id},data:{
+    ...(d.numero!==undefined?{numero:d.numero.trim()}:{}),
+    ...(d.capacidad!==undefined?{capacidad:d.capacidad}:{}),
+    ...(d.activa!==undefined?{activa:d.activa}:{})
+   }});
+   await audit(tx,u,'TABLE_UPDATED','Mesa',id,old.sala.sucursalId);
+   await outbox(tx,'TABLE_UPDATED','Mesa',id,old.sala.sucursalId);
+   return row;
+  });
+ }
+
 }

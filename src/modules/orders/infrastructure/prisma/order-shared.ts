@@ -29,6 +29,14 @@ export async function audit(tx:Tx,u:Principal,action:string,entity:string,id:str
   usuarioId:u.id,sucursalId:branch,accion:action,entidad:entity,entidadId:id,
   motivo,...(data?{despues:data as Prisma.InputJsonValue}:{})
  }});
+ if(entity==='Orden'||entity==='OrdenLinea'){
+  const orderId=entity==='Orden'?id:(await tx.ordenLinea.findUnique({
+   where:{id},select:{ordenId:true}}))?.ordenId;
+  if(orderId)await tx.eventoOrden.create({data:{
+   ordenId:orderId,usuarioId:u.id,accion:action,
+   detalles:{...(data??{}),...(motivo?{motivo}:{})} as Prisma.InputJsonValue
+  }});
+ }
 }
 export async function outbox(tx:Tx,type:string,entity:string,id:string,branch:string,detail:Record<string,unknown>={}){
  await tx.eventoOutbox.create({data:{

@@ -70,6 +70,15 @@ export class TableDto{
  @IsString() @MinLength(1) @MaxLength(20) numero!:string;
  @IsInt() @Min(1) @Max(40) capacidad!:number;
 }
+export class RoomUpdateDto{
+ @IsOptional() @IsString() @MinLength(2) @MaxLength(100) nombre?:string;
+ @IsOptional() @IsBoolean() activa?:boolean;
+}
+export class TableUpdateDto{
+ @IsOptional() @IsString() @MinLength(1) @MaxLength(20) numero?:string;
+ @IsOptional() @IsInt() @Min(1) @Max(40) capacidad?:number;
+ @IsOptional() @IsBoolean() activa?:boolean;
+}
 export class StationDto{
  @IsString() sucursalId!:string;
  @IsString() @MinLength(2) @MaxLength(100) nombre!:string;
@@ -85,6 +94,15 @@ export class RouteDto{
  @IsOptional() @IsString() varianteId?:string;
  @IsOptional() @IsString() categoriaId?:string;
  @IsOptional() @IsInt() @Min(0) @Max(1000) prioridad?:number;
+}
+export class RouteUpdateDto{
+ @IsOptional() @IsString() estacionId?:string;
+ @IsOptional() @IsInt() @Min(0) @Max(1000) prioridad?:number;
+}
+export class KitchenChangesDto{
+ @IsString() sucursalId!:string;
+ @IsOptional() @IsString() cursor?:string;
+ @IsOptional() @IsInt() @Type(()=>Number) @Min(1) @Max(100) limit=50;
 }
 export class TicketListDto{
  @IsString() sucursalId!:string;

@@ -10,6 +10,6 @@ import {RecipesController,ProductionController} from './presentation/http/recipe
  imports:[AuthModule,PrismaModule,InventoryModule],
  controllers:[RecipesController,ProductionController],
  providers:[RecipeService,RecipeStore,ProductionStore],
- exports:[RecipeService]
+ exports:[RecipeService,ProductionStore]
 })
 export class RecipesModule{}

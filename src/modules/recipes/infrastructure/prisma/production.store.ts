@@ -19,7 +19,8 @@ const details={recetaVersion:{include:{receta:true,recetaComponentesComoRecetaVe
  produccionConsumosComoProduccion:{include:{articulo:true,ubicacion:true,lote:true,movimiento:true}}} as const;
 type Version=Prisma.RecetaVersionGetPayload<{include:typeof includeVersion}>;
 type Config={ubicacionConsumoId?:string;origenes?:SourceDto[];
- modificadores?:string[];modalidad?:'MESA'|'MOSTRADOR'|'PARA_LLEVAR'|'DELIVERY'};
+ modificadores?:string[];modalidad?:'MESA'|'MOSTRADOR'|'PARA_LLEVAR'|'DELIVERY';
+ packagingScope?:'ARTICULO'|'ORDEN'};
 type PlanLine={articuloId:string;ubicacionId:string;loteId:string|null;cantidad:Prisma.Decimal};
 @Injectable()
 export class ProductionStore{
@@ -87,6 +88,7 @@ export class ProductionStore{
     Number(b.varianteId!==null)-Number(a.varianteId!==null)||a.id.localeCompare(b.id));
    const selected=new Set<string>();
    for(const rule of rules){
+    if(config.packagingScope&&rule.alcance!==config.packagingScope)continue;
     if(selected.has(rule.alcance))continue;
     selected.add(rule.alcance);
     for(const line of rule.reglaEmpaqueLineasComoRegla){
@@ -132,6 +134,13 @@ export class ProductionStore{
    }
   }
   return {result,short,sucursalId:branch.id};
+ }
+ async planForOrder(tx:Tx,versionId:string,quantityUnits:Prisma.Decimal,
+  locationId:string,modificadores:string[],modalidad:'MESA'|'MOSTRADOR'|'PARA_LLEVAR'|'DELIVERY'){
+  const v=await this.version(tx,versionId,false,true);
+  if(v.receta.tipo!=='VENTA')throw new ConflictException('Comanda requiere receta VENTA');
+  return this.planned(tx,v,quantityUnits,locationId,{ubicacionConsumoId:locationId,
+   modificadores,modalidad,packagingScope:'ARTICULO'});
  }
  private async estimated(tx:Tx,lines:PlanLine[]){
   const company=await tx.empresaConfiguracion.findFirst();

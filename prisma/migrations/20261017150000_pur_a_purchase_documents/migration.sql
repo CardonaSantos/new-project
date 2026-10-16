@@ -70,3 +70,19 @@ ALTER TABLE "DevolucionProveedorLinea" ADD CONSTRAINT "DevolucionProveedorLinea_
 ALTER TABLE "NotaCreditoProveedor" ADD CONSTRAINT "NotaCreditoProveedor_total_positive" CHECK("total">0);
 ALTER TABLE "AplicacionNotaCreditoProveedor" ADD CONSTRAINT "AplicacionNotaCreditoProveedor_positive" CHECK("monto">0);
 ALTER TABLE "ConsumoInterno" ADD CONSTRAINT "ConsumoInterno_qty_positive" CHECK("cantidad">0);
+\n-- Snapshots of supplier tax treatment. Commercial amount and capitalized stock cost
+-- must not be conflated when the documented tax is recoverable.
+ALTER TABLE "OrdenCompraLinea"
+ ADD COLUMN "tasaImpuesto" DECIMAL(8,6) NOT NULL DEFAULT 0,
+ ADD COLUMN "impuestoEstimado" DECIMAL(18,2) NOT NULL DEFAULT 0,
+ ADD COLUMN "impuestoRecuperable" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "RecepcionCompraLinea"
+ ADD COLUMN "tasaImpuesto" DECIMAL(8,6) NOT NULL DEFAULT 0,
+ ADD COLUMN "importeImpuesto" DECIMAL(18,2) NOT NULL DEFAULT 0,
+ ADD COLUMN "importeComercial" DECIMAL(18,2) NOT NULL DEFAULT 0,
+ ADD COLUMN "precioIncluyeImpuesto" BOOLEAN NOT NULL DEFAULT false,
+ ADD COLUMN "impuestoRecuperable" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "OrdenCompraLinea" ADD CONSTRAINT "OrdenCompraLinea_tasa_0_1"
+ CHECK ("tasaImpuesto" >= 0 AND "tasaImpuesto" <= 1);
+ALTER TABLE "RecepcionCompraLinea" ADD CONSTRAINT "RecepcionCompraLinea_tasa_0_1"
+ CHECK ("tasaImpuesto" >= 0 AND "tasaImpuesto" <= 1);

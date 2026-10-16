@@ -44,6 +44,8 @@ export class PurchaseOrderLineDto{
  @Matches(qty) cantidadCompra!:string;
  @Matches(qty) factorAUnidadBase!:string;
  @Matches(qty) precioUnitarioCompra!:string;
+ @IsOptional() @Matches(rate) tasaImpuesto?:string;
+ @IsOptional() @IsBoolean() impuestoRecuperable?:boolean;
 }
 export class PurchaseOrderDto{
  @IsString() proveedorId!:string;
@@ -62,11 +64,14 @@ export class ReceiptLineDto{
  @Matches(qty) factorAUnidadBase!:string;
  @Matches(qty) precioUnitarioCompra!:string;
  @IsOptional() @Matches(qty) cantidadRechazada?:string;
+ @IsOptional() @Matches(rate) tasaImpuesto?:string;
+ @IsOptional() @IsBoolean() impuestoRecuperable?:boolean;
 }
 export class ReceiptDto{
  @IsOptional() @IsString() ordenCompraId?:string;
  @IsString() proveedorId!:string;
  @IsString() almacenId!:string;
+ @IsOptional() @IsBoolean() precioIncluyeImpuesto?:boolean;
  @IsOptional() @IsString() @MaxLength(150) referenciaProveedor?:string;
  @IsOptional() @IsString() @MaxLength(500) observaciones?:string;
  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(100) @ValidateNested({each:true}) @Type(()=>ReceiptLineDto)

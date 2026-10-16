@@ -4,7 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {Prisma} from '../../../../generated/prisma/client.js';
 import {PrismaService} from '../../../../infrastructure/database/prisma/prisma.service.js';
 import {InventoryPostingEngine} from '../../../inventory/infrastructure/prisma/inventory-posting.engine.js';
-import {dec,cents,f,covered} from '../../domain/purchase.policy.js';
+import {dec,cents,f,covered,taxLine} from '../../domain/purchase.policy.js';
 import type {Actor,Tx} from './purchase-shared.js';
 import {atomic,scope,audit,page,metadata,once,branchOfWarehouse} from './purchase-shared.js';
 import type {Paging,ReceiptDto,KeyDto} from '../../presentation/http/dto/purchases.dto.js';
@@ -79,12 +79,23 @@ export class PurchaseReceiptsStore{
    const base=accepted.mul(factor);
    if(base.decimalPlaces()>6||!base.gt(0))throw new ConflictException('Conversión a unidad base no exacta');
    const unit=dec(l.precioUnitarioCompra,6,true);
-   const subtotal=cents(accepted.mul(unit));
-   amount=amount.plus(subtotal);
+   const rate=dec(l.tasaImpuesto??orderLine?.tasaImpuesto.toFixed(6)??'0',6,true);
+   if(orderLine&&(!orderLine.tasaImpuesto.eq(rate)||
+     orderLine.impuestoRecuperable!==(l.impuestoRecuperable??orderLine.impuestoRecuperable)))
+    throw new ConflictException('Tratamiento fiscal difiere de la orden de compra');
+   const recoverable=l.impuestoRecuperable??orderLine?.impuestoRecuperable??false;
+   const inclusive=d.precioIncluyeImpuesto??order?.precioIncluyeImpuesto??false;
+   if(order&&inclusive!==order.precioIncluyeImpuesto)
+    throw new ConflictException('Modalidad de impuesto distinta a la orden');
+   const tax=taxLine(accepted,unit,rate,inclusive);
+   const capitalized=tax.base.plus(recoverable?new Prisma.Decimal(0):tax.tax);
+   amount=amount.plus(tax.total);
    lines.push({articuloId:l.articuloId,ubicacionId:l.ubicacionId,loteId:l.loteId??null,
     ordenCompraLineaId:l.ordenCompraLineaId??null,cantidadCompra:accepted,
     cantidadRechazada:rejected,factorAUnidadBase:factor,cantidadBase:base,
-    precioUnitarioCompra:unit,costoTotal:subtotal});
+    precioUnitarioCompra:unit,tasaImpuesto:rate,importeImpuesto:tax.tax,
+    importeComercial:tax.total,precioIncluyeImpuesto:inclusive,impuestoRecuperable:recoverable,
+    costoTotal:capitalized});
   }
   return {warehouse,order,lines,amount};
  }

@@ -3,7 +3,7 @@ import {BadRequestException,ConflictException,Injectable,NotFoundException} from
 import {randomUUID} from 'node:crypto';
 import {Prisma} from '../../../../generated/prisma/client.js';
 import {PrismaService} from '../../../../infrastructure/database/prisma/prisma.service.js';
-import {dec,cents} from '../../domain/purchase.policy.js';
+import {dec,cents,taxLine} from '../../domain/purchase.policy.js';
 import type {Actor,Tx} from './purchase-shared.js';
 import {atomic,scope,audit,page,metadata,once} from './purchase-shared.js';
 import type {Paging,PurchaseOrderDto,ReasonKeyDto,KeyDto} from '../../presentation/http/dto/purchases.dto.js';
@@ -59,9 +59,13 @@ export class PurchaseOrdersStore{
      throw new ConflictException('Presentación incompatible con artículo/proveedor/factor');
    }else if(!factor.eq(1))throw new BadRequestException('Factor distinto de 1 requiere presentación');
    const quantity=dec(l.cantidadCompra),unit=dec(l.precioUnitarioCompra,6,true);
-   const sub=cents(quantity.mul(unit));total=total.plus(sub);
+   const rate=dec(l.tasaImpuesto??'0',6,true);
+   const computed=taxLine(quantity,unit,rate,d.precioIncluyeImpuesto??false);
+   const sub=computed.total;total=total.plus(sub);
    result.push({articuloId:l.articuloId,presentacionId:l.presentacionId??null,
-    cantidadCompra:quantity,factorAUnidadBase:factor,precioUnitarioCompra:unit,subtotal:sub});
+    cantidadCompra:quantity,factorAUnidadBase:factor,precioUnitarioCompra:unit,
+    tasaImpuesto:rate,impuestoEstimado:computed.tax,impuestoRecuperable:l.impuestoRecuperable??false,
+    subtotal:sub});
   }
   return {lines:result,total};
  }

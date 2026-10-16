@@ -18,7 +18,10 @@ const details={recetaVersion:{include:{receta:true,recetaComponentesComoRecetaVe
  ubicacionDestino:{include:{almacen:true}},loteResultado:true,
  produccionConsumosComoProduccion:{include:{articulo:true,ubicacion:true,lote:true,movimiento:true}}} as const;
 type Version=Prisma.RecetaVersionGetPayload<{include:typeof includeVersion}>;
+export type OrderModifierComponent={modificadorId:string;articuloId:string;unidadId:string;
+ cantidad:string;efecto:'SUMAR'|'RESTAR'|'SUSTITUIR';sustituyeArticuloId:string|null};
 type Config={ubicacionConsumoId?:string;origenes?:SourceDto[];
+ modifierComponentsSnapshot?:OrderModifierComponent[];
  modificadores?:string[];modalidad?:'MESA'|'MOSTRADOR'|'PARA_LLEVAR'|'DELIVERY';
  packagingScope?:'ARTICULO'|'ORDEN'};
 type PlanLine={articuloId:string;ubicacionId:string;loteId:string|null;cantidad:Prisma.Decimal};
@@ -32,7 +35,7 @@ export class ProductionStore{
  }
  private async version(tx:Tx,id:string,production:boolean,allowHistorical=false){
   const v=await tx.recetaVersion.findUnique({where:{id},include:includeVersion});
-  if(!v||!v.publicadaEn||(!v.activa&&!allowHistorical)||!v.receta.activa)
+  if(!v||!v.publicadaEn||(!allowHistorical&&(!v.activa||!v.receta.activa)))
    throw new ConflictException('La versión debe estar publicada y activa');
   if(production&&v.receta.tipo!=='PRODUCCION')throw new ConflictException('Producción requiere receta tipo PRODUCCION');
   if(!v.recetaComponentesComoRecetaVersion.length)throw new ConflictException('Receta sin ingredientes');
@@ -59,14 +62,32 @@ export class ProductionStore{
   if(config.modificadores?.length){
    if(version.receta.tipo!=='VENTA')throw new ConflictException('Modificadores solo aplican a recetas de VENTA');
    ensureUnique(config.modificadores,x=>x,'Modificador');
-   const variantGroups=await tx.varianteGrupoModificador.findMany({
-    where:{varianteId:version.receta.varianteId!},select:{grupoId:true}});
-   const allowed=new Set(variantGroups.map(g=>g.grupoId));
-   const mods=await tx.modificador.findMany({where:{id:{in:config.modificadores},activo:true},
-    include:{modificadorComponentesComoModificador:true}});
-   if(mods.length!==config.modificadores.length||mods.some(m=>!allowed.has(m.grupoId)))
-    throw new ConflictException('Modificador inactivo o no vinculado a la variante');
-   for(const mod of mods)for(const extra of mod.modificadorComponentesComoModificador){
+   let components:Array<{articuloId:string;unidadId:string;cantidad:Prisma.Decimal;
+    efecto:'SUMAR'|'RESTAR'|'SUSTITUIR';sustituyeArticuloId:string|null}>=[];
+   if(config.modifierComponentsSnapshot!==undefined){
+    const selected=new Set(config.modificadores);
+    if(config.modifierComponentsSnapshot.some(x=>!selected.has(x.modificadorId)))
+     throw new ConflictException('Snapshot incluye modificador ajeno a la orden');
+    components=config.modifierComponentsSnapshot.map(x=>({
+     articuloId:x.articuloId,unidadId:x.unidadId,cantidad:new Prisma.Decimal(x.cantidad),
+     efecto:x.efecto,sustituyeArticuloId:x.sustituyeArticuloId
+    }));
+   }else{
+    // Live preview only. Accepted orders always use frozen composition.
+    const groups=await tx.varianteGrupoModificador.findMany({
+     where:{varianteId:version.receta.varianteId!},select:{grupoId:true}});
+    const allowed=new Set(groups.map(g=>g.grupoId));
+    const mods=await tx.modificador.findMany({where:{
+     id:{in:config.modificadores},activo:true},
+     include:{modificadorComponentesComoModificador:true}});
+    if(mods.length!==config.modificadores.length||mods.some(m=>!allowed.has(m.grupoId)))
+     throw new ConflictException('Modificador no permitido o inactivo');
+    components=mods.flatMap(m=>m.modificadorComponentesComoModificador.map(c=>({
+     articuloId:c.articuloId,unidadId:c.unidadId,cantidad:c.cantidad,
+     efecto:c.efecto,sustituyeArticuloId:c.sustituyeArticuloId
+    })));
+   }
+   for(const extra of components){
     const extraQty=await toBase(tx,extra.articuloId,extra.unidadId,extra.cantidad.mul(factor));
     if(extra.efecto==='SUSTITUIR'){
      if(!extra.sustituyeArticuloId)throw new ConflictException('Sustitución sin artículo origen');
@@ -136,11 +157,13 @@ export class ProductionStore{
   return {result,short,sucursalId:branch.id};
  }
  async planForOrder(tx:Tx,versionId:string,quantityUnits:Prisma.Decimal,
-  locationId:string,modificadores:string[],modalidad:'MESA'|'MOSTRADOR'|'PARA_LLEVAR'|'DELIVERY'){
+  locationId:string,modificadores:string[],modalidad:'MESA'|'MOSTRADOR'|'PARA_LLEVAR'|'DELIVERY',
+  composition?:OrderModifierComponent[]){
   const v=await this.version(tx,versionId,false,true);
   if(v.receta.tipo!=='VENTA')throw new ConflictException('Comanda requiere receta VENTA');
   return this.planned(tx,v,quantityUnits,locationId,{ubicacionConsumoId:locationId,
-   modificadores,modalidad,packagingScope:'ARTICULO'});
+   modificadores,modalidad,packagingScope:'ARTICULO',
+   modifierComponentsSnapshot:composition});
  }
  private async estimated(tx:Tx,lines:PlanLine[]){
   const company=await tx.empresaConfiguracion.findFirst();

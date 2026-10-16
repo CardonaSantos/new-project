@@ -21,3 +21,35 @@ jobs:
         run: npm test
       - name: HTTP tests
         run: npm run test:e2e
+
+  migration-smoke:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: gastro_core_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d gastro_core_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/gastro_core_ci?schema=public
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Apply all migrations to fresh PostgreSQL
+        run: npm run prisma:deploy
+      - name: Verify migrations are synchronized
+        run: npm run prisma:status
+      - name: Reapply safely without creating duplicate objects
+        run: npm run prisma:deploy

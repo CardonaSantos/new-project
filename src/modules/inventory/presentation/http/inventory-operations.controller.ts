@@ -2,7 +2,8 @@ import {Body,Controller,Get,Param,Patch,Post,Query} from '@nestjs/common';
 import {CurrentUser} from '../../../auth/presentation/http/decorators/auth.decorators.js';
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {InventoryOperationsStore} from '../../infrastructure/prisma/inventory-operations.store.js';
-import {ManualPostingDto,LotCreateDto,LotStatusDto,StockBranchDto,CountCreateDto,TransferCreateDto,OperationKeyDto} from './dto/inventory-operations.dto.js';
+import {InventoryInternalConsumptionStore} from '../../infrastructure/prisma/inventory-internal-consumption.store.js';
+import {ManualPostingDto,LotCreateDto,LotStatusDto,StockBranchDto,CountCreateDto,TransferCreateDto,OperationKeyDto,InternalConsumptionDto} from './dto/inventory-operations.dto.js';
 @Controller('inventory/stock')
 export class InventoryStockController{
  constructor(private readonly store:InventoryOperationsStore){}
@@ -26,7 +27,8 @@ export class InventoryMovementsController{
 }
 @Controller('inventory/operations')
 export class InventoryManualController{
- constructor(private readonly store:InventoryOperationsStore){}
+ constructor(private readonly store:InventoryOperationsStore,private readonly internal:InventoryInternalConsumptionStore){}
+ @Post('internal-consumption') consume(@CurrentUser() u:Principal,@Body() d:InternalConsumptionDto){return this.internal.execute(u,d);}
  @Post('opening') opening(@CurrentUser() u:Principal,@Body() dto:ManualPostingDto){return this.store.manual(u,'OPENING',dto);}
  @Post('inbound') inbound(@CurrentUser() u:Principal,@Body() dto:ManualPostingDto){return this.store.manual(u,'INBOUND',dto);}
  @Post('outbound') outbound(@CurrentUser() u:Principal,@Body() dto:ManualPostingDto){return this.store.manual(u,'OUTBOUND',dto);}

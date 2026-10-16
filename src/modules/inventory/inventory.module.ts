@@ -11,6 +11,7 @@ import {InventoryArticlesController} from './presentation/http/inventory-article
 import {InventoryWarehousesController,InventoryLocationsController} from './presentation/http/inventory-storage.controller.js';
 import {InventoryReportsController} from './presentation/http/inventory-reports.controller.js';
 import {InventoryPostingEngine} from './infrastructure/prisma/inventory-posting.engine.js';
+import {InventoryInternalConsumptionStore} from './infrastructure/prisma/inventory-internal-consumption.store.js';
 import {InventoryDocumentsStore} from './infrastructure/prisma/inventory-documents.store.js';
 import {InventoryOperationsStore} from './infrastructure/prisma/inventory-operations.store.js';
 import {InventoryStockController,InventoryLotsController,InventoryMovementsController,InventoryManualController,
@@ -22,7 +23,7 @@ import {InventoryStockController,InventoryLotsController,InventoryMovementsContr
   InventoryWarehousesController,InventoryLocationsController,InventoryReportsController,
  InventoryStockController,InventoryLotsController,InventoryMovementsController,InventoryManualController,
  InventoryCountsController,InventoryTransfersController,InventoryOperationalReportsController],
- providers:[InventoryService,InventoryMediaService,InventoryPostingEngine,InventoryDocumentsStore,InventoryOperationsStore,
+ providers:[InventoryService,InventoryMediaService,InventoryPostingEngine,InventoryInternalConsumptionStore,InventoryDocumentsStore,InventoryOperationsStore,
   {provide:InventoryRepositoryPort,useClass:PrismaInventoryRepository}],
  exports:[InventoryService,InventoryRepositoryPort,InventoryPostingEngine]
 })

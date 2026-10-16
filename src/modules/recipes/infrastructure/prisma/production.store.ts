@@ -29,9 +29,9 @@ export class ProductionStore{
   if(!(await this.identity.capabilities(u.id,b)).includes(p))
    throw new ForbiddenException('Permiso insuficiente para esta sucursal');
  }
- private async version(tx:Tx,id:string,production:boolean){
+ private async version(tx:Tx,id:string,production:boolean,allowHistorical=false){
   const v=await tx.recetaVersion.findUnique({where:{id},include:includeVersion});
-  if(!v||!v.publicadaEn||!v.activa||!v.receta.activa)
+  if(!v||!v.publicadaEn||(!v.activa&&!allowHistorical)||!v.receta.activa)
    throw new ConflictException('La versión debe estar publicada y activa');
   if(production&&v.receta.tipo!=='PRODUCCION')throw new ConflictException('Producción requiere receta tipo PRODUCCION');
   if(!v.recetaComponentesComoRecetaVersion.length)throw new ConflictException('Receta sin ingredientes');
@@ -194,12 +194,13 @@ export class ProductionStore{
    const plan=await this.planned(tx,version,amount,d.ubicacionId,{
     ubicacionConsumoId:d.ubicacionId,modificadores:quote.modificadores,modalidad:quote.modalidad});
    const allowed=(await this.identity.capabilities(u.id,d.sucursalId)).includes('inventory.costs.read');
-   const costs=allowed?await this.estimated(tx,plan.result):[];
+   const costs=allowed&&!plan.short.length?await this.estimated(tx,plan.result):[];
    return {recetaVersionId:id,sucursalId:d.sucursalId,cantidad:money(amount),
     disponible:!plan.short.length,insuficientes:plan.short,
     consumos:plan.result.map((x,i)=>({...x,cantidad:money(x.cantidad),
-     ...(allowed?{costoTotal:money(costs[i])}:{})})),
-    ...(allowed?{costoEstimado:money(costs.reduce((sum,c)=>sum.plus(c),new Prisma.Decimal(0)))}:{})
+     ...(allowed?{costoTotal:costs[i]?money(costs[i]):null}:{})})),
+    ...(allowed?{costoEstimado:plan.short.length?null:
+     money(costs.reduce((sum,c)=>sum.plus(c),new Prisma.Decimal(0)))}:{})
    };
   });
  }
@@ -208,9 +209,17 @@ export class ProductionStore{
  }
  private async createTx(tx:Tx,u:Principal,d:ExecuteProductionDto){
   const qty=quantity(d.cantidadProducida);
-  const v=await this.version(tx,d.recetaVersionId,true);
   const dest=await this.engine.location(tx,d.ubicacionDestinoId);
   await this.engine.allowed(tx,u.id,'recipes.produce',dest.almacen.sucursalId);
+  const key=validCode(d.claveOperacion??'PROD:'+randomUUID());
+  const hash=this.fingerprint(u,d);
+  const existing=await tx.produccionLote.findUnique({where:{claveOperacion:key}});
+  if(existing){
+   if(existing.solicitudHash!==hash||existing.usuarioId!==u.id)
+    throw new ConflictException('Clave de producción reutilizada con contenido diferente');
+   return existing;
+  }
+  const v=await this.version(tx,d.recetaVersionId,true);
   if(d.ubicacionConsumoId){
    const loc=await this.engine.location(tx,d.ubicacionConsumoId);
    if(loc.almacen.sucursalId!==dest.almacen.sucursalId)throw new ConflictException('Consumo en otra sucursal');
@@ -227,14 +236,6 @@ export class ProductionStore{
   if(!article||!article.activo)throw new ConflictException('Artículo resultado inactivo');
   if(article.requiereVencimiento&&!expires&&v.vidaUtilDias===null)
    throw new BadRequestException('Indique fechaVencimiento o configure vidaUtilDias en la receta');
-  const key=validCode(d.claveOperacion??'PROD:'+randomUUID());
-  const hash=this.fingerprint(u,d);
-  const existing=await tx.produccionLote.findUnique({where:{claveOperacion:key}});
-  if(existing){
-   if(existing.solicitudHash!==hash||existing.usuarioId!==u.id)
-    throw new ConflictException('Clave de producción reutilizada con contenido diferente');
-   return existing;
-  }
   const row=await tx.produccionLote.create({data:{
    recetaVersionId:v.id,ubicacionDestinoId:d.ubicacionDestinoId,usuarioId:u.id,
    cantidadProducida:qty,fechaVencimiento:expires,claveOperacion:key,solicitudHash:hash,
@@ -257,7 +258,7 @@ export class ProductionStore{
   await this.engine.allowed(tx,u.id,'recipes.produce',p.ubicacionDestino.almacen.sucursalId);
   if(p.estado==='CONFIRMADA')return p;
   if(p.estado!=='BORRADOR')throw new ConflictException('Solo se confirma producción en borrador');
-  const version=await this.version(tx,p.recetaVersionId,true);
+  const version=await this.version(tx,p.recetaVersionId,true,true);
   const outputId=version.receta.articuloResultadoId!;
   const plan=await this.planned(tx,version,p.cantidadProducida,p.ubicacionDestinoId,
    this.config(p.configuracion));

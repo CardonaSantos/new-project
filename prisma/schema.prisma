@@ -1465,6 +1465,7 @@ model OrdenLinea {
   precioUnitario Decimal          @db.Decimal(18, 2)
   recetaVersionId String?
   recetaVersion   RecetaVersion?   @relation("OrdenLinea_version_RecetaVersion",fields:[recetaVersionId],references:[id],onDelete:Restrict)
+  composicionSnapshot Json?
   cantidadEnviada Decimal          @default(0) @db.Decimal(18, 3)
   descuento      Decimal          @default(0) @db.Decimal(18, 2)
   subtotal       Decimal          @db.Decimal(18, 2)

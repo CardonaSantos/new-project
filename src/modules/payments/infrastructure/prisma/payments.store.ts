@@ -104,8 +104,8 @@ export class PaymentsStore{
  private async readyToSettle(tx:Tx,orderId:string){
   const lines=await tx.ordenLinea.findMany({where:{ordenId:orderId,canceladaEn:null}});
   if(!lines.length||lines.some(l=>l.cantidadEnviada.lt(l.cantidad)))return false;
-  if(await tx.comanda.count({where:{ordenId,estado:{in:['PENDIENTE','PREPARANDO']}}}))return false;
-  const accounts=await tx.cuenta.findMany({where:{ordenId}});
+  if(await tx.comanda.count({where:{ordenId:orderId,estado:{in:['PENDIENTE','PREPARANDO']}}}))return false;
+  const accounts=await tx.cuenta.findMany({where:{ordenId:orderId}});
   return accounts.length>0&&accounts.every(a=>a.pagado.eq(a.total));
  }
  async finalize(u:Principal,orderId:string){
@@ -293,7 +293,7 @@ export class PaymentsStore{
  async splitEqual(u:Principal,orderId:string,d:EqualSplitDto){
   return txSerializable(this.db,tx=>runOnce(tx,u,d.claveOperacion,'ACCOUNTS_SPLIT_EQUAL',
    {orderId,...d},async()=>{
-    const lines=await tx.ordenLinea.findMany({where:{ordenId,canceladaEn:null}});
+    const lines=await tx.ordenLinea.findMany({where:{ordenId:orderId,canceladaEn:null}});
     const accounts=Array.from({length:d.personas},(_,i)=>({nombre:'Persona '+(i+1),
      lineas:[] as {ordenLineaId:string;cantidadAsignada:string;importeAsignado:string}[]}));
     for(const line of lines){

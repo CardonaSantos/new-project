@@ -2,6 +2,7 @@
 import {BadRequestException,ConflictException,ForbiddenException,NotFoundException} from '@nestjs/common';
 import {createHash} from 'node:crypto';
 import {Prisma} from '../../../../generated/prisma/client.js';
+import {PrismaService} from '../../../../infrastructure/database/prisma/prisma.service.js';
 import type {Principal} from '../../../auth/application/auth.service.js';
 export type Tx=Prisma.TransactionClient;
 export async function allowed(tx:Tx,u:Principal,sucursalId:string,permission:string){
@@ -26,7 +27,7 @@ export async function runOnce<T extends Record<string,unknown>>(tx:Tx,u:Principa
   return old.resultado as T;
  }
  const value=await run();
- await tx.operacionIdempotente.create({data:{clave,operacion,hashSolicitud:hash,
+ await tx.operacionIdempotente.create({data:{clave,operacion:operation,hashSolicitud:hash,
   resultado:value as Prisma.InputJsonValue,finalizada:true,
   expiraEn:new Date(Date.now()+90*86400000)}});
  return value;
@@ -45,8 +46,7 @@ export async function orderForAccount(tx:Tx,accountId:string){
  if(!account.orden.sucursal.activa)throw new ConflictException('Sucursal inactiva');
  return account;
 }
-export async function txSerializable<T>(db:{ $transaction:(fn:(tx:Tx)=>Promise<T>,options?:{isolationLevel:'Serializable'})=>Promise<T>},
- fn:(tx:Tx)=>Promise<T>):Promise<T>{
+export async function txSerializable<T>(db:PrismaService,fn:(tx:Tx)=>Promise<T>):Promise<T>{
  try{return await db.$transaction(fn,{isolationLevel:'Serializable'});}
  catch(e){
   if(e instanceof Prisma.PrismaClientKnownRequestError&&['P2034','P2002'].includes(e.code))

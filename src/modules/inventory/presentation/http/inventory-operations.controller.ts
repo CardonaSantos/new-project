@@ -27,8 +27,7 @@ export class InventoryMovementsController{
 }
 @Controller('inventory/operations')
 export class InventoryManualController{
- constructor(private readonly store:InventoryOperationsStore,private readonly internal:InventoryInternalConsumptionStore){}
- @Post('internal-consumption') consume(@CurrentUser() u:Principal,@Body() d:InternalConsumptionDto){return this.internal.execute(u,d);}
+ constructor(private readonly store:InventoryOperationsStore){}
  @Post('opening') opening(@CurrentUser() u:Principal,@Body() dto:ManualPostingDto){return this.store.manual(u,'OPENING',dto);}
  @Post('inbound') inbound(@CurrentUser() u:Principal,@Body() dto:ManualPostingDto){return this.store.manual(u,'INBOUND',dto);}
  @Post('outbound') outbound(@CurrentUser() u:Principal,@Body() dto:ManualPostingDto){return this.store.manual(u,'OUTBOUND',dto);}

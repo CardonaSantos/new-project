@@ -12,6 +12,15 @@ export class OrderItemDto{
  @IsOptional() @IsString() @Matches(/^(?:0|[1-9]\d{0,11})(?:\.\d{1,2})?$/) descuento?:string;
  @IsOptional() @IsString() @MaxLength(300) notasCocina?:string;
 }
+export class QuoteOrderDto{
+ @IsString() sucursalId!:string;
+ @IsArray() @ArrayMinSize(1) @ArrayMaxSize(100) @ValidateNested({each:true})
+ @Type(()=>OrderItemDto) lineas!:OrderItemDto[];
+}
+export class HistoryQueryDto{
+ @IsOptional() @IsInt() @Type(()=>Number) @Min(1) page=1;
+ @IsOptional() @IsInt() @Type(()=>Number) @Min(1) @Max(100) limit=30;
+}
 export class CreateOrderDto{
  @IsString() sucursalId!:string;
  @IsEnum(['MESA','MOSTRADOR','PARA_LLEVAR','DELIVERY']) modalidad!:'MESA'|'MOSTRADOR'|'PARA_LLEVAR'|'DELIVERY';

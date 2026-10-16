@@ -42,11 +42,16 @@ export class PaymentsStore{
   });
  }
  private async record(tx:Tx,u:Principal,accountId:string,turnoId:string,
-  entry:{metodo:'EFECTIVO'|'TARJETA'|'TRANSFERENCIA'|'OTRO';monto:string;referencia?:string;
+  entry:{metodo:'EFECTIVO'|'TARJETA'|'TRANSFERENCIA'|'OTRO';monto:string;efectivoRecibido?:string;referencia?:string;
    codigoAutorizacion?:string;terminalReferencia?:string},attemptId?:string){
   const amount=money(entry.monto);
+  const received=entry.metodo==='EFECTIVO'?money(entry.efectivoRecibido??entry.monto):null;
+  if(received&&received.lt(amount))throw new BadRequestException('Efectivo recibido menor que cobro');
+  if(entry.metodo!=='EFECTIVO'&&entry.efectivoRecibido!==undefined)
+   throw new BadRequestException('efectivoRecibido solo aplica a efectivo');
   const pay=await tx.pago.create({data:{cuentaId:accountId,turnoId,cobradoPorId:u.id,
-   metodo:entry.metodo,monto:amount,referencia:entry.referencia?.trim()??null,
+   metodo:entry.metodo,monto:amount,efectivoRecibido:received,
+   vuelto:received?.minus(amount)??null,referencia:entry.referencia?.trim()??null,
    codigoAutorizacion:entry.codigoAutorizacion?.trim()??null,
    terminalReferencia:entry.terminalReferencia?.trim()??null,
    ...(attemptId?{intentoId:attemptId}:{})}});
@@ -71,6 +76,9 @@ export class PaymentsStore{
    throw new ConflictException('Todas las cuentas deben estar exactamente pagadas');
   const now=new Date();
   for(const account of accounts){
+   // Pending bank confirmations cannot survive a fully settled order.
+   await tx.intentoPago.updateMany({where:{cuentaId:account.id,estado:'PENDIENTE'},
+    data:{estado:'CANCELADO'}});
    const net=account.cuentaLineasComoCuenta.reduce((s,l)=>s.plus(l.importeAsignado),new Prisma.Decimal(0));
    if(!net.eq(account.total))throw new ConflictException('Asignaciones de cuenta no concilian');
    const existing=await tx.venta.findUnique({where:{cuentaId:account.id}});
@@ -137,7 +145,9 @@ export class PaymentsStore{
    const shift=await this.cash.shiftTx(tx,u,d.turnoId,'payments.collect');
    if(shift.caja.sucursalId!==branch)throw new ConflictException('Turno de otra sucursal');
    const total=entries.reduce((s,p)=>s.plus(money(p.monto)),new Prisma.Decimal(0));
-   ensureCoverage(account.total,account.pagado.plus(total));
+   const existingPending=await tx.intentoPago.findMany({where:{cuentaId:accountId,estado:'PENDIENTE'}});
+   const reserved=existingPending.reduce((s,p)=>s.plus(p.monto),new Prisma.Decimal(0));
+   ensureCoverage(account.total,account.pagado.plus(reserved).plus(total));
    const pagos:string[]=[],intentos:string[]=[];
    for(let i=0;i<entries.length;i++){
     const p=entries[i];
@@ -191,6 +201,21 @@ export class PaymentsStore{
    return {cuentaId:attempt.cuentaId,pagoId:payment.id};
   }));
   return {...result,cuenta:await this.account(u,result.cuentaId)};
+ }
+ async cancelAttempt(u:Principal,attemptId:string,
+  d:{motivo:string;claveOperacion:string}){
+  return txSerializable(this.db,tx=>runOnce(tx,u,d.claveOperacion,
+   'PAYMENT_ATTEMPT_CANCEL',{attemptId,...d},async()=>{
+    const attempt=await tx.intentoPago.findUnique({where:{id:attemptId},
+     include:{cuenta:{include:{orden:true}}}});
+    if(!attempt)throw new NotFoundException('Intento inexistente');
+    await allowed(tx,u,attempt.cuenta.orden.sucursalId,'payments.verify');
+    if(attempt.estado!=='PENDIENTE')throw new ConflictException('Intento no pendiente');
+    await tx.intentoPago.update({where:{id:attemptId},data:{estado:'CANCELADO'}});
+    await audit(tx,u,attempt.cuenta.orden.sucursalId,'PAYMENT_ATTEMPT_CANCELLED',
+     'IntentoPago',attemptId,{motivo:d.motivo.trim()});
+    return {attemptId,estado:'CANCELADO'};
+   }));
  }
  async refund(u:Principal,pagoId:string,d:RefundDto){
   const amount=money(d.monto);

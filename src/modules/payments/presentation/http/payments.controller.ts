@@ -5,7 +5,7 @@ import type {Principal} from '../../../auth/application/auth.service.js';
 import {CashStore} from '../../infrastructure/prisma/cash.store.js';
 import {PaymentsStore} from '../../infrastructure/prisma/payments.store.js';
 import {BranchDto,PageDto,RegisterDto,RegisterPatchDto,ShiftOpenDto,ShiftCloseDto,
- ShiftMovementDto,CollectDto,ConfirmAttemptDto,RefundDto,SplitDto,EqualSplitDto}
+ ShiftMovementDto,CollectDto,ConfirmAttemptDto,CancelAttemptDto,RefundDto,SplitDto,EqualSplitDto}
  from './dto/payments.dto.js';
 @Controller('cash')
 export class CashController{
@@ -44,6 +44,8 @@ export class AttemptsController{
  constructor(private readonly payments:PaymentsStore){}
  @Post(':id/confirm') confirm(@CurrentUser() u:Principal,@Param('id') id:string,
   @Body() d:ConfirmAttemptDto){return this.payments.confirm(u,id,d);}
+ @Post(':id/cancel') cancel(@CurrentUser() u:Principal,@Param('id') id:string,
+  @Body() d:CancelAttemptDto){return this.payments.cancelAttempt(u,id,d);}
 }
 @Controller('payments')
 export class PaymentsController{

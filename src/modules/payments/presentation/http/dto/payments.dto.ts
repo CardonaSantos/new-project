@@ -39,6 +39,7 @@ export class PaymentPartDto{
  @IsEnum(['EFECTIVO','TARJETA','TRANSFERENCIA','OTRO'])
  metodo!:'EFECTIVO'|'TARJETA'|'TRANSFERENCIA'|'OTRO';
  @Matches(cash) monto!:string;
+ @IsOptional() @Matches(cash) efectivoRecibido?:string;
  @IsOptional() @IsString() @MaxLength(160) referencia?:string;
  @IsOptional() @IsString() @MaxLength(160) codigoAutorizacion?:string;
  @IsOptional() @IsString() @MaxLength(160) terminalReferencia?:string;
@@ -47,6 +48,10 @@ export class CollectDto{
  @IsString() turnoId!:string;
  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(10) @ValidateNested({each:true}) @Type(()=>PaymentPartDto)
  pagos!:PaymentPartDto[];
+ @IsString() @MinLength(6) @MaxLength(120) claveOperacion!:string;
+}
+export class CancelAttemptDto{
+ @IsString() @MinLength(5) @MaxLength(500) motivo!:string;
  @IsString() @MinLength(6) @MaxLength(120) claveOperacion!:string;
 }
 export class ConfirmAttemptDto{

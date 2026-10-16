@@ -61,7 +61,7 @@ export class CashStore{
     fondoInicial:initial}});
    await audit(tx,u,register.sucursalId,'CASH_SHIFT_OPENED','TurnoCaja',shift.id);
    return {shiftId:shift.id};
-  })).then(async r=>this.detail(u,r.shiftId));
+  }));
  }
  async shiftTx(tx:Tx,u:Principal,id:string,permission:string,requireOwner=true){
   const shift=await tx.turnoCaja.findUnique({where:{id},include:{caja:true}});

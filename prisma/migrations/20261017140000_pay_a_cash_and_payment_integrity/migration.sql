@@ -14,3 +14,8 @@ ALTER TABLE "IntentoPago" ADD CONSTRAINT "IntentoPago_monto_positive" CHECK ("mo
 ALTER TABLE "ReembolsoPago" ADD CONSTRAINT "ReembolsoPago_monto_positive" CHECK ("monto" > 0);
 ALTER TABLE "Cuenta" ADD CONSTRAINT "Cuenta_cobro_bounds"
  CHECK ("pagado" >= 0 AND "pagado" <= "total");
+ALTER TABLE "Pago"
+ ADD COLUMN "efectivoRecibido" DECIMAL(18,2),
+ ADD COLUMN "vuelto" DECIMAL(18,2);
+ALTER TABLE "Pago" ADD CONSTRAINT "Pago_efectivoRecibido_gte_monto"
+ CHECK ("efectivoRecibido" IS NULL OR ("efectivoRecibido" >= "monto" AND "vuelto" = "efectivoRecibido" - "monto"));

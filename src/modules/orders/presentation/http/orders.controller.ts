@@ -1,11 +1,12 @@
-import {Body,Controller,Get,Param,Patch,Post,Query} from '@nestjs/common';
+import {Body,Controller,Delete,Get,Param,Patch,Post,Query} from '@nestjs/common';
 import {CurrentUser} from '../../../auth/presentation/http/decorators/auth.decorators.js';
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {OrderStore} from '../../infrastructure/prisma/order.store.js';
 import {KitchenStore} from '../../infrastructure/prisma/kitchen.store.js';
 import {TableStore} from '../../infrastructure/prisma/table.store.js';
 import {AddItemsDto,BranchQueryDto,CreateOrderDto,EditLineDto,EditOrderDto,
- OrderListDto,ReasonDto,RouteDto,RoomDto,SendDto,StartLineDto,StationDto,
+ OrderListDto,ReasonDto,RouteDto,RouteUpdateDto,RoomDto,RoomUpdateDto,TableUpdateDto,KitchenChangesDto,
+ SendDto,StartLineDto,StationDto,
  StationUpdateDto,TableDto,TicketListDto} from './dto/orders.dto.js';
 
 @Controller('orders')
@@ -36,8 +37,12 @@ export class TablesController{
  constructor(private readonly tables:TableStore){}
  @Get('rooms') rooms(@CurrentUser() u:Principal,@Query() q:BranchQueryDto){return this.tables.rooms(u,q.sucursalId);}
  @Post('rooms') createRoom(@CurrentUser() u:Principal,@Body() d:RoomDto){return this.tables.createRoom(u,d);}
+ @Patch('rooms/:id') updateRoom(@CurrentUser() u:Principal,@Param('id') id:string,@Body() d:RoomUpdateDto){
+  return this.tables.updateRoom(u,id,d);}
  @Get() list(@CurrentUser() u:Principal,@Query() q:BranchQueryDto){return this.tables.list(u,q.sucursalId);}
  @Post() create(@CurrentUser() u:Principal,@Body() d:TableDto){return this.tables.createTable(u,d);}
+ @Patch(':id') update(@CurrentUser() u:Principal,@Param('id') id:string,@Body() d:TableUpdateDto){
+  return this.tables.updateTable(u,id,d);}
  @Post('occupancies/:id/close') close(@CurrentUser() u:Principal,@Param('id') id:string){
   return this.tables.close(u,id);
  }
@@ -55,6 +60,12 @@ export class KitchenController{
   return this.kitchen.routes(u,q.sucursalId);}
  @Post('routes') route(@CurrentUser() u:Principal,@Body() d:RouteDto){
   return this.kitchen.route(u,d);}
+ @Patch('routes/:id') editRoute(@CurrentUser() u:Principal,@Param('id') id:string,
+  @Body() d:RouteUpdateDto){return this.kitchen.editRoute(u,id,d);}
+ @Delete('routes/:id') removeRoute(@CurrentUser() u:Principal,@Param('id') id:string){
+  return this.kitchen.removeRoute(u,id);}
+ @Get('changes') changes(@CurrentUser() u:Principal,@Query() q:KitchenChangesDto){
+  return this.kitchen.changes(u,q);}
  @Get('tickets') tickets(@CurrentUser() u:Principal,@Query() q:TicketListDto){
   return this.kitchen.list(u,q);}
  @Get('tickets/:id') ticket(@CurrentUser() u:Principal,@Param('id') id:string){

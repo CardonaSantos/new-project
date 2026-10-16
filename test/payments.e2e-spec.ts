@@ -19,7 +19,9 @@ describe('PAY-A HTTP DTO contract',()=>{
   movement:vi.fn(),close:vi.fn()};
  const pay={collect:vi.fn().mockResolvedValue({accountId:'a1'}),account:vi.fn(),
   accounts:vi.fn(),confirm:vi.fn().mockResolvedValue({pagoId:'p1'}),
-  refund:vi.fn(),split:vi.fn(),splitEqual:vi.fn(),sales:vi.fn(),finalize:vi.fn()};
+  refund:vi.fn().mockResolvedValue({refundId:'r1'}),split:vi.fn(),
+  splitEqual:vi.fn(),sales:vi.fn(),sale:vi.fn(),paymentSummary:vi.fn(),
+  cancelAttempt:vi.fn().mockResolvedValue({estado:'CANCELADO'}),finalize:vi.fn()};
  beforeEach(async()=>{
   vi.clearAllMocks();
   const mod=await Test.createTestingModule({controllers:[
@@ -51,6 +53,10 @@ describe('PAY-A HTTP DTO contract',()=>{
   await request(app.getHttpServer()).post('/api/accounts/a1/payments').send({
    turnoId:'s1',claveOperacion:'PAY:COLLECT:002',pagos:[{metodo:'EFECTIVO',monto:'1.001'}]
   }).expect(400);
+  await request(app.getHttpServer()).post('/api/accounts/a1/payments').send({
+   turnoId:'s1',claveOperacion:'PAY:COLLECT:003',
+   pagos:[{metodo:'EFECTIVO',monto:'7.00',efectivoRecibido:'10.00'}]
+  }).expect(201);
  });
  it('validates splits, verification and refunds',async()=>{
   await request(app.getHttpServer()).post('/api/accounts/order/o1/split-equal').send({
@@ -59,6 +65,8 @@ describe('PAY-A HTTP DTO contract',()=>{
    personas:1,claveOperacion:'PAY:SPLIT:002'}).expect(400);
   await request(app.getHttpServer()).post('/api/payment-attempts/i1/confirm').send({
    turnoId:'s1',motivo:'Depósito verificado',claveOperacion:'PAY:CONFIRM:01'}).expect(201);
+  await request(app.getHttpServer()).post('/api/payment-attempts/i1/cancel').send({
+   motivo:'Cliente cambió a efectivo',claveOperacion:'PAY:CANCEL:001'}).expect(201);
   await request(app.getHttpServer()).post('/api/payments/p1/refund').send({
    monto:'5.00',motivo:'Servicio cancelado',claveOperacion:'PAY:REFUND:001'}).expect(201);
  });

@@ -57,4 +57,12 @@ export class PaymentsController{
 export class SalesController{
  constructor(private readonly payments:PaymentsStore){}
  @Get() list(@CurrentUser() u:Principal,@Query() q:PageDto){return this.payments.sales(u,q);}
+ @Get(':id') detail(@CurrentUser() u:Principal,@Param('id') id:string){
+  return this.payments.sale(u,id);}
+}
+@Controller('payment-reports')
+export class PaymentReportsController{
+ constructor(private readonly payments:PaymentsStore){}
+ @Get('summary') summary(@CurrentUser() u:Principal,@Query() q:BranchDto){
+  return this.payments.paymentSummary(u,q.sucursalId);}
 }

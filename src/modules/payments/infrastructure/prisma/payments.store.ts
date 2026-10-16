@@ -106,6 +106,8 @@ export class PaymentsStore{
    await tx.ocupacionMesa.updateMany({where:{id:order.ocupacionMesaId,cerradaEn:null},data:{cerradaEn:now}});
    await audit(tx,u,order.sucursalId,'TABLE_RELEASED','OcupacionMesa',order.ocupacionMesaId);
   }
+  await tx.eventoOrden.create({data:{ordenId:orderId,usuarioId:u.id,accion:'ORDER_CLOSED',
+   detalles:{origen:'PAY_A'} as Prisma.InputJsonValue}});
   await audit(tx,u,order.sucursalId,'ORDER_CLOSED','Orden',orderId);
   return {orderId,closed:true};
  }
@@ -251,6 +253,39 @@ export class PaymentsStore{
     {pagoId,monto:formatted(amount),motivo:d.motivo.trim()});
    return {refundId:refund.id,pagoId,cuentaId:payment.cuentaId};
   }));
+ }
+ async sale(u:Principal,id:string){
+  return txSerializable(this.db,async tx=>{
+   const sale=await tx.venta.findUnique({where:{id},
+    include:{ventaLineasComoVenta:true,cuenta:{include:{orden:{select:{
+     id:true,numero:true,modalidad:true,estado:true}}}}}});
+   if(!sale)throw new NotFoundException('Venta inexistente');
+   await allowed(tx,u,sale.sucursalId,'sales.read');
+   return sale;
+  });
+ }
+ async paymentSummary(u:Principal,sucursalId:string){
+  return txSerializable(this.db,async tx=>{
+   await allowed(tx,u,sucursalId,'cash.read');
+   const [collected,refunded,sales,shifts]=await Promise.all([
+    tx.pago.groupBy({by:['metodo'],where:{cuenta:{orden:{sucursalId}}},
+     _sum:{monto:true},_count:{_all:true}}),
+    tx.reembolsoPago.aggregate({where:{pago:{cuenta:{orden:{sucursalId}}}},_sum:{monto:true}}),
+    tx.venta.aggregate({where:{sucursalId},_sum:{total:true},_count:{_all:true}}),
+    tx.turnoCaja.aggregate({where:{caja:{sucursalId},cerradaEn:{not:null}},
+     _sum:{diferencia:true},_count:{_all:true}})
+   ]);
+   const gross=collected.reduce((s,x)=>s.plus(x._sum.monto??0),new Prisma.Decimal(0));
+   const returns=refunded._sum.monto??new Prisma.Decimal(0);
+   return {sucursalId,cobradoBruto:formatted(gross),reembolsado:formatted(returns),
+    cobradoNeto:formatted(gross.minus(returns)),
+    ventasInternas:formatted(sales._sum.total??new Prisma.Decimal(0)),
+    cantidadVentas:sales._count._all,
+    cajaDiferenciaAcumulada:formatted(shifts._sum.diferencia??new Prisma.Decimal(0)),
+    turnosCerrados:shifts._count._all,
+    porMetodo:collected.map(x=>({metodo:x.metodo,total:formatted(x._sum.monto??new Prisma.Decimal(0)),
+     cantidad:x._count._all}))};
+  });
  }
  async sales(u:Principal,q:PageDto){
   return txSerializable(this.db,async tx=>{

@@ -365,7 +365,8 @@ export class OrderStore{
  }
 
  async close(u:Principal,id:string){
-  return this.payments.settle(u,id);
+  await this.payments.settle(u,id);
+  return this.detail(u,id);
  }
 
 }

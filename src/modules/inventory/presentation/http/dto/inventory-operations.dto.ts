@@ -61,3 +61,12 @@ export class OperationKeyDto{
  @IsString() @MaxLength(120) claveOperacion!:string;
 }
 export class IdDto { @IsString() id!:string; }
+
+export class InternalConsumptionDto extends OperationKeyDto{
+ @IsString() articuloId!:string;
+ @IsString() ubicacionId!:string;
+ @IsOptional() @IsString() loteId?:string;
+ @Matches(qty) cantidad!:string;
+ @IsString() @MaxLength(100) destinoUso!:string;
+ @IsString() @MaxLength(500) motivo!:string;
+}

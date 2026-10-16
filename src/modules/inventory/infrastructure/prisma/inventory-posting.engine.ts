@@ -9,7 +9,7 @@ export type StockPosting={
  actorId:string;ubicacionId:string;articuloId:string;loteId?:string|null;
  cantidad:string;direction:'IN'|'OUT';tipo:'AJUSTE_ENTRADA'|'AJUSTE_SALIDA'|'MERMA'|'TRANSFERENCIA_SALIDA'|'TRANSFERENCIA_ENTRADA'|'PRODUCCION_SALIDA'|'PRODUCCION_ENTRADA'|'CONSUMO';
  costoUnitario?:string;costoTotalOverride?:string;claveOperacion:string;referenciaTipo:string;referenciaId:string;nota?:string;
- permission:'inventory.adjust'|'inventory.transfer'|'recipes.produce'|'kitchen.manage'|'orders.create';allowBlocked?:boolean;
+ permission:'inventory.adjust'|'inventory.transfer'|'recipes.produce'|'kitchen.manage'|'orders.create'|'orders.manage';allowBlocked?:boolean;
 };
 export type CostSlice={cantidad:string;costoUnitario:string;costoTotal?:string};
 @Injectable()

@@ -128,7 +128,6 @@ export class OrderStore{
   return this.db.orden.findUniqueOrThrow({where:{id},include:orderInclude});
  }
  async list(u:Principal,q:OrderListDto){
-  await this.engine.allowedInRead?.(u.id,'orders.read',q.sucursalId);
   return this.engine.tx(async tx=>{
    await this.engine.allowed(tx,u.id,'orders.read',q.sucursalId);
    const where:Prisma.OrdenWhereInput={sucursalId:q.sucursalId,

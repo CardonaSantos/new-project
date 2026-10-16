@@ -164,7 +164,6 @@ export class KitchenStore{
   return tickets;
  }
  async list(u:Principal,q:TicketListDto){
-  await this.engine.allowedInRead?.(u.id,'kitchen.read',q.sucursalId);
   return this.engine.tx(async tx=>{
    await this.engine.allowed(tx,u.id,'kitchen.read',q.sucursalId);
    if(q.estacionId){

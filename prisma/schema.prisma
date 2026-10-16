@@ -580,6 +580,7 @@ model Modificador {
   grupo            GrupoModificador @relation("Modificador_grupo_GrupoModificador", fields: [grupoId], references: [id], onDelete: Restrict)
   nombre           String
   incrementoPrecio Decimal          @default(0) @db.Decimal(18, 2)
+  requiereComposicion Boolean        @default(false)
   activo           Boolean          @default(true)
 
   // Relaciones inversas (navegación Prisma)
@@ -1436,6 +1437,11 @@ model Orden {
   subtotal        Decimal           @default(0) @db.Decimal(18, 2)
   descuentoTotal  Decimal           @default(0) @db.Decimal(18, 2)
   total           Decimal           @default(0) @db.Decimal(18, 2)
+  // Cancellation snapshot for future financial and loss reports; does not reverse stock.
+  importeAnulado  Decimal           @default(0) @db.Decimal(18, 2)
+  clasificacionCancelacion String?   @db.VarChar(30)
+  motivoCancelacion String?          @db.VarChar(500)
+  autorizadaCancelacionPreparada Boolean @default(false)
   observaciones   String?
   abiertaEn       DateTime          @default(now()) @db.Timestamptz(3)
   cerradaEn       DateTime?         @db.Timestamptz(3)
@@ -1452,6 +1458,7 @@ model Orden {
 
   @@unique([sucursalId, numero])
   @@index([sucursalId, estado, abiertaEn])
+  @@index([sucursalId, clasificacionCancelacion, canceladaEn])
 }
 
 model OrdenLinea {

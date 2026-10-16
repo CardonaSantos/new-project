@@ -88,11 +88,13 @@ export class GroupPatchDto{
  @ValidateIf((_,v)=>v!==undefined) @IsBoolean() activo?:boolean;
 }
 export class ModifierCreateDto{
+ @IsOptional() @IsBoolean() requiereComposicion?:boolean;
  @IsString() grupoId!:string;
  @IsString() @MinLength(1) @MaxLength(130) nombre!:string;
  @IsString() @Matches(/^(?:0|[1-9]\d{0,15})(?:\.\d{1,2})?$/) incrementoPrecio!:string;
 }
 export class ModifierPatchDto{
+ @IsOptional() @IsBoolean() requiereComposicion?:boolean;
  @ValidateIf((_,v)=>v!==undefined) @IsString() @MinLength(1) @MaxLength(130) nombre?:string;
  @ValidateIf((_,v)=>v!==undefined) @IsString() @Matches(/^(?:0|[1-9]\d{0,15})(?:\.\d{1,2})?$/) incrementoPrecio?:string;
  @ValidateIf((_,v)=>v!==undefined) @IsBoolean() activo?:boolean;

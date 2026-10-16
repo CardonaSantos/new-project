@@ -10,7 +10,8 @@ import {decimal,distinct,price,qty,requireNote,sha} from '../../domain/order.pol
 import {audit,outbox,runOnce,orderInclude,type Tx} from './order-shared.js';
 import {TableStore} from './table.store.js';
 import {KitchenStore} from './kitchen.store.js';
-import type {CreateOrderDto,AddItemsDto,OrderItemDto,EditLineDto,EditOrderDto,OrderListDto,ReasonDto,SendDto} from '../../presentation/http/dto/orders.dto.js';
+import type {CreateOrderDto,AddItemsDto,OrderItemDto,EditLineDto,EditOrderDto,OrderListDto,ReasonDto,CancelOrderDto,SendDto} from '../../presentation/http/dto/orders.dto.js';
+import {requiresCancellationAuthorization,requireCancellationClassification} from '../../domain/cancellation.policy.js';
 export type IngredientModifierSnapshot={modificadorId:string;articuloId:string;
  unidadId:string;cantidad:string;efecto:'SUMAR'|'RESTAR'|'SUSTITUIR';
  sustituyeArticuloId:string|null};
@@ -70,6 +71,9 @@ export class OrderStore{
   const compositions=chosen.length?await tx.modificadorComponente.findMany({
    where:{modificadorId:{in:chosen}},select:{modificadorId:true,articuloId:true,
     unidadId:true,cantidad:true,efecto:true,sustituyeArticuloId:true}}):[];
+  const physical=new Set(compositions.map(x=>x.modificadorId));
+  const missing=mods.filter(x=>x.requiereComposicion&&!physical.has(x.id));
+  if(missing.length)throw new ConflictException('Modificador requiere ingredientes configurados: '+missing.map(x=>x.nombre).join(', '));
   const snapshot:IngredientModifierSnapshot[]=compositions.map(x=>({
    modificadorId:x.modificadorId,articuloId:x.articuloId,unidadId:x.unidadId,
    cantidad:x.cantidad.toFixed(6),efecto:x.efecto,
@@ -303,7 +307,7 @@ export class OrderStore{
    }));
   return this.detail(u,result.orderId);
  }
- async cancel(u:Principal,id:string,d:ReasonDto){
+ async cancel(u:Principal,id:string,d:CancelOrderDto){
   const result=await this.engine.tx(async tx=>{
    const order=await this.order(tx,id);
    await this.engine.allowed(tx,u.id,'orders.manage',order.sucursalId);
@@ -312,9 +316,20 @@ export class OrderStore{
    const accounts=await tx.cuenta.findMany({where:{ordenId:id}});
    if(accounts.some(c=>c.pagado.gt(0)))
     throw new ConflictException('Orden con pagos: resolver reembolso en Pagos/Caja');
-   const consumed=await tx.consumoOrden.count({where:{ordenId:id}});
+   const [consumed,prepared,delivered]=await Promise.all([
+    tx.consumoOrden.count({where:{ordenId:id}}),
+    tx.comandaLinea.count({where:{comanda:{ordenId:id},cantidadPreparada:{gt:0}}}),
+    tx.comandaLinea.count({where:{comanda:{ordenId:id},entregadaEn:{not:null}}})
+   ]);
+   const protectedCancel=requiresCancellationAuthorization({consumed,prepared,delivered});
+   if(protectedCancel){
+    requireCancellationClassification(d.clasificacion);
+    await this.engine.allowed(tx,u.id,'orders.cancel.prepared',order.sucursalId);
+   }
    const now=new Date();
    await tx.orden.update({where:{id},data:{estado:'CANCELADA',
+    importeAnulado:order.total,clasificacionCancelacion:d.clasificacion??null,
+    motivoCancelacion:requireNote(d.motivo),autorizadaCancelacionPreparada:protectedCancel,
     canceladaEn:now,version:{increment:1}}});
    for(const account of accounts){
     await tx.cuentaLinea.updateMany({where:{cuentaId:account.id},data:{
@@ -331,7 +346,9 @@ export class OrderStore{
     await outbox(tx,'KITCHEN_TICKET_UPDATED','Comanda',t.id,order.sucursalId);
    }
    await audit(tx,u,'ORDER_CANCELLED','Orden',id,order.sucursalId,
-    {consumosExistentes:consumed,noRevertirInventario:true},requireNote(d.motivo));
+    {consumosExistentes:consumed,preparadas:prepared,entregadas:delivered,
+     importeAnulado:order.total.toFixed(2),clasificacion:d.clasificacion??null,
+     autorizacionSupervisor:protectedCancel,noRevertirInventario:true},requireNote(d.motivo));
    await outbox(tx,'ORDER_CANCELLED','Orden',id,order.sucursalId);
    if(order.ocupacionMesaId){
     const active=await tx.orden.count({where:{ocupacionMesaId:order.ocupacionMesaId,estado:'ABIERTA'}});

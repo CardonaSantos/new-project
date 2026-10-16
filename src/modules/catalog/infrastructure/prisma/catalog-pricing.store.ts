@@ -67,6 +67,7 @@ export class CatalogPricingStore{
    if(!group||!group.activo)throw new ConflictException('Grupo inexistente o inactivo');
    const row=await tx.modificador.create({data:{
     grupoId:input.grupoId,nombre:catalogName(input.nombre),
+    requiereComposicion:input.requiereComposicion??false,
     incrementoPrecio:decimalPrice(input.incrementoPrecio)
    },include:{grupo:true}});
    await audit(tx,actor,'MODIFIER_CREATED','Modificador',row.id,null,null,
@@ -84,8 +85,8 @@ export class CatalogPricingStore{
     incrementoPrecio:input.incrementoPrecio===undefined?undefined:decimalPrice(input.incrementoPrecio)
    },include:{grupo:true}});
    await audit(tx,actor,'MODIFIER_UPDATED','Modificador',id,null,
-    {nombre:old.nombre,activo:old.activo,incrementoPrecio:old.incrementoPrecio.toFixed(2)},
-    {nombre:row.nombre,activo:row.activo,incrementoPrecio:row.incrementoPrecio.toFixed(2)});
+    {nombre:old.nombre,activo:old.activo,requiereComposicion:old.requiereComposicion,incrementoPrecio:old.incrementoPrecio.toFixed(2)},
+    {nombre:row.nombre,activo:row.activo,requiereComposicion:row.requiereComposicion,incrementoPrecio:row.incrementoPrecio.toFixed(2)});
    return row;
   },serial);}catch(e){failUnique(e);}
  }

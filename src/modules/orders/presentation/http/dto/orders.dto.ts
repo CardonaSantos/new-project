@@ -56,6 +56,10 @@ export class EditOrderDto{
 export class ReasonDto{
  @IsString() @MinLength(5) @MaxLength(500) motivo!:string;
 }
+export class CancelOrderDto extends ReasonDto{
+ @IsOptional() @IsEnum(['CORTESIA','MERMA_OPERATIVA','ERROR_OPERATIVO','OTRO'])
+ clasificacion?:'CORTESIA'|'MERMA_OPERATIVA'|'ERROR_OPERATIVO'|'OTRO';
+}
 export class SendDto{
  @IsString() @MinLength(6) @MaxLength(120) claveOperacion!:string;
 }

@@ -89,6 +89,17 @@ export class PurchaseReturnsStore{
    return {id,estado:'CONFIRMADA',movimientoIds:movementIds};
   }));
  }
+ async cancelReturn(u:Actor,id:string,d:KeyDto){
+  return atomic(this.db,tx=>once(tx,u,d.claveOperacion,'PUR_RETURN_CANCEL',{id},async()=>{
+   const row=await tx.devolucionProveedor.findUnique({where:{id}});
+   if(!row)throw new NotFoundException('Devolución inexistente');
+   await scope(tx,u,row.sucursalId,'purchases.returns.manage');
+   if(row.estado!=='BORRADOR')throw new ConflictException('Solo se cancela devolución en borrador');
+   await tx.devolucionProveedor.update({where:{id},data:{estado:'CANCELADA'}});
+   await audit(tx,u,row.sucursalId,'PUR_RETURN_CANCELLED','DevolucionProveedor',id);
+   return {id,estado:'CANCELADA'};
+  }));
+ }
  async credits(u:Actor,q:Paging){
   if(!q.sucursalId)throw new BadRequestException('sucursalId requerido');
   return atomic(this.db,async tx=>{
@@ -138,6 +149,17 @@ export class PurchaseReturnsStore{
    await tx.notaCreditoProveedor.update({where:{id},data:{estado:'CONFIRMADA',confirmadaEn:new Date()}});
    await audit(tx,u,row.sucursalId,'PUR_CREDIT_CONFIRMED','NotaCreditoProveedor',id);
    return {id,estado:'CONFIRMADA'};
+  }));
+ }
+ async cancelCredit(u:Actor,id:string,d:KeyDto){
+  return atomic(this.db,tx=>once(tx,u,d.claveOperacion,'PUR_CREDIT_CANCEL',{id},async()=>{
+   const row=await tx.notaCreditoProveedor.findUnique({where:{id}});
+   if(!row)throw new NotFoundException('Crédito inexistente');
+   await scope(tx,u,row.sucursalId,'purchases.credits.manage');
+   if(row.estado!=='BORRADOR')throw new ConflictException('Solo se cancela crédito en borrador');
+   await tx.notaCreditoProveedor.update({where:{id},data:{estado:'CANCELADA'}});
+   await audit(tx,u,row.sucursalId,'PUR_CREDIT_CANCELLED','NotaCreditoProveedor',id);
+   return {id,estado:'CANCELADA'};
   }));
  }
  async applyCredit(u:Actor,id:string,d:CreditApplyDto){
@@ -190,6 +212,18 @@ export class PurchaseReturnsStore{
    await audit(tx,u,note.sucursalId,'PUR_REFUND_CREATED','ReintegroProveedor',row.id);
    return {id:row.id,estado:'PENDIENTE'};
   });
+ }
+ async rejectSupplierRefund(u:Actor,id:string,d:{claveOperacion:string;motivo:string}){
+  return atomic(this.db,tx=>once(tx,u,d.claveOperacion,'PUR_REFUND_REJECT',{id,...d},async()=>{
+   const row=await tx.reintegroProveedor.findUnique({where:{id},include:{nota:true}});
+   if(!row)throw new NotFoundException('Reintegro inexistente');
+   await scope(tx,u,row.nota.sucursalId,'purchases.credits.manage');
+   if(row.estado!=='PENDIENTE')throw new ConflictException('Reintegro ya resuelto');
+   await tx.reintegroProveedor.update({where:{id},data:{estado:'RECHAZADO'}});
+   await audit(tx,u,row.nota.sucursalId,'PUR_REFUND_REJECTED','ReintegroProveedor',id,
+    {motivo:d.motivo.trim()});
+   return {id,estado:'RECHAZADO'};
+  }));
  }
  async confirmSupplierRefund(u:Actor,id:string,d:KeyDto){
   return atomic(this.db,tx=>once(tx,u,d.claveOperacion,'PUR_REFUND_CONFIRM',{id},async()=>{

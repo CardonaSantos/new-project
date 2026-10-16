@@ -93,6 +93,8 @@ export class PurchaseReturnsController{
  @Post() create(@CurrentUser() u:Principal,@Body() d:ReturnDto){return this.s.createReturn(u,d);}
  @Post(':id/confirm') confirm(@CurrentUser() u:Principal,@Param('id') id:string,@Body() d:KeyDto){
   return this.s.confirmReturn(u,id,d);}
+ @Post(':id/cancel') cancel(@CurrentUser() u:Principal,@Param('id') id:string,@Body() d:KeyDto){
+  return this.s.cancelReturn(u,id,d);}
 }
 @Controller('purchases/credits')
 export class PurchaseCreditsController{
@@ -102,6 +104,8 @@ export class PurchaseCreditsController{
  @Post() create(@CurrentUser() u:Principal,@Body() d:CreditDto){return this.s.createCredit(u,d);}
  @Post(':id/confirm') confirm(@CurrentUser() u:Principal,@Param('id') id:string,@Body() d:KeyDto){
   return this.s.confirmCredit(u,id,d);}
+ @Post(':id/cancel') cancel(@CurrentUser() u:Principal,@Param('id') id:string,@Body() d:KeyDto){
+  return this.s.cancelCredit(u,id,d);}
  @Post(':id/apply') apply(@CurrentUser() u:Principal,@Param('id') id:string,@Body() d:CreditApplyDto){
   return this.s.applyCredit(u,id,d);}
 }
@@ -111,4 +115,6 @@ export class PurchaseSupplierRefundsController{
  @Post() create(@CurrentUser() u:Principal,@Body() d:RefundSupplierDto){return this.s.createSupplierRefund(u,d);}
  @Post(':id/confirm') confirm(@CurrentUser() u:Principal,@Param('id') id:string,@Body() d:KeyDto){
   return this.s.confirmSupplierRefund(u,id,d);}
+ @Post(':id/reject') reject(@CurrentUser() u:Principal,@Param('id') id:string,@Body() d:ReasonKeyDto){
+  return this.s.rejectSupplierRefund(u,id,d);}
 }

@@ -13,7 +13,7 @@ import {KitchenStore} from './kitchen.store.js';
 import type {CreateOrderDto,AddItemsDto,OrderItemDto,EditLineDto,EditOrderDto,OrderListDto,ReasonDto,SendDto} from '../../presentation/http/dto/orders.dto.js';
 type ModifierSnapshot={id:string;nombre:string;unit:Prisma.Decimal};
 type QuotedLine={varianteId:string;nombre:string;cantidad:Prisma.Decimal;unit:Prisma.Decimal;
- total:Prisma.Decimal;recetaVersionId:string|null;modifiers:ModifierSnapshot[];notas:string|null};
+ total:Prisma.Decimal;discount:Prisma.Decimal;recetaVersionId:string|null;modifiers:ModifierSnapshot[];notas:string|null};
 @Injectable()
 export class OrderStore{
  constructor(private readonly db:PrismaService,private readonly engine:InventoryPostingEngine,
@@ -29,7 +29,7 @@ export class OrderStore{
   if(!order)throw new NotFoundException('Orden inexistente');
   return order;
  }
- private async quote(tx:Tx,branch:string,item:OrderItemDto):Promise<QuotedLine>{
+ private async quote(tx:Tx,u:Principal,branch:string,item:OrderItemDto):Promise<QuotedLine>{
   const count=decimal(item.cantidad);
   const now=new Date();
   const variant=await tx.varianteProducto.findUnique({where:{id:item.varianteId},
@@ -69,6 +69,9 @@ export class OrderStore{
   const unit=new Prisma.Decimal(base.importe);
   const total=count.mul(prices.reduce((sum,x)=>sum.plus(x.unit),unit))
    .toDecimalPlaces(2,Prisma.Decimal.ROUND_HALF_UP);
+  const discount=new Prisma.Decimal(item.descuento??0);
+  if(discount.lt(0)||discount.gt(total))throw new BadRequestException('Descuento excede importe de línea');
+  if(discount.gt(0))await this.engine.allowed(tx,u.id,'orders.discount',branch);
   let recipeId:string|null=null;
   if(variant.producto.tipo==='PREPARADO'){
    const recipe=await tx.receta.findFirst({where:{
@@ -81,12 +84,13 @@ export class OrderStore{
    throw new ConflictException('Variante inventariable sin artículo asociado');
   return {varianteId:variant.id,nombre:variant.producto.nombre+
    (variant.nombre? ' — '+variant.nombre:''),cantidad:count,unit,total,
-   recetaVersionId:recipeId,modifiers:prices,notas:item.notasCocina?.trim()??null};
+   discount,recetaVersionId:recipeId,modifiers:prices,notas:item.notasCocina?.trim()??null};
  }
  private async insertLine(tx:Tx,orderId:string,q:QuotedLine){
   const line=await tx.ordenLinea.create({data:{
    ordenId:orderId,varianteId:q.varianteId,nombreSnapshot:q.nombre,
-   cantidad:q.cantidad,precioUnitario:q.unit,subtotal:q.total,recetaVersionId:q.recetaVersionId,
+   cantidad:q.cantidad,precioUnitario:q.unit,subtotal:q.total,descuento:q.discount,
+   recetaVersionId:q.recetaVersionId,
    notasCocina:q.notas,
    ...(q.modifiers.length?{ordenLineaModificadoresComoOrdenLinea:{
     create:q.modifiers.map(m=>({modificadorId:m.id,nombreSnapshot:m.nombre,
@@ -158,7 +162,7 @@ export class OrderStore{
     claveOperacion:d.claveOperacion,solicitudHash:sha({actor:u.id,request:d})
    }});
    await tx.cuenta.create({data:{ordenId:order.id,nombre:'Cuenta principal'}});
-   for(const item of d.lineas)await this.insertLine(tx,order.id,await this.quote(tx,d.sucursalId,item));
+   for(const item of d.lineas)await this.insertLine(tx,order.id,await this.quote(tx,u,d.sucursalId,item));
    await this.recalc(tx,order.id);
    const config=await tx.configuracionSucursal.findUnique({where:{sucursalId:d.sucursalId}});
    if((d.enviarCocina??true)&&!config?.exigeCobroAntesPreparar)
@@ -193,7 +197,7 @@ export class OrderStore{
     const order=await this.order(tx,id);
     await this.engine.allowed(tx,u.id,'orders.manage',order.sucursalId);
     if(order.estado!=='ABIERTA')throw new ConflictException('Orden no editable');
-    for(const item of d.lineas)await this.insertLine(tx,id,await this.quote(tx,order.sucursalId,item));
+    for(const item of d.lineas)await this.insertLine(tx,id,await this.quote(tx,u,order.sucursalId,item));
     await this.recalc(tx,id);
     const config=await tx.configuracionSucursal.findUnique({where:{sucursalId:order.sucursalId}});
     if((d.enviarCocina??true)&&(!config?.exigeCobroAntesPreparar||
@@ -219,7 +223,7 @@ export class OrderStore{
     const qtyNew=d.cantidad?decimal(d.cantidad):line.cantidad;
     let snapshot:QuotedLine|null=null;
     if(d.modificadores!==undefined){
-     snapshot=await this.quote(tx,order.sucursalId,{varianteId:line.varianteId,
+     snapshot=await this.quote(tx,u,order.sucursalId,{varianteId:line.varianteId,
       cantidad:qty(qtyNew),modificadores:d.modificadores});
     }
     const modifications=snapshot?.modifiers??line.ordenLineaModificadoresComoOrdenLinea.map(m=>({
@@ -232,8 +236,14 @@ export class OrderStore{
     }
     const subtotal=qtyNew.mul(modifications.reduce((sum,m)=>sum.plus(m.unit),line.precioUnitario))
      .toDecimalPlaces(2,Prisma.Decimal.ROUND_HALF_UP);
+    const discount=new Prisma.Decimal(d.descuento??line.descuento);
+    if(discount.gt(subtotal)||discount.lt(0))
+     throw new ConflictException('Descuento supera el importe actualizado');
+    if(d.descuento!==undefined&&discount.gt(0))
+     await this.engine.allowed(tx,u.id,'orders.discount',order.sucursalId);
     await tx.ordenLinea.update({where:{id:line.id},data:{
-     cantidad:qtyNew,subtotal,...(d.notasCocina!==undefined?{notasCocina:d.notasCocina}:{})
+     cantidad:qtyNew,subtotal,descuento:discount,
+     ...(d.notasCocina!==undefined?{notasCocina:d.notasCocina}:{})
     }});
     await this.recalc(tx,id);
     await audit(tx,u,'ORDER_LINE_UPDATED','OrdenLinea',lineId,order.sucursalId);

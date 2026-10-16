@@ -9,6 +9,7 @@ export class OrderItemDto{
  @IsString() @Matches(Q) cantidad!:string;
  @IsOptional() @IsArray() @ArrayMaxSize(30) @ValidateNested({each:true})
  @Type(()=>ModifierSelectionDto) modificadores?:ModifierSelectionDto[];
+ @IsOptional() @IsString() @Matches(/^(?:0|[1-9]\d{0,11})(?:\.\d{1,2})?$/) descuento?:string;
  @IsOptional() @IsString() @MaxLength(300) notasCocina?:string;
 }
 export class CreateOrderDto{
@@ -32,6 +33,7 @@ export class AddItemsDto{
 }
 export class EditLineDto{
  @IsOptional() @IsString() @Matches(Q) cantidad?:string;
+ @IsOptional() @IsString() @Matches(/^(?:0|[1-9]\d{0,11})(?:\.\d{1,2})?$/) descuento?:string;
  @IsOptional() @IsString() @MaxLength(300) notasCocina?:string;
  @IsOptional() @IsArray() @ArrayMaxSize(30) @ValidateNested({each:true})
  @Type(()=>ModifierSelectionDto) modificadores?:ModifierSelectionDto[];

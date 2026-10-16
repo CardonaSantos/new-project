@@ -170,7 +170,7 @@ export class ProductionStore{
   const row=await tx.produccionLote.create({data:{
    recetaVersionId:v.id,ubicacionDestinoId:d.ubicacionDestinoId,usuarioId:u.id,
    cantidadProducida:qty,fechaVencimiento:expires,claveOperacion:key,solicitudHash:hash,
-   configuracion:{ubicacionConsumoId:d.ubicacionConsumoId??null,origenes:origins} as Prisma.InputJsonValue
+   configuracion:{ubicacionConsumoId:d.ubicacionConsumoId??null,origenes:origins} as unknown as Prisma.InputJsonValue
   }});
   await audit(tx,u,'PRODUCTION_DRAFT_CREATED','ProduccionLote',row.id,{recetaVersionId:v.id});
   return row;

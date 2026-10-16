@@ -8,7 +8,7 @@ export interface CategoryInput{nombre:string;parentId?:string|null;orden?:number
 export interface ProductInput{codigo:string;nombre:string;descripcion?:string|null;categoriaId?:string|null;tipo:CatalogKind;variantes?:Array<{nombre:string;sku?:string|null;articuloInventarioId?:string|null;orden?:number}>}
 export interface VariantInput{nombre:string;sku?:string|null;articuloInventarioId?:string|null;orden?:number}
 export interface GroupInput{nombre:string;minimo:number;maximo?:number|null}
-export interface ModifierInput{grupoId:string;nombre:string;incrementoPrecio:string}
+export interface ModifierInput{grupoId:string;nombre:string;incrementoPrecio:string;requiereComposicion?:boolean}
 export interface PriceInput{entityId:string;sucursalId:string;importe:string;vigenteDesde:string;vigenteHasta?:string|null}
 export interface MenuInput{codigo:string;nombre:string;descripcion?:string|null;sucursalIds:string[]}
 export interface MenuLayout{

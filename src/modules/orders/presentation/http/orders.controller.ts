@@ -6,7 +6,7 @@ import {KitchenStore} from '../../infrastructure/prisma/kitchen.store.js';
 import {TableStore} from '../../infrastructure/prisma/table.store.js';
 import {AddItemsDto,BranchQueryDto,CreateOrderDto,EditLineDto,EditOrderDto,
  OrderListDto,ReasonDto,RouteDto,RouteUpdateDto,RoomDto,RoomUpdateDto,TableUpdateDto,KitchenChangesDto,
- SendDto,StartLineDto,StationDto,
+ CancelOrderDto,SendDto,StartLineDto,StationDto,
  StationUpdateDto,TableDto,TicketListDto} from './dto/orders.dto.js';
 
 @Controller('orders')
@@ -28,7 +28,7 @@ export class OrdersController{
  @Post(':id/send') send(@CurrentUser() u:Principal,@Param('id') id:string,
   @Body() d:SendDto){return this.orders.send(u,id,d);}
  @Post(':id/cancel') cancel(@CurrentUser() u:Principal,@Param('id') id:string,
-  @Body() d:ReasonDto){return this.orders.cancel(u,id,d);}
+  @Body() d:CancelOrderDto){return this.orders.cancel(u,id,d);}
  @Post(':id/close') close(@CurrentUser() u:Principal,@Param('id') id:string){
   return this.orders.close(u,id);}
 }

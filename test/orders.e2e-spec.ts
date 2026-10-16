@@ -69,7 +69,7 @@ describe('ORD-A HTTP contract',()=>{
   await request(app.getHttpServer()).post('/api/orders/o1/cancel').send({
    motivo:'Preparación perdida al entregar',clasificacion:'MERMA_OPERATIVA'
   }).expect(201);
-  expect(orders.cancel).toHaveBeenCalledWith(principal,expect.objectContaining({
+  expect(orders.cancel).toHaveBeenCalledWith(principal,'o1',expect.objectContaining({
    clasificacion:'MERMA_OPERATIVA'
   }));
   await request(app.getHttpServer()).post('/api/orders/o1/cancel').send({

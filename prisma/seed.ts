@@ -35,7 +35,7 @@ const permissions=[
  ['purchases.invoices.manage','purchases'],['purchases.invoices.confirm','purchases'],
  ['purchases.payments.create','purchases'],['purchases.payments.confirm','purchases'],
  ['purchases.returns.manage','purchases'],['purchases.credits.manage','purchases'],
- ['inventory.internal.consume','inventory'],
+ ['inventory.consume.internal','inventory'],
  ['cash.read','cash'],['cash.manage','cash'],['cash.open','cash'],['cash.close','cash'],
  ['payments.read','payments'],['payments.collect','payments'],['payments.verify','payments'],
  ['payments.split','payments'],['sales.read','payments'],

@@ -2408,11 +2408,31 @@ model PrecioModificador {
   @@index([modificadorId, sucursalId, vigenteDesde])
 }
 
-enum EstadoFacturaCompra { BORRADOR CONFIRMADA ANULADA }
-enum EstadoPagoProveedor { PENDIENTE CONFIRMADO RECHAZADO }
-enum EstadoDevolucionProveedor { BORRADOR CONFIRMADA CANCELADA }
-enum EstadoNotaCreditoProveedor { BORRADOR CONFIRMADA CANCELADA }
-enum EstadoReintegroProveedor { PENDIENTE CONFIRMADO RECHAZADO }
+enum EstadoFacturaCompra {
+  BORRADOR
+  CONFIRMADA
+  ANULADA
+}
+enum EstadoPagoProveedor {
+  PENDIENTE
+  CONFIRMADO
+  RECHAZADO
+}
+enum EstadoDevolucionProveedor {
+  BORRADOR
+  CONFIRMADA
+  CANCELADA
+}
+enum EstadoNotaCreditoProveedor {
+  BORRADOR
+  CONFIRMADA
+  CANCELADA
+}
+enum EstadoReintegroProveedor {
+  PENDIENTE
+  CONFIRMADO
+  RECHAZADO
+}
 
 model DevolucionProveedor {
  id String @id @default(cuid())

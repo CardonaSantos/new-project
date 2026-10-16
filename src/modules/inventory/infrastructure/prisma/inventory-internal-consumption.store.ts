@@ -13,8 +13,6 @@ export class InventoryInternalConsumptionStore{
   if(d.destinoUso.trim().length<3||d.motivo.trim().length<5)
    throw new BadRequestException('Destino y motivo insuficientes');
   return this.engine.tx(async tx=>{
-   const existing=await tx.consumoInterno.findFirst({where:{movimientoId:{not:''},
-    movimientoId:'NEVER_MATCH'}});void existing;
    const old=await tx.movimientoInventario.findUnique({where:{claveOperacion:d.claveOperacion}});
    if(old){
     if(old.referenciaTipo!=='CONSUMO_INTERNO'||old.articuloId!==d.articuloId||

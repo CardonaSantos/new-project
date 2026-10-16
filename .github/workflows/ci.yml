@@ -51,5 +51,7 @@ jobs:
         run: npm run prisma:deploy
       - name: Verify migrations are synchronized
         run: npm run prisma:status
+      - name: Replay PUR-A SQL safely on populated schema
+        run: npx prisma db execute --file prisma/migrations/20261017150000_pur_a_purchase_documents/migration.sql
       - name: Reapply safely without creating duplicate objects
         run: npm run prisma:deploy

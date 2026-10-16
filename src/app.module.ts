@@ -9,6 +9,7 @@ import {OrganizationModule} from './modules/organization/organization.module.js'
 import {InventoryModule} from './modules/inventory/inventory.module.js';
 import {CatalogModule} from './modules/catalog/catalog.module.js';
 import {RecipesModule} from './modules/recipes/recipes.module.js';
+import {OrdersModule} from './modules/orders/orders.module.js';
 @Module({
  imports:[
   ConfigModule.forRoot({isGlobal:true,cache:true,validate:validateEnvironment}),
@@ -19,6 +20,7 @@ import {RecipesModule} from './modules/recipes/recipes.module.js';
   InventoryModule,
   CatalogModule,
   RecipesModule,
+  OrdersModule,
   CoreModule,
  ],
 })

@@ -134,6 +134,7 @@ enum TipoReceta {
 enum TipoConsumoOrden {
   RECETA
   EMPAQUE
+  DIRECTO
 }
 
 enum EfectoModificador {
@@ -705,6 +706,7 @@ model RecetaVersion {
   recetaComponentesComoRecetaVersion RecetaComponente[] @relation("RecetaComponente_recetaVersion_RecetaVersion")
   produccionLotesComoRecetaVersion   ProduccionLote[]   @relation("ProduccionLote_recetaVersion_RecetaVersion")
   consumoOrdenesComoRecetaVersion    ConsumoOrden[]     @relation("ConsumoOrden_recetaVersion_RecetaVersion")
+  ordenLineasComoVersion              OrdenLinea[]      @relation("OrdenLinea_version_RecetaVersion")
 
   @@unique([recetaId, numero])
 }
@@ -1039,6 +1041,10 @@ model ConsumoOrden {
   orden             Orden            @relation("ConsumoOrden_orden_Orden", fields: [ordenId], references: [id], onDelete: Restrict)
   comandaLineaId    String?
   comandaLinea      ComandaLinea?    @relation("ConsumoOrden_comandaLinea_ComandaLinea", fields: [comandaLineaId], references: [id], onDelete: Restrict)
+  ordenLineaId      String?
+  ordenLinea        OrdenLinea?      @relation("ConsumoOrden_ordenLinea_OrdenLinea",fields:[ordenLineaId],references:[id],onDelete:Restrict)
+  claveOperacion    String?          @unique
+  solicitudHash     String?
   tipo              TipoConsumoOrden
   recetaVersionId   String?
   recetaVersion     RecetaVersion?   @relation("ConsumoOrden_recetaVersion_RecetaVersion", fields: [recetaVersionId], references: [id], onDelete: Restrict)
@@ -1425,6 +1431,8 @@ model Orden {
   origen          OrigenOrden
   estado          EstadoOrden       @default(ABIERTA)
   version         Int               @default(1)
+  claveOperacion  String?           @unique
+  solicitudHash   String?
   subtotal        Decimal           @default(0) @db.Decimal(18, 2)
   descuentoTotal  Decimal           @default(0) @db.Decimal(18, 2)
   total           Decimal           @default(0) @db.Decimal(18, 2)
@@ -1455,6 +1463,10 @@ model OrdenLinea {
   nombreSnapshot String
   cantidad       Decimal          @db.Decimal(18, 3)
   precioUnitario Decimal          @db.Decimal(18, 2)
+  recetaVersionId String?
+  recetaVersion   RecetaVersion?   @relation("OrdenLinea_version_RecetaVersion",fields:[recetaVersionId],references:[id],onDelete:Restrict)
+  composicionSnapshot Json?
+  cantidadEnviada Decimal          @default(0) @db.Decimal(18, 3)
   descuento      Decimal          @default(0) @db.Decimal(18, 2)
   subtotal       Decimal          @db.Decimal(18, 2)
   notasCocina    String?
@@ -1464,6 +1476,7 @@ model OrdenLinea {
   // Relaciones inversas (navegación Prisma)
   ordenLineaModificadoresComoOrdenLinea OrdenLineaModificador[] @relation("OrdenLineaModificador_ordenLinea_OrdenLinea")
   cuentaLineasComoOrdenLinea            CuentaLinea[]           @relation("CuentaLinea_ordenLinea_OrdenLinea")
+  consumosComoOrdenLinea                ConsumoOrden[]           @relation("ConsumoOrden_ordenLinea_OrdenLinea")
   comandaLineasComoOrdenLinea           ComandaLinea[]          @relation("ComandaLinea_ordenLinea_OrdenLinea")
   ventaLineasComoOrdenLinea             VentaLinea[]            @relation("VentaLinea_ordenLinea_OrdenLinea")
 
@@ -1590,6 +1603,7 @@ model ComandaLinea {
   ordenLinea    OrdenLinea @relation("ComandaLinea_ordenLinea_OrdenLinea", fields: [ordenLineaId], references: [id], onDelete: Restrict)
   cantidad      Decimal    @db.Decimal(18, 3)
   notasSnapshot String?
+  cantidadPreparada Decimal @default(0) @db.Decimal(18, 3)
   listaEn       DateTime?  @db.Timestamptz(3)
   entregadaEn   DateTime?  @db.Timestamptz(3)
   canceladaEn   DateTime?  @db.Timestamptz(3)

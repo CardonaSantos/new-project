@@ -29,7 +29,9 @@ const permissions=[
  ['recipes.read','recipes'],['recipes.manage','recipes'],['recipes.publish','recipes'],
  ['recipes.produce','recipes'],['recipes.production.read','recipes'],
  ['purchases.manage','purchases'],
- ['cash.open','cash'],['cash.close','cash'],['payments.collect','payments'],
+ ['cash.read','cash'],['cash.manage','cash'],['cash.open','cash'],['cash.close','cash'],
+ ['payments.read','payments'],['payments.collect','payments'],['payments.verify','payments'],
+ ['payments.split','payments'],['sales.read','payments'],
  ['payments.refund','payments'],['delivery.manage','delivery'],['reservations.manage','reservations'],
  ['reports.read','reports'],['settings.manage','settings']
 ] as const;

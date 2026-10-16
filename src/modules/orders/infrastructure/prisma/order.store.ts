@@ -9,6 +9,7 @@ import {variantPrice,modifierPrice} from '../../../catalog/infrastructure/prisma
 import {decimal,distinct,price,qty,requireNote,sha} from '../../domain/order.policy.js';
 import {audit,outbox,runOnce,orderInclude,type Tx} from './order-shared.js';
 import {TableStore} from './table.store.js';
+import {PaymentsStore} from '../../../payments/infrastructure/prisma/payments.store.js';
 import {KitchenStore} from './kitchen.store.js';
 import type {CreateOrderDto,AddItemsDto,OrderItemDto,EditLineDto,EditOrderDto,OrderListDto,ReasonDto,CancelOrderDto,SendDto} from '../../presentation/http/dto/orders.dto.js';
 import {requiresCancellationAuthorization,requireCancellationClassification} from '../../domain/cancellation.policy.js';
@@ -23,7 +24,7 @@ type QuotedLine={varianteId:string;nombre:string;cantidad:Prisma.Decimal;unit:Pr
 export class OrderStore{
  constructor(private readonly db:PrismaService,private readonly engine:InventoryPostingEngine,
   private readonly identity:IdentityRepository,private readonly tables:TableStore,
-  private readonly kitchen:KitchenStore){}
+  private readonly kitchen:KitchenStore,private readonly payments:PaymentsStore){}
  private async visible(u:Principal,branch:string){
   const caps=await this.identity.capabilities(u.id,branch);
   if(!['orders.read','orders.create','orders.manage'].some(x=>caps.includes(x)))
@@ -362,39 +363,9 @@ export class OrderStore{
   });
   return this.detail(u,result);
  }
+
  async close(u:Principal,id:string){
-  const result=await this.engine.tx(async tx=>{
-   const order=await this.order(tx,id);
-   await this.engine.allowed(tx,u.id,'orders.manage',order.sucursalId);
-   if(order.estado==='CERRADA')return id;
-   if(order.estado!=='ABIERTA')throw new ConflictException('Orden cancelada');
-   const lines=await tx.ordenLinea.findMany({where:{ordenId:id,canceladaEn:null}});
-   if(!lines.length||lines.some(x=>x.cantidadEnviada.lt(x.cantidad)))
-    throw new ConflictException('Orden tiene productos sin enviar');
-   const pending=await tx.comanda.count({where:{ordenId:id,
-    estado:{in:['PENDIENTE','PREPARANDO']}}});
-   if(pending)throw new ConflictException('Hay comandas pendientes de preparación');
-   const accounts=await tx.cuenta.findMany({where:{ordenId:id}});
-   if(!accounts.length||accounts.some(x=>x.pagado.lt(x.total)))
-    throw new ConflictException('La cuenta requiere cobro confirmado antes de cerrar');
-   const now=new Date();
-   for(const a of accounts)if(a.estado!=='CERRADA')
-    await tx.cuenta.update({where:{id:a.id},data:{estado:'CERRADA',cerradaEn:now}});
-   await tx.orden.update({where:{id},data:{estado:'CERRADA',
-    cerradaEn:now,version:{increment:1}}});
-   await audit(tx,u,'ORDER_CLOSED','Orden',id,order.sucursalId);
-   await outbox(tx,'ORDER_CLOSED','Orden',id,order.sucursalId);
-   if(order.ocupacionMesaId){
-    const active=await tx.orden.count({where:{ocupacionMesaId:order.ocupacionMesaId,estado:'ABIERTA'}});
-    if(!active){
-     await tx.ocupacionMesa.updateMany({where:{id:order.ocupacionMesaId,cerradaEn:null},
-      data:{cerradaEn:now}});
-     await outbox(tx,'TABLE_RELEASED','OcupacionMesa',order.ocupacionMesaId,order.sucursalId);
-    }
-   }
-   return id;
-  });
-  return this.detail(u,result);
+  return this.payments.settle(u,id);
  }
 
 }

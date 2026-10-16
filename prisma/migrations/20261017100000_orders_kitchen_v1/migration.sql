@@ -7,6 +7,7 @@ ALTER TABLE "Orden"
 CREATE UNIQUE INDEX "Orden_claveOperacion_key" ON "Orden"("claveOperacion");
 ALTER TABLE "OrdenLinea"
  ADD COLUMN "recetaVersionId" TEXT,
+ ADD COLUMN "composicionSnapshot" JSONB,
  ADD COLUMN "cantidadEnviada" DECIMAL(18,3) NOT NULL DEFAULT 0;
 ALTER TABLE "OrdenLinea" ADD CONSTRAINT "OrdenLinea_recetaVersionId_fkey"
  FOREIGN KEY ("recetaVersionId") REFERENCES "RecetaVersion"("id")

@@ -113,3 +113,13 @@ npm run prisma:seed
 CI no ejecuta operaciones en PostgreSQL del usuario. Antes de declarar
 REC-A validado en producción, comprobar en Swagger el flujo completo y
 la conciliación de existencias/costos.
+
+### Cotización completa VENTA con extras y empaques
+POST /api/recipes/preview:
+{"recetaVersionId":"<version VENTA>","sucursalId":"<sucursal>",
+ "ubicacionId":"<ubicacion-stock>","cantidad":"2.000000",
+ "modificadores":["<modificador-extra>"],"modalidad":"PARA_LLEVAR"}
+El servidor valida que el modificador esté asociado a la variante, aplica
+SUMAR/RESTAR/SUSTITUIR, selecciona la regla de empaque activa más específica
+por alcance (ARTICULO/ORDEN), calcula materiales y stock FEFO y retorna
+costos estimados solo si existe inventory.costs.read. Cotizar no reserva stock.

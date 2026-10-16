@@ -66,6 +66,12 @@ export class PackagingQueryDto{
  @IsOptional() @IsString() sucursalId?:string;
  @IsOptional() @IsString() varianteId?:string;
 }
+export class QuoteDto extends PreviewDto{
+ @IsString() recetaVersionId!:string;
+ @IsOptional() @IsArray() @ArrayMaxSize(30) @IsString({each:true}) modificadores?:string[];
+ @IsOptional() @IsEnum(['MESA','MOSTRADOR','PARA_LLEVAR','DELIVERY'])
+ modalidad?:'MESA'|'MOSTRADOR'|'PARA_LLEVAR'|'DELIVERY';
+}
 export class SourceDto{
  @IsString() articuloId!:string;
  @IsString() ubicacionId!:string;

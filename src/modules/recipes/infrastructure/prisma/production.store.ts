@@ -10,14 +10,15 @@ import {localDate} from '../../../inventory/domain/stock.policy.js';
 import {audit} from './recipe.store.js';
 import {toBase} from './recipe-units.js';
 import {quantity,money,demand,isDate,ensureUnique,validCode} from '../../domain/recipe.policy.js';
-import type {PreviewDto,ExecuteProductionDto,ListProductionsDto,SourceDto} from '../../presentation/http/dto/recipe.dto.js';
+import type {PreviewDto,QuoteDto,ExecuteProductionDto,ListProductionsDto,SourceDto} from '../../presentation/http/dto/recipe.dto.js';
 type Tx=Prisma.TransactionClient;
 const includeVersion={receta:true,recetaComponentesComoRecetaVersion:true} as const;
 const details={recetaVersion:{include:{receta:true,recetaComponentesComoRecetaVersion:{include:{articulo:true}}}},
  ubicacionDestino:{include:{almacen:true}},loteResultado:true,
  produccionConsumosComoProduccion:{include:{articulo:true,ubicacion:true,lote:true,movimiento:true}}} as const;
 type Version=Prisma.RecetaVersionGetPayload<{include:typeof includeVersion}>;
-type Config={ubicacionConsumoId?:string;origenes?:SourceDto[]};
+type Config={ubicacionConsumoId?:string;origenes?:SourceDto[];
+ modificadores?:string[];modalidad?:'MESA'|'MOSTRADOR'|'PARA_LLEVAR'|'DELIVERY'};
 type PlanLine={articuloId:string;ubicacionId:string;loteId:string|null;cantidad:Prisma.Decimal};
 @Injectable()
 export class ProductionStore{
@@ -45,22 +46,68 @@ export class ProductionStore{
    version.rendimiento;
   const factor=quantityProduced.div(yieldInBase);
   if(factor.lte(0))throw new BadRequestException('Rendimiento inválido');
+  const requiredByArticle=new Map<string,Prisma.Decimal>();
+  const add=(articleId:string,qty:Prisma.Decimal)=>{
+   requiredByArticle.set(articleId,(requiredByArticle.get(articleId)??new Prisma.Decimal(0)).plus(qty));
+  };
+  for(const component of version.recetaComponentesComoRecetaVersion){
+   const net=demand(component,factor);
+   add(component.articuloId,await toBase(tx,component.articuloId,component.unidadId,net));
+  }
+  if(config.modificadores?.length){
+   if(version.receta.tipo!=='VENTA')throw new ConflictException('Modificadores solo aplican a recetas de VENTA');
+   ensureUnique(config.modificadores,x=>x,'Modificador');
+   const variantGroups=await tx.varianteGrupoModificador.findMany({
+    where:{varianteId:version.receta.varianteId!},select:{grupoId:true}});
+   const allowed=new Set(variantGroups.map(g=>g.grupoId));
+   const mods=await tx.modificador.findMany({where:{id:{in:config.modificadores},activo:true},
+    include:{modificadorComponentesComoModificador:true}});
+   if(mods.length!==config.modificadores.length||mods.some(m=>!allowed.has(m.grupoId)))
+    throw new ConflictException('Modificador inactivo o no vinculado a la variante');
+   for(const mod of mods)for(const extra of mod.modificadorComponentesComoModificador){
+    const extraQty=await toBase(tx,extra.articuloId,extra.unidadId,extra.cantidad.mul(factor));
+    if(extra.efecto==='SUSTITUIR'){
+     if(!extra.sustituyeArticuloId)throw new ConflictException('Sustitución sin artículo origen');
+     requiredByArticle.delete(extra.sustituyeArticuloId);
+     add(extra.articuloId,extraQty);
+    }else if(extra.efecto==='RESTAR'){
+     const old=requiredByArticle.get(extra.articuloId)??new Prisma.Decimal(0);
+     requiredByArticle.set(extra.articuloId,Prisma.Decimal.max(0,old.minus(extraQty)));
+    }else add(extra.articuloId,extraQty);
+   }
+  }
+  if(config.modalidad){
+   if(version.receta.tipo!=='VENTA')throw new ConflictException('Empaques de cotización requieren receta VENTA');
+   const rules=await tx.reglaEmpaque.findMany({where:{activa:true,modalidad:config.modalidad,
+    OR:[{sucursalId:branch.id},{sucursalId:null}],AND:[{OR:[
+     {varianteId:version.receta.varianteId},{varianteId:null}]}]},
+    include:{reglaEmpaqueLineasComoRegla:true}});
+   rules.sort((a,b)=>Number(b.sucursalId!==null)-Number(a.sucursalId!==null)||
+    Number(b.varianteId!==null)-Number(a.varianteId!==null)||a.id.localeCompare(b.id));
+   const selected=new Set<string>();
+   for(const rule of rules){
+    if(selected.has(rule.alcance))continue;
+    selected.add(rule.alcance);
+    for(const line of rule.reglaEmpaqueLineasComoRegla){
+     const packages=rule.alcance==='ORDEN'?new Prisma.Decimal(1):quantityProduced;
+     add(line.articuloId,line.cantidad.mul(packages).toDecimalPlaces(6,Prisma.Decimal.ROUND_CEIL));
+    }
+   }
+  }
   const origins=config.origenes??[];
   ensureUnique(origins,x=>x.articuloId,'Origen de ingrediente');
-  const ids=new Set(version.recetaComponentesComoRecetaVersion.map(x=>x.articuloId));
-  for(const origin of origins)if(!ids.has(origin.articuloId))
+  for(const origin of origins)if(!requiredByArticle.has(origin.articuloId))
    throw new BadRequestException('El origen contiene un ingrediente ajeno a la receta');
   const result:PlanLine[]=[];
   const short:Array<{articuloId:string;requerido:string;disponible:string}>=[];
-  for(const component of version.recetaComponentesComoRecetaVersion){
-   const net=demand(component,factor);
-   const required=await toBase(tx,component.articuloId,component.unidadId,net);
-   const custom=origins.find(x=>x.articuloId===component.articuloId);
+  for(const [articuloId,required] of requiredByArticle){
+   if(required.isZero())continue;
+   const custom=origins.find(x=>x.articuloId===articuloId);
    const chosenLocation=custom?.ubicacionId??config.ubicacionConsumoId??locationId;
    const location=await this.engine.location(tx,chosenLocation);
    if(location.almacen.sucursalId!==branch.id)
     throw new ConflictException('La ubicación de consumo no pertenece a la sucursal de producción');
-   const positions=await tx.existencia.findMany({where:{articuloId:component.articuloId,
+   const positions=await tx.existencia.findMany({where:{articuloId,
     ubicacionId:chosenLocation,cantidad:{gt:0}},include:{lote:true}});
    const today=localDate(new Date(),branch.zonaHoraria);
    const eligible=positions.filter(x=>
@@ -71,14 +118,14 @@ export class ProductionStore{
     b.lote?.fechaVencimiento?.toISOString()??'9999')||a.id.localeCompare(b.id));
    const available=eligible.reduce((a,x)=>a.plus(x.cantidad),new Prisma.Decimal(0));
    if(available.lessThan(required)){
-    short.push({articuloId:component.articuloId,requerido:money(required),disponible:money(available)});
+    short.push({articuloId,requerido:money(required),disponible:money(available)});
     continue;
    }
    let remaining=required;
    for(const pos of eligible){
     if(remaining.isZero())break;
     const take=Prisma.Decimal.min(remaining,pos.cantidad);
-    result.push({articuloId:component.articuloId,ubicacionId:chosenLocation,
+    result.push({articuloId,ubicacionId:chosenLocation,
      loteId:pos.loteId,cantidad:take});
     remaining=remaining.minus(take);
    }
@@ -112,7 +159,7 @@ export class ProductionStore{
   }
   return costs;
  }
- async preview(u:Principal,id:string,d:PreviewDto){
+ async preview(u:Principal,id:string,d:PreviewDto|QuoteDto){
   await this.permission(u,d.sucursalId,'recipes.read');
   await this.permission(u,d.sucursalId,'inventory.read');
   return this.engine.tx(async tx=>{
@@ -124,7 +171,9 @@ export class ProductionStore{
    const location=await this.engine.location(tx,d.ubicacionId);
    if(location.almacen.sucursalId!==d.sucursalId)throw new ForbiddenException('Ubicación ajena a sucursal');
    const amount=quantity(d.cantidad??money(version.rendimiento));
-   const plan=await this.planned(tx,version,amount,d.ubicacionId,{ubicacionConsumoId:d.ubicacionId});
+   const quote=d as QuoteDto;
+   const plan=await this.planned(tx,version,amount,d.ubicacionId,{
+    ubicacionConsumoId:d.ubicacionId,modificadores:quote.modificadores,modalidad:quote.modalidad});
    const allowed=(await this.identity.capabilities(u.id,d.sucursalId)).includes('inventory.costs.read');
    const costs=allowed?await this.estimated(tx,plan.result):[];
    return {recetaVersionId:id,sucursalId:d.sucursalId,cantidad:money(amount),

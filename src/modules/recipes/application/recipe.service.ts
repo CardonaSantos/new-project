@@ -3,7 +3,7 @@ import type {Principal} from '../../auth/application/auth.service.js';
 import {RecipeStore} from '../infrastructure/prisma/recipe.store.js';
 import {ProductionStore} from '../infrastructure/prisma/production.store.js';
 import type {CreateRecipeDto,UpdateRecipeDto,VersionDto,ListRecipesDto,PreviewDto,
- ModifierCompositionDto,PackagingRuleDto,PackagingQueryDto,ExecuteProductionDto,ListProductionsDto} from '../presentation/http/dto/recipe.dto.js';
+ ModifierCompositionDto,PackagingRuleDto,PackagingQueryDto,QuoteDto,ExecuteProductionDto,ListProductionsDto} from '../presentation/http/dto/recipe.dto.js';
 @Injectable()
 export class RecipeService{
  constructor(private readonly recipes:RecipeStore,private readonly productionStore:ProductionStore){}
@@ -21,6 +21,7 @@ export class RecipeService{
  packaging(u:Principal,d:PackagingQueryDto){return this.recipes.packaging(u,d);}
  createPackaging(u:Principal,d:PackagingRuleDto){return this.recipes.createPackaging(u,d);}
  preview(u:Principal,id:string,d:PreviewDto){return this.productionStore.preview(u,id,d);}
+ quote(u:Principal,d:QuoteDto){return this.productionStore.preview(u,d.recetaVersionId,d);}
  productions(u:Principal,d:ListProductionsDto){return this.productionStore.list(u,d);}
  production(u:Principal,id:string){return this.productionStore.detail(u,id);}
  draft(u:Principal,d:ExecuteProductionDto){return this.productionStore.draft(u,d);}

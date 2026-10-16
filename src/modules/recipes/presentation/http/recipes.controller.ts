@@ -3,13 +3,16 @@ import {CurrentUser} from '../../../auth/presentation/http/decorators/auth.decor
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {RecipeService} from '../../application/recipe.service.js';
 import {CreateRecipeDto,UpdateRecipeDto,VersionDto,ListRecipesDto,PreviewDto,
- ModifierCompositionDto,PackagingRuleDto,PackagingQueryDto,ExecuteProductionDto,ListProductionsDto} from './dto/recipe.dto.js';
+ ModifierCompositionDto,PackagingRuleDto,PackagingQueryDto,QuoteDto,ExecuteProductionDto,ListProductionsDto} from './dto/recipe.dto.js';
 @Controller('recipes')
 export class RecipesController{
  constructor(private readonly s:RecipeService){}
  @Get() list(@CurrentUser() u:Principal,@Query() q:ListRecipesDto){return this.s.list(u,q);}
  @Get('options') options(@CurrentUser() u:Principal,@Query() q:ListRecipesDto){return this.s.options(u,q);}
  @Post() create(@CurrentUser() u:Principal,@Body() d:CreateRecipeDto){return this.s.create(u,d);}
+ @Post('preview') quote(@CurrentUser() u:Principal,@Body() d:QuoteDto){
+  return this.s.quote(u,d);
+ }
  @Get('reports/coverage') coverage(@CurrentUser() u:Principal){return this.s.coverage(u);}
  @Get('modifiers/:id/components') modifier(@CurrentUser() u:Principal,@Param('id') id:string){return this.s.modifier(u,id);}
  @Put('modifiers/:id/components') setModifier(@CurrentUser() u:Principal,@Param('id') id:string,

@@ -134,28 +134,46 @@ export class ProductionStore{
  }
  private async estimated(tx:Tx,lines:PlanLine[]){
   const company=await tx.empresaConfiguracion.findFirst();
-  const costs:Prisma.Decimal[]=[];
-  for(const l of lines){
+  const grouped=new Map<string,{indices:number[];articuloId:string;ubicacionId:string;cantidad:Prisma.Decimal}>();
+  for(let i=0;i<lines.length;i++){
+   const line=lines[i],key=line.articuloId+':'+line.ubicacionId;
+   const group=grouped.get(key)??{indices:[],articuloId:line.articuloId,
+    ubicacionId:line.ubicacionId,cantidad:new Prisma.Decimal(0)};
+   group.indices.push(i);group.cantidad=group.cantidad.plus(line.cantidad);
+   grouped.set(key,group);
+  }
+  const costs=lines.map(()=>new Prisma.Decimal(0));
+  for(const group of grouped.values()){
    let total=new Prisma.Decimal(0);
    if(company?.metodoValoracion==='FIFO'){
-    const layers=await tx.capaCostoInventario.findMany({where:{articuloId:l.articuloId,
-     ubicacionId:l.ubicacionId,cantidadRestante:{gt:0}},orderBy:[{creadoEn:'asc'},{id:'asc'}]});
-    let remaining=l.cantidad;
+    const layers=await tx.capaCostoInventario.findMany({where:{articuloId:group.articuloId,
+     ubicacionId:group.ubicacionId,cantidadRestante:{gt:0}},
+     orderBy:[{creadoEn:'asc'},{id:'asc'}]});
+    let remaining=group.cantidad;
     for(const layer of layers){
      const taken=Prisma.Decimal.min(layer.cantidadRestante,remaining);
-     total=total.plus(taken.mul(layer.costoUnitario));remaining=remaining.minus(taken);
+     total=total.plus(taken.mul(layer.costoUnitario));
+     remaining=remaining.minus(taken);
      if(remaining.isZero())break;
     }
     if(!remaining.isZero())throw new ConflictException('Capas de costo insuficientes');
    }else{
-    const pos=await tx.existencia.aggregate({where:{articuloId:l.articuloId,ubicacionId:l.ubicacionId},
-     _sum:{cantidad:true}});
+    const pos=await tx.existencia.aggregate({where:{articuloId:group.articuloId,
+     ubicacionId:group.ubicacionId},_sum:{cantidad:true}});
     const qty=pos._sum.cantidad??new Prisma.Decimal(0);
-    const book=await locationBookValue(tx,l.articuloId,l.ubicacionId);
-    total=qty.equals(l.cantidad)?book:
-     book.mul(l.cantidad).div(qty).toDecimalPlaces(6,Prisma.Decimal.ROUND_HALF_UP);
+    const book=await locationBookValue(tx,group.articuloId,group.ubicacionId);
+    total=qty.equals(group.cantidad)?book:
+     book.mul(group.cantidad).div(qty).toDecimalPlaces(6,Prisma.Decimal.ROUND_HALF_UP);
    }
-   costs.push(total.toDecimalPlaces(6,Prisma.Decimal.ROUND_HALF_UP));
+   total=total.toDecimalPlaces(6,Prisma.Decimal.ROUND_HALF_UP);
+   let allocated=new Prisma.Decimal(0);
+   for(let i=0;i<group.indices.length;i++){
+    const index=group.indices[i];
+    const part=i===group.indices.length-1?total.minus(allocated):
+     total.mul(lines[index].cantidad).div(group.cantidad)
+      .toDecimalPlaces(6,Prisma.Decimal.ROUND_HALF_UP);
+    costs[index]=part;allocated=allocated.plus(part);
+   }
   }
   return costs;
  }

@@ -333,6 +333,8 @@ export class OrderStore{
     motivoCancelacion:requireNote(d.motivo),autorizadaCancelacionPreparada:protectedCancel,
     canceladaEn:now,version:{increment:1}}});
    for(const account of accounts){
+    await tx.intentoPago.updateMany({where:{cuentaId:account.id,estado:'PENDIENTE'},
+     data:{estado:'CANCELADO'}});
     await tx.cuentaLinea.updateMany({where:{cuentaId:account.id},data:{
      cantidadAsignada:new Prisma.Decimal(0),importeAsignado:new Prisma.Decimal(0)}});
     await tx.cuenta.update({where:{id:account.id},data:{

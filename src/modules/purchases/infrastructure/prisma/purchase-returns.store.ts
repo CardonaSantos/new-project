@@ -86,7 +86,7 @@ export class PurchaseReturnsStore{
    }
    await tx.devolucionProveedor.update({where:{id},data:{estado:'CONFIRMADA',confirmadoEn:new Date()}});
    await audit(tx,u,row.sucursalId,'PUR_RETURN_CONFIRMED','DevolucionProveedor',id,{lineas:movementIds.length});
-   return {id,estado:'CONFIRMADA',movimientoIds};
+   return {id,estado:'CONFIRMADA',movimientoIds:movementIds};
   }));
  }
  async credits(u:Actor,q:Paging){

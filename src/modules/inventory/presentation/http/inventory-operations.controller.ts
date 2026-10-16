@@ -62,3 +62,10 @@ export class InventoryOperationalReportsController{
  @Get('expiry') expiry(@CurrentUser() u:Principal,@Query() q:StockBranchDto){return this.store.expiry(u,q);}
  @Get('reconciliation') reconciliation(@CurrentUser() u:Principal,@Query() q:StockBranchDto){return this.store.reconciliation(u,q);}
 }
+
+@Controller('inventory/internal-consumption')
+export class InventoryInternalConsumptionController{
+ constructor(private readonly store:InventoryInternalConsumptionStore){}
+ @Post() consume(@CurrentUser() u:Principal,@Body() d:InternalConsumptionDto){
+  return this.store.execute(u,d);}
+}

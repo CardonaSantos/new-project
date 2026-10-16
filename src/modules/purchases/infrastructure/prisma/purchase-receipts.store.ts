@@ -73,13 +73,16 @@ export class PurchaseReceiptsStore{
    if(seen.has(lineKey))throw new ConflictException('Línea de recepción duplicada');
    seen.add(lineKey);
    const q=dec(l.cantidadCompra),rejected=dec(l.cantidadRechazada??'0',6,true);
-   const base=q.mul(factor);
+   if(rejected.gt(q))throw new BadRequestException('Cantidad rechazada excede lo entregado');
+   const accepted=q.minus(rejected);
+   if(!accepted.gt(0))throw new BadRequestException('La recepción requiere cantidad aceptada');
+   const base=accepted.mul(factor);
    if(base.decimalPlaces()>6||!base.gt(0))throw new ConflictException('Conversión a unidad base no exacta');
    const unit=dec(l.precioUnitarioCompra,6,true);
-   const subtotal=cents(q.mul(unit));
+   const subtotal=cents(accepted.mul(unit));
    amount=amount.plus(subtotal);
    lines.push({articuloId:l.articuloId,ubicacionId:l.ubicacionId,loteId:l.loteId??null,
-    ordenCompraLineaId:l.ordenCompraLineaId??null,cantidadCompra:q,
+    ordenCompraLineaId:l.ordenCompraLineaId??null,cantidadCompra:accepted,
     cantidadRechazada:rejected,factorAUnidadBase:factor,cantidadBase:base,
     precioUnitarioCompra:unit,costoTotal:subtotal});
   }

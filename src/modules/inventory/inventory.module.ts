@@ -15,14 +15,14 @@ import {InventoryInternalConsumptionStore} from './infrastructure/prisma/invento
 import {InventoryDocumentsStore} from './infrastructure/prisma/inventory-documents.store.js';
 import {InventoryOperationsStore} from './infrastructure/prisma/inventory-operations.store.js';
 import {InventoryStockController,InventoryLotsController,InventoryMovementsController,InventoryManualController,
- InventoryCountsController,InventoryTransfersController,InventoryOperationalReportsController
+ InventoryCountsController,InventoryTransfersController,InventoryOperationalReportsController,InventoryInternalConsumptionController
 } from './presentation/http/inventory-operations.controller.js';
 @Module({
  imports:[PrismaModule,AuthModule,MediaModule],
  controllers:[InventoryUnitsController,InventoryConversionsController,InventoryArticlesController,
   InventoryWarehousesController,InventoryLocationsController,InventoryReportsController,
  InventoryStockController,InventoryLotsController,InventoryMovementsController,InventoryManualController,
- InventoryCountsController,InventoryTransfersController,InventoryOperationalReportsController],
+ InventoryCountsController,InventoryTransfersController,InventoryOperationalReportsController,InventoryInternalConsumptionController],
  providers:[InventoryService,InventoryMediaService,InventoryPostingEngine,InventoryInternalConsumptionStore,InventoryDocumentsStore,InventoryOperationsStore,
   {provide:InventoryRepositoryPort,useClass:PrismaInventoryRepository}],
  exports:[InventoryService,InventoryRepositoryPort,InventoryPostingEngine]

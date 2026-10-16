@@ -28,6 +28,8 @@ export class OrdersController{
   @Body() d:SendDto){return this.orders.send(u,id,d);}
  @Post(':id/cancel') cancel(@CurrentUser() u:Principal,@Param('id') id:string,
   @Body() d:ReasonDto){return this.orders.cancel(u,id,d);}
+ @Post(':id/close') close(@CurrentUser() u:Principal,@Param('id') id:string){
+  return this.orders.close(u,id);}
 }
 @Controller('tables')
 export class TablesController{

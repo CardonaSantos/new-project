@@ -195,7 +195,11 @@ export class OrderStore{
     if(order.estado!=='ABIERTA')throw new ConflictException('Orden no editable');
     for(const item of d.lineas)await this.insertLine(tx,id,await this.quote(tx,order.sucursalId,item));
     await this.recalc(tx,id);
-    if(d.enviarCocina??true)await this.kitchen.sendTx(tx,u,id,'orders.manage');
+    const config=await tx.configuracionSucursal.findUnique({where:{sucursalId:order.sucursalId}});
+    if((d.enviarCocina??true)&&(!config?.exigeCobroAntesPreparar||
+      (await tx.cuenta.aggregate({where:{ordenId:id},_sum:{pagado:true}}))._sum.pagado?.gte(
+       (await tx.orden.findUniqueOrThrow({where:{id}})).total)))
+     await this.kitchen.sendTx(tx,u,id,'orders.manage');
     await audit(tx,u,'ORDER_LINES_ADDED','Orden',id,order.sucursalId,{cantidad:d.lineas.length});
     await outbox(tx,'ORDER_UPDATED','Orden',id,order.sucursalId);
     return {orderId:id};
@@ -284,8 +288,15 @@ export class OrderStore{
    if(accounts.some(c=>c.pagado.gt(0)))
     throw new ConflictException('Orden con pagos: resolver reembolso en Pagos/Caja');
    const consumed=await tx.consumoOrden.count({where:{ordenId:id}});
+   const now=new Date();
    await tx.orden.update({where:{id},data:{estado:'CANCELADA',
-    canceladaEn:new Date(),version:{increment:1}}});
+    canceladaEn:now,version:{increment:1}}});
+   for(const account of accounts){
+    await tx.cuentaLinea.updateMany({where:{cuentaId:account.id},data:{
+     cantidadAsignada:new Prisma.Decimal(0),importeAsignado:new Prisma.Decimal(0)}});
+    await tx.cuenta.update({where:{id:account.id},data:{
+     total:new Prisma.Decimal(0),estado:'CERRADA',cerradaEn:now}});
+   }
    const tickets=await tx.comanda.findMany({where:{ordenId:id,estado:{in:['PENDIENTE','PREPARANDO']}}});
    for(const t of tickets){
     await tx.comanda.update({where:{id:t.id},data:{estado:'CANCELADA',canceladaEn:new Date()}});
@@ -297,8 +308,51 @@ export class OrderStore{
    await audit(tx,u,'ORDER_CANCELLED','Orden',id,order.sucursalId,
     {consumosExistentes:consumed,noRevertirInventario:true},requireNote(d.motivo));
    await outbox(tx,'ORDER_CANCELLED','Orden',id,order.sucursalId);
+   if(order.ocupacionMesaId){
+    const active=await tx.orden.count({where:{ocupacionMesaId:order.ocupacionMesaId,estado:'ABIERTA'}});
+    if(!active){
+     await tx.ocupacionMesa.updateMany({where:{id:order.ocupacionMesaId,cerradaEn:null},
+      data:{cerradaEn:now}});
+     await outbox(tx,'TABLE_RELEASED','OcupacionMesa',order.ocupacionMesaId,order.sucursalId);
+    }
+   }
    return id;
   });
   return this.detail(u,result);
  }
+ async close(u:Principal,id:string){
+  const result=await this.engine.tx(async tx=>{
+   const order=await this.order(tx,id);
+   await this.engine.allowed(tx,u.id,'orders.manage',order.sucursalId);
+   if(order.estado==='CERRADA')return id;
+   if(order.estado!=='ABIERTA')throw new ConflictException('Orden cancelada');
+   const lines=await tx.ordenLinea.findMany({where:{ordenId:id,canceladaEn:null}});
+   if(!lines.length||lines.some(x=>x.cantidadEnviada.lt(x.cantidad)))
+    throw new ConflictException('Orden tiene productos sin enviar');
+   const pending=await tx.comanda.count({where:{ordenId:id,
+    estado:{in:['PENDIENTE','PREPARANDO']}}});
+   if(pending)throw new ConflictException('Hay comandas pendientes de preparación');
+   const accounts=await tx.cuenta.findMany({where:{ordenId:id}});
+   if(!accounts.length||accounts.some(x=>x.pagado.lt(x.total)))
+    throw new ConflictException('La cuenta requiere cobro confirmado antes de cerrar');
+   const now=new Date();
+   for(const a of accounts)if(a.estado!=='CERRADA')
+    await tx.cuenta.update({where:{id:a.id},data:{estado:'CERRADA',cerradaEn:now}});
+   await tx.orden.update({where:{id},data:{estado:'CERRADA',
+    cerradaEn:now,version:{increment:1}}});
+   await audit(tx,u,'ORDER_CLOSED','Orden',id,order.sucursalId);
+   await outbox(tx,'ORDER_CLOSED','Orden',id,order.sucursalId);
+   if(order.ocupacionMesaId){
+    const active=await tx.orden.count({where:{ocupacionMesaId:order.ocupacionMesaId,estado:'ABIERTA'}});
+    if(!active){
+     await tx.ocupacionMesa.updateMany({where:{id:order.ocupacionMesaId,cerradaEn:null},
+      data:{cerradaEn:now}});
+     await outbox(tx,'TABLE_RELEASED','OcupacionMesa',order.ocupacionMesaId,order.sucursalId);
+    }
+   }
+   return id;
+  });
+  return this.detail(u,result);
+ }
+
 }

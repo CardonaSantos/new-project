@@ -116,6 +116,7 @@ export class RecipeStore{
   await this.global(u,'recipes.manage');
   const name=d.nombre.trim();
   if(name.length<3)throw new BadRequestException('Nombre mínimo 3 caracteres');
+  if(d.version?.publicar)await this.global(u,'recipes.publish');
   return this.engine.tx(async tx=>{
    await this.edit(tx,u);
    await this.checkRecipe(tx,d);
@@ -146,6 +147,7 @@ export class RecipeStore{
  }
  async newVersion(u:Principal,id:string,d:VersionDto){
   await this.global(u,'recipes.manage');
+  if(d.publicar)await this.global(u,'recipes.publish');
   return this.engine.tx(async tx=>{
    await this.edit(tx,u);
    const recipe=await tx.receta.findUnique({where:{id}});
@@ -159,6 +161,7 @@ export class RecipeStore{
  }
  async revise(u:Principal,id:string,d:VersionDto){
   await this.global(u,'recipes.manage');
+  if(d.publicar)await this.global(u,'recipes.publish');
   return this.engine.tx(async tx=>{
    await this.edit(tx,u);
    const version=await tx.recetaVersion.findUnique({where:{id},include:{receta:true}});
@@ -182,8 +185,7 @@ export class RecipeStore{
  async publish(u:Principal,id:string){
   await this.global(u,'recipes.publish');
   return this.engine.tx(async tx=>{
-   await this.engine.allowed(tx,u.id,'recipes.publish',(await tx.sucursal.findFirst())?.id??'');
-   // Global publication is checked separately, never via an arbitrary branch.
+   // Publication has a separate global capability from draft editing.
    const role=await tx.usuarioRol.findFirst({where:{usuarioId:u.id,sucursalId:null,
     usuario:{activo:true},rol:{activo:true,alcance:'GLOBAL',
      rolPermisosComoRol:{some:{permiso:{codigo:'recipes.publish'}}}}}});

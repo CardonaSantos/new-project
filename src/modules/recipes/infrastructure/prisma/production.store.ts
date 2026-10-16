@@ -184,7 +184,7 @@ export class ProductionStore{
  }
  private async confirmTx(tx:Tx,u:Principal,id:string){
   const p=await tx.produccionLote.findUnique({where:{id},include:{
-   recetaVersion:{include:includeVersion},ubicacionDestino:{include:{almacen:true}}}});
+   recetaVersion:{include:includeVersion},ubicacionDestino:{include:{almacen:{include:{sucursal:true}}}}}});
   if(!p)throw new NotFoundException('Producción inexistente');
   await this.engine.allowed(tx,u.id,'recipes.produce',p.ubicacionDestino.almacen.sucursalId);
   if(p.estado==='CONFIRMADA')return p;

@@ -7,9 +7,9 @@ import {locationBookValue} from './inventory-ledger.js';
 type Tx=Prisma.TransactionClient;
 export type StockPosting={
  actorId:string;ubicacionId:string;articuloId:string;loteId?:string|null;
- cantidad:string;direction:'IN'|'OUT';tipo:'AJUSTE_ENTRADA'|'AJUSTE_SALIDA'|'MERMA'|'TRANSFERENCIA_SALIDA'|'TRANSFERENCIA_ENTRADA';
+ cantidad:string;direction:'IN'|'OUT';tipo:'AJUSTE_ENTRADA'|'AJUSTE_SALIDA'|'MERMA'|'TRANSFERENCIA_SALIDA'|'TRANSFERENCIA_ENTRADA'|'PRODUCCION_SALIDA'|'PRODUCCION_ENTRADA';
  costoUnitario?:string;costoTotalOverride?:string;claveOperacion:string;referenciaTipo:string;referenciaId:string;nota?:string;
- permission:'inventory.adjust'|'inventory.transfer';allowBlocked?:boolean;
+ permission:'inventory.adjust'|'inventory.transfer'|'recipes.produce';allowBlocked?:boolean;
 };
 export type CostSlice={cantidad:string;costoUnitario:string;costoTotal?:string};
 @Injectable()
@@ -39,7 +39,7 @@ export class InventoryPostingEngine{
  }
  async post(tx:Tx,v:StockPosting){
   const count=amount(v.cantidad);
-  if(v.costoTotalOverride!==undefined&&(v.direction!=='IN'||v.tipo!=='TRANSFERENCIA_ENTRADA'))
+  if(v.costoTotalOverride!==undefined&&(v.direction!=='IN'||!['TRANSFERENCIA_ENTRADA','PRODUCCION_ENTRADA'].includes(v.tipo)))
    throw new BadRequestException('Solo una recepción de transferencia puede fijar costoTotal');
   const l=await this.location(tx,v.ubicacionId);
   await this.allowed(tx,v.actorId,v.permission,l.almacen.sucursalId);

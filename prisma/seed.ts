@@ -26,6 +26,8 @@ const permissions=[
  ['inventory.units.manage','inventory'],['inventory.articles.manage','inventory'],
  ['inventory.warehouses.manage','inventory'],['inventory.reports.read','inventory'],
  ['inventory.costs.read','inventory'],['inventory.costs.manage','inventory'],
+ ['recipes.read','recipes'],['recipes.manage','recipes'],['recipes.publish','recipes'],
+ ['recipes.produce','recipes'],['recipes.production.read','recipes'],
  ['purchases.manage','purchases'],
  ['cash.open','cash'],['cash.close','cash'],['payments.collect','payments'],
  ['payments.refund','payments'],['delivery.manage','delivery'],['reservations.manage','reservations'],

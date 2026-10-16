@@ -699,6 +699,7 @@ model RecetaVersion {
   publicadaEn         DateTime?    @db.Timestamptz(3)
   activa              Boolean      @default(false)
   creadaEn            DateTime     @default(now()) @db.Timestamptz(3)
+  vidaUtilDias        Int?
 
   // Relaciones inversas (navegación Prisma)
   recetaComponentesComoRecetaVersion RecetaComponente[] @relation("RecetaComponente_recetaVersion_RecetaVersion")
@@ -882,6 +883,7 @@ model MovimientoInventario {
   capaCostoInventariosComoMovimientoEntrada CapaCostoInventario?  @relation("CapaCostoInventario_movimientoEntrada_MovimientoInventario")
   aplicacionCapaCostosComoMovimientoSalida  AplicacionCapaCosto[] @relation("AplicacionCapaCosto_movimientoSalida_MovimientoInventario")
   produccionConsumosComoMovimiento          ProduccionConsumo?    @relation("ProduccionConsumo_movimiento_MovimientoInventario")
+  produccionResultadoComoMovimiento          ProduccionLote?       @relation("ProduccionResultado_movimiento")
   consumoOrdenLineasComoMovimiento          ConsumoOrdenLinea?    @relation("ConsumoOrdenLinea_movimiento_MovimientoInventario")
 
   @@index([articuloId, creadoEn])
@@ -998,6 +1000,11 @@ model ProduccionLote {
   usuarioId          String
   usuario            Usuario          @relation("ProduccionLote_usuario_Usuario", fields: [usuarioId], references: [id], onDelete: Restrict)
   cantidadProducida  Decimal          @db.Decimal(20, 6)
+  claveOperacion     String?          @unique
+  solicitudHash      String?
+  configuracion      Json?
+  movimientoResultadoId String?      @unique
+  movimientoResultado MovimientoInventario? @relation("ProduccionResultado_movimiento",fields:[movimientoResultadoId],references:[id],onDelete:Restrict)
   loteResultadoId    String?
   loteResultado      LoteInventario?  @relation("ProduccionLote_loteResultado_LoteInventario", fields: [loteResultadoId], references: [id], onDelete: Restrict)
   estado             EstadoProduccion @default(BORRADOR)

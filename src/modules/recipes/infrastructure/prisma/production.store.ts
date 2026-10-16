@@ -242,7 +242,9 @@ export class ProductionStore{
   const row=await this.db.produccionLote.findUnique({where:{id},include:details});
   if(!row)throw new NotFoundException('Producción inexistente');
   const branch=row.ubicacionDestino.almacen.sucursalId;
-  await this.permission(u,branch,'recipes.production.read');
+  const permissions=await this.identity.capabilities(u.id,branch);
+  if(!permissions.includes('recipes.production.read')&&!permissions.includes('recipes.produce'))
+   throw new ForbiddenException('No puede consultar esta producción');
   const canCost=(await this.identity.capabilities(u.id,branch)).includes('inventory.costs.read');
   return {id:row.id,estado:row.estado,claveOperacion:row.claveOperacion,
    recetaVersion:row.recetaVersion,ubicacionDestino:row.ubicacionDestino,
@@ -252,7 +254,9 @@ export class ProductionStore{
    confirmadoEn:row.confirmadoEn,creadoEn:row.creadoEn,
    ...(canCost?{costoTotal:row.costoTotal?money(row.costoTotal):null}:{}),
    consumos:row.produccionConsumosComoProduccion.map(c=>({
-    id:c.id,articulo:c.articulo,ubicacion:c.ubicacion,lote:c.lote,
+    id:c.id,articulo:{id:c.articulo.id,codigo:c.articulo.codigo,nombre:c.articulo.nombre,
+     tipo:c.articulo.tipo},ubicacion:{id:c.ubicacion.id,codigo:c.ubicacion.codigo,
+     nombre:c.ubicacion.nombre},lote:c.lote?{id:c.lote.id,codigoLote:c.lote.codigoLote}:null,
     cantidad:money(c.cantidad),movimientoId:c.movimientoId,
     ...(canCost?{costoUnitario:money(c.costoUnitario),
      costoTotal:c.movimiento?money(c.movimiento.costoTotal):null}:{})
@@ -313,10 +317,26 @@ export class ProductionStore{
   await this.permission(u,q.sucursalId,'recipes.production.read');
   const rows=await this.db.produccionLote.findMany({where:{
    estado:'CONFIRMADA',ubicacionDestino:{almacen:{sucursalId:q.sucursalId}}},select:{
-    cantidadProducida:true,costoTotal:true,recetaVersion:{select:{receta:{select:{nombre:true}}}}}});
+    cantidadProducida:true,costoTotal:true,recetaVersion:{select:{
+     receta:{select:{nombre:true,articuloResultado:{select:{id:true,codigo:true,nombre:true,
+      unidadBase:{select:{codigo:true}}}}}}}}}});
+  const byArticle=new Map<string,{articuloId:string;codigo:string;nombre:string;unidad:string;
+   cantidad:Prisma.Decimal;costo:Prisma.Decimal}>();
+  for(const row of rows){
+   const article=row.recetaVersion.receta.articuloResultado;
+   if(!article)continue;
+   const old=byArticle.get(article.id)??{articuloId:article.id,codigo:article.codigo,
+    nombre:article.nombre,unidad:article.unidadBase.codigo,
+    cantidad:new Prisma.Decimal(0),costo:new Prisma.Decimal(0)};
+   old.cantidad=old.cantidad.plus(row.cantidadProducida);
+   old.costo=old.costo.plus(row.costoTotal??0);
+   byArticle.set(article.id,old);
+  }
   const canCost=(await this.identity.capabilities(u.id,q.sucursalId)).includes('inventory.costs.read');
   return {sucursalId:q.sucursalId,produccionesConfirmadas:rows.length,
-   cantidadProducida:money(rows.reduce((s,r)=>s.plus(r.cantidadProducida),new Prisma.Decimal(0))),
+   articulos:[...byArticle.values()].map(a=>({articuloId:a.articuloId,codigo:a.codigo,
+    nombre:a.nombre,unidad:a.unidad,cantidad:money(a.cantidad),
+    ...(canCost?{costoTotal:money(a.costo)}:{})})),
    ...(canCost?{costoTotal:money(rows.reduce((s,r)=>s.plus(r.costoTotal??0),new Prisma.Decimal(0)))}:{})};
  }
 }

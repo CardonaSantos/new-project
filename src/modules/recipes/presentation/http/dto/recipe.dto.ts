@@ -1,6 +1,6 @@
 import {ArrayMaxSize,ArrayMinSize,IsArray,IsBoolean,IsEnum,IsInt,IsOptional,IsString,Matches,Max,MaxLength,Min,ValidateNested} from 'class-validator';
 import {Type} from 'class-transformer';
-const qty=/^(?:0|[1-9]\d{0,13})(?:\.\d{1,6})?$/;
+const qty=/^(?!0(?:\.0{1,6})?$)(?:0|[1-9]\d{0,13})(?:\.\d{1,6})?$/;
 const percent=/^(?:0|[1-9]\d{0,2})(?:\.\d{1,4})?$/;
 export class ComponentDto{
  @IsString() articuloId!:string;

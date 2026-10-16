@@ -9,11 +9,13 @@ import {toBase} from './recipe-units.js';
 import type {CreateRecipeDto,UpdateRecipeDto,VersionDto,ListRecipesDto,ModifierCompositionDto,
  PackagingRuleDto,PackagingQueryDto} from '../../presentation/http/dto/recipe.dto.js';
 type Tx=Prisma.TransactionClient;
+const publicArticle={id:true,codigo:true,nombre:true,tipo:true,unidadBaseId:true,
+ unidadBase:{select:{id:true,codigo:true,nombre:true,dimension:true}}} as const;
 export const fullRecipe={
- variante:{include:{producto:true}},articuloResultado:{include:{unidadBase:true}},
+ variante:{include:{producto:true}},articuloResultado:{select:publicArticle},
  recetaVersionesComoReceta:{orderBy:{numero:'desc' as const},include:{
   unidadRendimiento:true,recetaComponentesComoRecetaVersion:{
-   include:{articulo:{include:{unidadBase:true}},unidad:true}}}}
+   include:{articulo:{select:publicArticle},unidad:true}}}}
 };
 export const audit=async(tx:Tx,u:Principal,action:string,entity:string,id:string,after?:Record<string,unknown>)=>
  tx.eventoAuditoria.create({data:{usuarioId:u.id,accion:action,entidad:entity,entidadId:id,
@@ -156,7 +158,7 @@ export class RecipeStore{
    const version=await this.addVersion(tx,recipe,d);
    await audit(tx,u,'RECIPE_VERSION_CREATED','RecetaVersion',version.id,{recetaId:id,numero:version.numero});
    return tx.recetaVersion.findUniqueOrThrow({where:{id:version.id},include:{
-    unidadRendimiento:true,recetaComponentesComoRecetaVersion:{include:{articulo:true,unidad:true}}}});
+    unidadRendimiento:true,recetaComponentesComoRecetaVersion:{include:{articulo:{select:publicArticle},unidad:true}}}});
   });
  }
  async revise(u:Principal,id:string,d:VersionDto){
@@ -179,7 +181,7 @@ export class RecipeStore{
    if(d.publicar)await this.publishTx(tx,version.recetaId,id);
    await audit(tx,u,'RECIPE_VERSION_UPDATED','RecetaVersion',id);
    return tx.recetaVersion.findUniqueOrThrow({where:{id},include:{
-    unidadRendimiento:true,recetaComponentesComoRecetaVersion:{include:{articulo:true,unidad:true}}}});
+    unidadRendimiento:true,recetaComponentesComoRecetaVersion:{include:{articulo:{select:publicArticle},unidad:true}}}});
   });
  }
  async publish(u:Principal,id:string){
@@ -210,7 +212,7 @@ export class RecipeStore{
  async modifier(u:Principal,id:string){
   await this.global(u,'recipes.read');
   const r=await this.db.modificador.findUnique({where:{id},include:{
-   modificadorComponentesComoModificador:{include:{articulo:true,unidad:true,sustituyeArticulo:true}}}});
+   modificadorComponentesComoModificador:{include:{articulo:{select:publicArticle},unidad:true,sustituyeArticulo:{select:publicArticle}}}}});
   if(!r)throw new NotFoundException('Modificador inexistente');
   return r;
  }
@@ -237,15 +239,15 @@ export class RecipeStore{
    }))});
    await audit(tx,u,'RECIPE_MODIFIER_COMPONENTS_UPDATED','Modificador',id,{componentes:d.componentes.length});
    return tx.modificador.findUniqueOrThrow({where:{id},include:{
-    modificadorComponentesComoModificador:{include:{articulo:true,unidad:true}}}});
+    modificadorComponentesComoModificador:{include:{articulo:{select:publicArticle},unidad:true}}}});
   });
  }
  async packaging(u:Principal,q:PackagingQueryDto){
   await this.global(u,'recipes.read');
-  return this.db.reglaEmpaque.findMany({where:{
-   ...(q.sucursalId?{OR:[{sucursalId:q.sucursalId},{sucursalId:null}]}:{}),
-   ...(q.varianteId?{OR:[{varianteId:q.varianteId},{varianteId:null}]}:{})
-  },include:{reglaEmpaqueLineasComoRegla:{include:{articulo:true}},variante:true,sucursal:true},
+  return this.db.reglaEmpaque.findMany({where:{AND:[
+   ...(q.sucursalId?[{OR:[{sucursalId:q.sucursalId},{sucursalId:null}]}]:[]),
+   ...(q.varianteId?[{OR:[{varianteId:q.varianteId},{varianteId:null}]}]:[])
+  ]},include:{reglaEmpaqueLineasComoRegla:{include:{articulo:{select:publicArticle}}},variante:true,sucursal:true},
    orderBy:{nombre:'asc'}});
  }
  async createPackaging(u:Principal,d:PackagingRuleDto){
@@ -270,7 +272,7 @@ export class RecipeStore{
      articuloId:l.articuloId,cantidad:new Prisma.Decimal(l.cantidad)}))}}});
    await audit(tx,u,'PACKAGING_RULE_CREATED','ReglaEmpaque',rule.id);
    return tx.reglaEmpaque.findUniqueOrThrow({where:{id:rule.id},
-    include:{reglaEmpaqueLineasComoRegla:{include:{articulo:true}}}});
+    include:{reglaEmpaqueLineasComoRegla:{include:{articulo:{select:publicArticle}}}}});
   });
  }
 }

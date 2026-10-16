@@ -64,6 +64,18 @@ describe('ORD-A HTTP contract',()=>{
    claveOperacion:'ORDER:HTTP:SEND'
   }).expect(201);
  });
+ it('accepts an explicitly classified cancellation and rejects unknown classification',async()=>{
+  orders.cancel.mockResolvedValueOnce({id:'o1',clasificacionCancelacion:'MERMA_OPERATIVA'});
+  await request(app.getHttpServer()).post('/api/orders/o1/cancel').send({
+   motivo:'Preparación perdida al entregar',clasificacion:'MERMA_OPERATIVA'
+  }).expect(201);
+  expect(orders.cancel).toHaveBeenCalledWith(principal,expect.objectContaining({
+   clasificacion:'MERMA_OPERATIVA'
+  }));
+  await request(app.getHttpServer()).post('/api/orders/o1/cancel').send({
+   motivo:'Motivo detallado',clasificacion:'SIN_CONTROL'
+  }).expect(400);
+ });
  it('routes the preparation board and validates partial consumption',async()=>{
   await request(app.getHttpServer()).post('/api/kitchen/stations').send({
    sucursalId:'b1',nombre:'Barra',ubicacionConsumoId:'stock'

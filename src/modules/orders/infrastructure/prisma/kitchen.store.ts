@@ -219,7 +219,7 @@ export class KitchenStore{
    Array.from({length:x.cantidad},()=>x.modificadorId));
   await this.consumption.recipe(tx,u,order.id,row.ordenLineaId,row.id,
    row.ordenLinea.recetaVersionId!,amount,ticket.estacion.ubicacionConsumoId,
-   modifiers,order.modalidad,row.cantidadPreparada);
+   modifiers,order.modalidad,row.cantidadPreparada,row.ordenLinea.composicionSnapshot);
   await this.consumption.packaging(tx,u,order.id,order.sucursalId,order.modalidad);
   await tx.comandaLinea.update({where:{id:lineId},data:{
    cantidadPreparada:row.cantidadPreparada.plus(amount)}});

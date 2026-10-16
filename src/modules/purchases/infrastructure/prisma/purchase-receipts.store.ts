@@ -155,6 +155,7 @@ export class PurchaseReceiptsStore{
     const entry=await this.engine.post(tx,{actorId:u.id,articuloId:line.articuloId,
      ubicacionId:line.ubicacionId,loteId:line.loteId,cantidad:f(base,6),
      direction:'IN',tipo:'COMPRA',costoUnitario:f(unit,6),
+     costoTotalOverride:f(line.costoTotal,6),
      claveOperacion:'PUR:RC:'+receipt.id+':'+line.id,
      referenciaTipo:'RECEPCION_COMPRA',referenciaId:receipt.id,
      permission:'purchases.receipts.confirm',nota:'Recepción a proveedor '+receipt.proveedorId});

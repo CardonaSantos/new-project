@@ -39,8 +39,8 @@ export class InventoryPostingEngine{
  }
  async post(tx:Tx,v:StockPosting){
   const count=amount(v.cantidad);
-  if(v.costoTotalOverride!==undefined&&(v.direction!=='IN'||!['TRANSFERENCIA_ENTRADA','PRODUCCION_ENTRADA'].includes(v.tipo)))
-   throw new BadRequestException('Solo una recepción de transferencia puede fijar costoTotal');
+  if(v.costoTotalOverride!==undefined&&(v.direction!=='IN'||!['TRANSFERENCIA_ENTRADA','PRODUCCION_ENTRADA','COMPRA'].includes(v.tipo)))
+   throw new BadRequestException('costoTotal explícito solo para entradas documentales de transferencia, producción o compra');
   const l=await this.location(tx,v.ubicacionId);
   await this.allowed(tx,v.actorId,v.permission,l.almacen.sucursalId);
   const art=await tx.articuloInventario.findUnique({where:{id:v.articuloId}});

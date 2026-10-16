@@ -13,7 +13,8 @@ import {quantity,money,demand,isDate,ensureUnique,validCode} from '../../domain/
 import type {PreviewDto,QuoteDto,ExecuteProductionDto,ListProductionsDto,SourceDto} from '../../presentation/http/dto/recipe.dto.js';
 type Tx=Prisma.TransactionClient;
 const includeVersion={receta:true,recetaComponentesComoRecetaVersion:true} as const;
-const details={recetaVersion:{include:{receta:true,recetaComponentesComoRecetaVersion:{include:{articulo:true}}}},
+const details={recetaVersion:{include:{receta:true,recetaComponentesComoRecetaVersion:{
+  include:{articulo:{select:{id:true,codigo:true,nombre:true,tipo:true}},unidad:true}}}},
  ubicacionDestino:{include:{almacen:true}},loteResultado:true,
  produccionConsumosComoProduccion:{include:{articulo:true,ubicacion:true,lote:true,movimiento:true}}} as const;
 type Version=Prisma.RecetaVersionGetPayload<{include:typeof includeVersion}>;

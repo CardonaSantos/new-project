@@ -68,6 +68,15 @@ Para agregar productos luego, usar POST /api/orders/:id/lines con nueva clave.
   se conservan en Orden y auditoría.
 - La mesa se libera automáticamente al cerrar/cancelar la última orden abierta.
 
+
+## Protección adicional — cancelación de preparación y modificadores físicos
+- Cancelar una orden SIN preparación conserva la operación habitual: `POST /api/orders/:id/cancel` con `{"motivo":"..."}`.
+- Si ya hubo consumo de receta/empaque, unidades preparadas o entrega, se exige el permiso **`orders.cancel.prepared`** (supervisor) además de `orders.manage`, y la petición debe incluir `clasificacion`: `CORTESIA`, `MERMA_OPERATIVA`, `ERROR_OPERATIVO` u `OTRO`.
+- Las cancelaciones registran `importeAnulado`, `motivoCancelacion`, `clasificacionCancelacion` y `autorizadaCancelacionPreparada`. Se conserva `Orden.total` original, se cierra la cuenta sin cobrar, y jamás se restaura automáticamente el inventario consumido. Pagos existentes impiden cancelar sin gestión financiera posterior.
+- Los modificadores pueden declarar `requiereComposicion: true` mediante `PATCH /api/catalog/modifiers/:id`. Si se seleccionan para venta y no tienen `ModificadorComponente` en REC-A, se rechaza la orden (409). Los modificadores puramente comerciales pueden conservar `false`.
+- Configuración física: `PUT /api/recipes/modifiers/:id/components` con `componentes:[{articuloId,unidadId,cantidad,efecto:'SUMAR'}]`. La orden congela la composición por línea y cocina la consume contra inventario real sin cambiar retroactivamente si la receta/modificador se edita luego.
+- Tras desplegar ejecutar `npm run prisma:deploy` y `npm run prisma:seed` (nueva migración aditiva `20261017120000_orders_supervised_cancellation_and_modifier_composition`). El seed otorga el permiso de supervisor a `SUPER_ADMIN`; para otros roles asignar explícitamente.
+
 ## Pagos, cuentas e integraciones
 ORD-A crea Cuenta y CuentaLinea. No escribe pagos ficticios ni obliga
 a una pasarela. Pagos/Caja implementará cobros en efectivo, terminal de tarjeta

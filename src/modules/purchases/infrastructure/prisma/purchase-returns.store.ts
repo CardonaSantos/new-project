@@ -184,7 +184,10 @@ export class PurchaseReturnsStore{
      _sum:{monto:true}})]);
    covered(amt,invoice.total.minus(payments._sum.monto??0).minus(credits._sum.monto??0),
     'Crédito excede deuda disponible');
-   await tx.aplicacionNotaCreditoProveedor.create({data:{notaId:id,facturaId:invoice.id,monto:amt}});
+   await tx.aplicacionNotaCreditoProveedor.upsert({where:{
+    notaId_facturaId:{notaId:id,facturaId:invoice.id}},
+    create:{notaId:id,facturaId:invoice.id,monto:amt},
+    update:{monto:{increment:amt}}});
    await audit(tx,u,note.sucursalId,'PUR_CREDIT_APPLIED','NotaCreditoProveedor',id,
     {facturaId:invoice.id,monto:d.monto});
    return {id,facturaId:invoice.id,aplicado:d.monto};

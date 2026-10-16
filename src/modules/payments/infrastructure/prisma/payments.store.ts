@@ -101,6 +101,21 @@ export class PaymentsStore{
   await audit(tx,u,order.sucursalId,'ORDER_CLOSED','Orden',orderId);
   return {orderId,closed:true};
  }
+ private async readyToSettle(tx:Tx,orderId:string){
+  const lines=await tx.ordenLinea.findMany({where:{ordenId:orderId,canceladaEn:null}});
+  if(!lines.length||lines.some(l=>l.cantidadEnviada.lt(l.cantidad)))return false;
+  if(await tx.comanda.count({where:{ordenId,estado:{in:['PENDIENTE','PREPARANDO']}}}))return false;
+  const accounts=await tx.cuenta.findMany({where:{ordenId}});
+  return accounts.length>0&&accounts.every(a=>a.pagado.eq(a.total));
+ }
+ async finalize(u:Principal,orderId:string){
+  return txSerializable(this.db,async tx=>{
+   const o=await tx.orden.findUnique({where:{id:orderId}});
+   if(!o)throw new NotFoundException('Orden inexistente');
+   await allowed(tx,u,o.sucursalId,'payments.collect');
+   return this.settleTx(tx,u,orderId);
+  });
+ }
  async settle(u:Principal,orderId:string){
   const result=await txSerializable(this.db,async tx=>{
    const o=await tx.orden.findUnique({where:{id:orderId}});
@@ -143,6 +158,8 @@ export class PaymentsStore{
    }
    await audit(tx,u,branch,'PAYMENTS_COLLECTED','Cuenta',accountId,{
     pagos:pagos.length,intentos:intentos.length});
+   if(await this.readyToSettle(tx,account.ordenId))
+    await this.settleTx(tx,u,account.ordenId);
    return {accountId,pagoIds:pagos,intentoIds:intentos};
   }));
   return {...result,cuenta:await this.account(u,accountId)};
@@ -169,6 +186,8 @@ export class PaymentsStore{
    },attemptId);
    await audit(tx,u,attempt.cuenta.orden.sucursalId,'PAYMENT_VERIFIED','Pago',payment.id,{
     intentoId:attemptId,motivo:d.motivo.trim()});
+   if(await this.readyToSettle(tx,attempt.cuenta.ordenId))
+    await this.settleTx(tx,u,attempt.cuenta.ordenId);
    return {cuentaId:attempt.cuentaId,pagoId:payment.id};
   }));
   return {...result,cuenta:await this.account(u,result.cuentaId)};
@@ -194,6 +213,12 @@ export class PaymentsStore{
    }
    const refund=await tx.reembolsoPago.create({data:{pagoId,monto:amount,
     motivo:d.motivo.trim(),usuarioId:u.id,referenciaExterna:d.referenciaExterna?.trim()}});
+   if(payment.metodo==='EFECTIVO'){
+    const shift=await tx.turnoCaja.findUniqueOrThrow({where:{id:d.turnoId!}});
+    const movements=await tx.movimientoCaja.findMany({where:{turnoId:shift.id}});
+    const available=movements.reduce((s,m)=>s.plus(m.tipo==='INGRESO'?m.monto:m.monto.neg()),shift.fondoInicial);
+    if(amount.gt(available))throw new ConflictException('Caja sin efectivo suficiente para reembolso');
+   }
    if(payment.metodo==='EFECTIVO')await tx.movimientoCaja.create({data:{
     turnoId:d.turnoId!,tipo:'EGRESO',monto:amount,motivo:'Reembolso: '+d.motivo.trim(),
     reembolsoId:refund.id,usuarioId:u.id}});

@@ -98,6 +98,11 @@ export class CashStore{
   const value=money(d.monto);
   return txSerializable(this.db,tx=>runOnce(tx,u,d.claveOperacion,'CASH_MANUAL_MOVEMENT',{id,...d},async()=>{
    const shift=await this.shiftTx(tx,u,id,'cash.manage');
+   if(d.tipo==='EGRESO'){
+    const moves=await tx.movimientoCaja.findMany({where:{turnoId:id}});
+    const available=moves.reduce((s,m)=>s.plus(m.tipo==='INGRESO'?m.monto:m.monto.neg()),shift.fondoInicial);
+    if(value.gt(available))throw new ConflictException('Efectivo insuficiente en caja');
+   }
    const m=await tx.movimientoCaja.create({data:{turnoId:id,tipo:d.tipo,monto:value,
     motivo:d.motivo.trim(),usuarioId:u.id}});
    await audit(tx,u,shift.caja.sucursalId,'CASH_MOVEMENT_CREATED','MovimientoCaja',m.id);
@@ -108,10 +113,6 @@ export class CashStore{
   const counted=money(d.efectivoContado,true);
   return txSerializable(this.db,tx=>runOnce(tx,u,d.claveOperacion,'CASH_SHIFT_CLOSE',{id,...d},async()=>{
    const shift=await this.shiftTx(tx,u,id,'cash.close',false);
-   const pending=await tx.intentoPago.count({where:{cuenta:{orden:{sucursalId:shift.caja.sucursalId}},
-    estado:'PENDIENTE',creadoEn:{gte:shift.abiertaEn}}});
-   // Pending transfer verifications do not represent cash or block a cash shift close.
-   void pending;
    const moves=await tx.movimientoCaja.findMany({where:{turnoId:id}});
    const expected=moves.reduce((v,m)=>v.plus(m.tipo==='INGRESO'?m.monto:m.monto.neg()),shift.fondoInicial);
    const difference=counted.minus(expected);
@@ -119,7 +120,7 @@ export class CashStore{
    await tx.arqueoCaja.create({data:{turnoId:id,contado:counted,esperado:expected,
     diferencia:difference,realizadoPorId:u.id,nota:d.notaCierre?.trim()}});
    await tx.turnoCaja.update({where:{id},data:{efectivoEsperado:expected,
-    efectivoContado:counted,diferencia,cerradaEn:now,notaCierre:d.notaCierre?.trim()}});
+    efectivoContado:counted,diferencia:difference,cerradaEn:now,notaCierre:d.notaCierre?.trim()}});
    await audit(tx,u,shift.caja.sucursalId,'CASH_SHIFT_CLOSED','TurnoCaja',id,{
     esperado:formatted(expected),contado:formatted(counted),diferencia:formatted(difference)});
    return {shiftId:id,efectivoEsperado:formatted(expected),efectivoContado:formatted(counted),

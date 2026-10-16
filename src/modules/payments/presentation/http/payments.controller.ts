@@ -28,6 +28,8 @@ export class AccountsController{
  constructor(private readonly payments:PaymentsStore){}
  @Get('order/:orderId') accounts(@CurrentUser() u:Principal,@Param('orderId') id:string){
   return this.payments.accounts(u,id);}
+ @Post('order/:orderId/finalize') finalize(@CurrentUser() u:Principal,
+  @Param('orderId') id:string){return this.payments.finalize(u,id);}
  @Get(':id') detail(@CurrentUser() u:Principal,@Param('id') id:string){
   return this.payments.account(u,id);}
  @Post(':id/payments') collect(@CurrentUser() u:Principal,@Param('id') id:string,

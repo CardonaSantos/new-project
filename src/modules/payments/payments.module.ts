@@ -9,6 +9,6 @@ import {CashController,AccountsController,AttemptsController,PaymentsController,
  imports:[PrismaModule,AuthModule],
  controllers:[CashController,AccountsController,AttemptsController,PaymentsController,SalesController,PaymentReportsController],
  providers:[CashStore,PaymentsStore],
- exports:[PaymentsStore]
+ exports:[CashStore,PaymentsStore]
 })
 export class PaymentsModule{}

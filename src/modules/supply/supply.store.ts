@@ -135,7 +135,7 @@ export class SupplyStore{
     if(p.lote&&(p.lote.bloqueado||p.lote.fechaVencimiento&&p.lote.fechaVencimiento<new Date()))continue;
     stock.set(p.articuloId,(stock.get(p.articuloId)??zero()).plus(p.cantidad));
    }
-   const lines=this.shape(req).lineas.map(l=>{
+   const lines=this.shape(req).lineas.map((l:any)=>{
     const remaining=new Prisma.Decimal(l.pendiente);
     const available=stock.get(l.articuloId)??zero();
     const sendable=Prisma.Decimal.min(remaining,available);
@@ -143,12 +143,12 @@ export class SupplyStore{
      faltante:qty(remaining.minus(sendable))};
    });
    return {requisicionId:id,almacenOrigenId:origin.id,almacenDestinoId:dest.id,
-    lineas,nota:'Sugerencia; no reserva existencias ni crea compras'};
+    lineas:lines,nota:'Sugerencia; no reserva existencias ni crea compras'};
   });
  }
  private async pending(tx:Tx,reqId:string,articleId:string){
   const transfers=await tx.transferenciaInventarioLinea.findMany({where:{
-   articuloId,transferencia:{requisicionId:reqId,estado:'EN_TRANSITO'}},
+   articuloId:articleId,transferencia:{requisicionId:reqId,estado:'EN_TRANSITO'}},
    select:{cantidadEnviada:true,cantidadRecibida:true}});
   return transfers.reduce((s,t)=>s.plus(t.cantidadEnviada.minus(t.cantidadRecibida??0)),zero());
  }
@@ -185,7 +185,7 @@ export class SupplyStore{
   return movementIds;
  }
  private async reconcile(tx:Tx,reqId:string,transferId:string){
-  const lines=await tx.transferenciaInventarioLinea.findMany({where:{transferenciaId}});
+  const lines=await tx.transferenciaInventarioLinea.findMany({where:{transferenciaId:transferId}});
   const complete=lines.every(l=>(l.cantidadRecibida??zero()).equals(l.cantidadEnviada));
   if(complete)await tx.transferenciaInventario.update({where:{id:transferId},
    data:{estado:'RECIBIDA',recibidaEn:new Date()}});

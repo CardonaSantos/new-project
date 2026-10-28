@@ -1,4 +1,5 @@
 import {describe,expect,it,vi} from 'vitest';
+import {ForbiddenException} from '@nestjs/common';
 import {Prisma} from '../../generated/prisma/client.js';
 import {SupplyStore} from './supply.store.js';
 import type {Principal} from '../auth/application/auth.service.js';
@@ -189,6 +190,45 @@ describe('SUP-A partial fulfillment and stock posting',()=>{
   })).rejects.toThrow('compras activas');
   expect(f.tx.requisicion.update).not.toHaveBeenCalled();
   expect(f.moves).toHaveLength(0);
+ });
+ it('blocks cancellation while an internal shipment remains in transit',async()=>{
+  const f=fixture();
+  await f.store.send(user,'req-1',{
+   claveOperacion:'SUP:SEND:TRANSIT:001',almacenOrigenId:'origin',
+   lineas:[{articuloId:'art-1',ubicacionOrigenId:'from',
+    ubicacionDestinoId:'to',cantidad:'20'}]});
+  await expect(f.store.cancel(user,'req-1',{
+   claveOperacion:'SUP:CANCEL:TRANSIT:001',motivo:'Operación todavía pendiente'
+  })).rejects.toThrow('en tránsito');
+  expect(f.req.estado).toBe('ABIERTA');
+  expect(f.moves).toHaveLength(1);
+ });
+ it('enforces the source-branch supply.send permission before any stock movement',async()=>{
+  const f=fixture();
+  f.engine.allowed.mockImplementation(async(_tx:unknown,_userId:string,permission:string,branchId:string)=>{
+   if(permission==='supply.send'&&branchId==='branch-origin')
+    throw new ForbiddenException('Permiso insuficiente para esta sucursal');
+  });
+  await expect(f.store.send(user,'req-1',{
+   claveOperacion:'SUP:SEND:BRANCH:001',almacenOrigenId:'origin',
+   lineas:[{articuloId:'art-1',ubicacionOrigenId:'from',
+    ubicacionDestinoId:'to',cantidad:'1'}]})).rejects.toBeInstanceOf(ForbiddenException);
+  expect(f.moves).toHaveLength(0);
+  expect(f.transfers).toHaveLength(0);
+ });
+ it('enforces destination-branch supply.receive permission for immediate delivery',async()=>{
+  const f=fixture();
+  f.engine.allowed.mockImplementation(async(_tx:unknown,_userId:string,permission:string,branchId:string)=>{
+   if(permission==='supply.receive'&&branchId==='branch-dest')
+    throw new ForbiddenException('Permiso insuficiente para esta sucursal');
+  });
+  await expect(f.store.immediate(user,{
+   claveOperacion:'SUP:IMMEDIATE:BRANCH:001',almacenOrigenId:'origin',
+   almacenDestinoId:'dest',
+   lineas:[{articuloId:'art-1',ubicacionOrigenId:'from',
+    ubicacionDestinoId:'to',cantidad:'1'}]})).rejects.toBeInstanceOf(ForbiddenException);
+  expect(f.moves).toHaveLength(0);
+  expect(f.transfers).toHaveLength(0);
  });
  it('executes immediate transfer in one transaction without a pending receipt',async()=>{
   const f=fixture();

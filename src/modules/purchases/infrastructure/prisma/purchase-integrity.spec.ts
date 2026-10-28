@@ -1,11 +1,11 @@
 import {describe,expect,it,vi} from 'vitest';
-import {Prisma} from '../../../generated/prisma/client.js';
-import {PrismaService} from '../../../infrastructure/database/prisma/prisma.service.js';
-import {InventoryPostingEngine} from '../../inventory/infrastructure/prisma/inventory-posting.engine.js';
-import {CashStore} from '../../payments/infrastructure/prisma/cash.store.js';
-import type {Actor} from './prisma/purchase-shared.js';
-import {PurchaseInvoicesStore} from './prisma/purchase-invoices.store.js';
-import {PurchaseReturnsStore} from './prisma/purchase-returns.store.js';
+import {Prisma} from '../../../../generated/prisma/client.js';
+import {PrismaService} from '../../../../infrastructure/database/prisma/prisma.service.js';
+import {InventoryPostingEngine} from '../../../inventory/infrastructure/prisma/inventory-posting.engine.js';
+import {CashStore} from '../../../payments/infrastructure/prisma/cash.store.js';
+import type {Actor} from './purchase-shared.js';
+import {PurchaseInvoicesStore} from './purchase-invoices.store.js';
+import {PurchaseReturnsStore} from './purchase-returns.store.js';
 
 const actor={id:'usuario-1'} as Actor;
 const amount=(v:string)=>new Prisma.Decimal(v);

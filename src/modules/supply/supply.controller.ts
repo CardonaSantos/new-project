@@ -1,6 +1,6 @@
 import {Body,Controller,Get,Param,Post,Query} from '@nestjs/common';
 import {CurrentUser} from '../auth/presentation/http/decorators/auth.decorators.js';
-import type {Principal} from '../../auth/application/auth.service.js';
+import type {Principal} from '../auth/application/auth.service.js';
 import {SupplyStore} from './supply.store.js';
 import {SupplyAvailabilityDto,SupplyCancelDto,SupplyKeyDto,SupplyQueryDto,SupplyReceiveDto,SupplyRequestDto,SupplySendDto} from './supply.dto.js';
 

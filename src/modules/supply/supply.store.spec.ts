@@ -15,9 +15,11 @@ function fixture(){
    cantidadSolicitada:dec('20'),cantidadAtendida:dec('0'),
    articulo:{id:'art-1',codigo:'ART',nombre:'Vasos',tipo:'EMPAQUE',stockMinimo:null}}],
   transferenciaInventariosComoRequisicion:[]};
- const moves:any[]=[];const transfers:any[]=[];
+ const moves:any[]=[];const transfers:any[]=[];const purchaseLines:any[]=[];
  const tx={
   ordenCompra:{count:vi.fn().mockResolvedValue(0)},
+  ordenCompraLinea:{findMany:vi.fn().mockImplementation(async()=>purchaseLines)},
+  existencia:{findMany:vi.fn().mockResolvedValue([{articuloId:'art-1',cantidad:dec('60'),lote:null}])},
   requisicion:{findUnique:vi.fn().mockImplementation(async()=>req),findUniqueOrThrow:vi.fn().mockImplementation(async()=>req),
    update:vi.fn().mockImplementation(async({data}:any)=>{Object.assign(req,data);return req;})},
   articuloInventario:{findUnique:vi.fn().mockResolvedValue({id:'art-1',activo:true,requiereLote:false})},
@@ -71,7 +73,7 @@ function fixture(){
  };
  const db={$transaction:vi.fn()};
  return {store:new SupplyStore(db as unknown as PrismaService,
-  engine as unknown as InventoryPostingEngine,{} as any),req,tx,engine,moves,transfers};
+  engine as unknown as InventoryPostingEngine,{} as any),req,tx,engine,moves,transfers,purchaseLines};
 }
 describe('SUP-A partial fulfillment and stock posting',()=>{
  it('sends 20, receives 18 then 2, preserves valuation and closes requisition automatically',async()=>{
@@ -111,6 +113,63 @@ describe('SUP-A partial fulfillment and stock posting',()=>{
   await f.store.send(user,'req-1',{...d,lineas:[{...d.lineas[0],cantidad:'20'}]});
   await expect(f.store.send(user,'req-1',{...d,lineas:[{...d.lineas[0],cantidad:'19'}]}))
    .rejects.toThrow('Clave reutilizada');
+ });
+ it('rejects shipment of units already committed to active supplier orders',async()=>{
+  const f=fixture();
+  f.purchaseLines.push({articuloId:'art-1',cantidadCompra:dec('12'),
+   factorAUnidadBase:dec('1'),recepcionCompraLineasComoOrdenCompraLinea:[]});
+  const d={claveOperacion:'SUP:SEND:COMMITTED:001',almacenOrigenId:'origin',
+   lineas:[{articuloId:'art-1',ubicacionOrigenId:'from',
+    ubicacionDestinoId:'to',cantidad:'9'}]};
+  await expect(f.store.send(user,'req-1',d)).rejects.toThrow('excede');
+  expect(f.moves).toHaveLength(0);
+  expect(f.tx.ordenCompraLinea.findMany).toHaveBeenCalledWith(expect.objectContaining({
+   where:{ordenCompra:{requisicionId:'req-1',estado:{in:['BORRADOR','CONFIRMADA']}}}
+  }));
+  const sent=await f.store.send(user,'req-1',{
+   ...d,claveOperacion:'SUP:SEND:COMMITTED:002',
+   lineas:[{...d.lineas[0],cantidad:'8'}]});
+  expect(sent.estado).toBe('EN_TRANSITO');
+  expect(f.moves).toHaveLength(1);
+  await expect(f.store.send(user,'req-1',{
+   ...d,claveOperacion:'SUP:SEND:COMMITTED:003',
+   lineas:[{...d.lineas[0],cantidad:'1'}]})).rejects.toThrow('excede');
+  expect(f.moves).toHaveLength(1);
+ });
+ it('subtracts only the outstanding purchase quantity after destination receipts',async()=>{
+  const f=fixture();
+  f.req.requisicionLineasComoRequisicion[0].cantidadAtendida=dec('5');
+  f.purchaseLines.push({articuloId:'art-1',cantidadCompra:dec('12'),
+   factorAUnidadBase:dec('1'),
+   recepcionCompraLineasComoOrdenCompraLinea:[{cantidadBase:dec('5')}]});
+  const available=await f.store.availability(user,'req-1',{almacenOrigenId:'origin'});
+  expect(available.lineas[0]).toMatchObject({
+   solicitado:'20.000000',recibido:'5.000000',pendiente:'15.000000',
+   comprometidoCompra:'7.000000',pendienteNoComprometido:'8.000000',
+   disponibleOrigen:'60.000000',sugeridoEnviar:'8.000000',faltante:'0.000000'});
+  await expect(f.store.send(user,'req-1',{
+   claveOperacion:'SUP:SEND:PARTIAL:001',almacenOrigenId:'origin',
+   lineas:[{articuloId:'art-1',ubicacionOrigenId:'from',
+    ubicacionDestinoId:'to',cantidad:'9'}]})).rejects.toThrow('excede');
+  expect(f.moves).toHaveLength(0);
+  const sent=await f.store.send(user,'req-1',{
+   claveOperacion:'SUP:SEND:PARTIAL:002',almacenOrigenId:'origin',
+   lineas:[{articuloId:'art-1',ubicacionOrigenId:'from',
+    ubicacionDestinoId:'to',cantidad:'8'}]});
+  expect(sent.estado).toBe('EN_TRANSITO');
+  expect(f.moves).toHaveLength(1);
+ });
+ it('preserves uncommitted availability when there are no active supplier orders',async()=>{
+  const f=fixture();
+  const available=await f.store.availability(user,'req-1',{almacenOrigenId:'origin'});
+  expect(available.lineas[0]).toMatchObject({
+   pendiente:'20.000000',comprometidoCompra:'0.000000',
+   pendienteNoComprometido:'20.000000',sugeridoEnviar:'20.000000'});
+  await f.store.send(user,'req-1',{
+   claveOperacion:'SUP:SEND:NO:PUR:001',almacenOrigenId:'origin',
+   lineas:[{articuloId:'art-1',ubicacionOrigenId:'from',
+    ubicacionDestinoId:'to',cantidad:'20'}]});
+  expect(f.moves).toHaveLength(1);
  });
  it('one-click direct transfer does not require a requisition',async()=>{
   const f=fixture();

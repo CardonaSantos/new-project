@@ -29,6 +29,7 @@ const permissions=[
  ['recipes.read','recipes'],['recipes.manage','recipes'],['recipes.publish','recipes'],
  ['recipes.produce','recipes'],['recipes.production.read','recipes'],
  ['supply.request','supply'],['supply.read','supply'],['supply.send','supply'],['supply.receive','supply'],['supply.cancel','supply'],
+ ['finance.read','finance'],['finance.accounts.manage','finance'],['finance.movements.read','finance'],
  ['purchases.manage','purchases'],['purchases.read','purchases'],
  ['purchases.suppliers.manage','purchases'],['purchases.presentations.manage','purchases'],
  ['purchases.orders.create','purchases'],['purchases.orders.approve','purchases'],

@@ -1,11 +1,12 @@
 import {Module} from '@nestjs/common';
 import {PrismaModule} from '../../infrastructure/database/prisma/prisma.module.js';
-import {FinanceAccountsController} from './finance.controller.js';
+import {PaymentsModule} from '../payments/payments.module.js';
+import {FinanceAccountsController,FinanceExpensesController,FinanceIntentsController} from './finance.controller.js';
 import {FinanceStore} from './finance.store.js';
 
 @Module({
- imports:[PrismaModule],
- controllers:[FinanceAccountsController],
+ imports:[PrismaModule,PaymentsModule],
+ controllers:[FinanceIntentsController,FinanceAccountsController,FinanceExpensesController],
  providers:[FinanceStore],
 })
 export class FinanceModule{}

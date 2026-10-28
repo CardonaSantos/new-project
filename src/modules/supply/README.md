@@ -2,7 +2,7 @@
 **Estado:** desarrollo activo en PR #9. No fusionar antes de pruebas reales.
 ## Principio de UX
 - **Solicitar → Enviar → Recibir**, sin autorización administrativa por cada movimiento.
-- **Traslado inmediato**: `inmediato:true` envía y recibe en la misma transacción.
+- **Traslado inmediato**: `POST /transfers/immediate` mueve directamente de almacén a almacén en una sola transacción, sin requisición previa; también se admite `inmediato:true` en un envío ligado a requisición.
 - En transporte real: el botón Enviar produce salida e `EN_TRANSITO` interno; Recibir produce la entrada.
 - Cantidades parciales se registran sin forzar ingreso ficticio de mercancía faltante.
 - **Solo una confirmación por decisión real.** Auditoría, Kardex, costes FIFO/promedio e idempotencia son automáticos.
@@ -17,6 +17,7 @@ Prefijo `/api/supply`; token JWT y permisos por sucursal.
 | Crear borrador de orden a proveedor | POST /requisitions/:id/purchase-draft | supply.request destino + purchases.orders.create sucursal |
 | Enviar / entrega inmediata | POST /requisitions/:id/send | supply.send origen; supply.receive destino para inmediato |
 | Cancelar pendiente | POST /requisitions/:id/cancel | supply.cancel destino |
+| Traslado sin requisición (una acción) | POST /transfers/immediate | supply.send origen + supply.receive destino |
 | Detalle envío | GET /transfers/:id | supply.read destino |
 | Recepción parcial | POST /transfers/:id/receive | supply.receive destino |
 ## Peticiones ejemplo
@@ -44,7 +45,7 @@ Después, otra recepción por 2 completa automáticamente el envío y la requisi
 - La disponibilidad es sugerida, no reserva física. Enviar valida stock actual y lotes.
 - Los envíos SUP-A no pueden despacharse ni recibirse desde el controlador genérico INV-B para evitar doble posteo.
 - Cancelar está prohibido mientras hay unidades en tránsito; las recepciones parciales quedan auditadas.
-- Sólo transferencias SUP-A pasan por `/supply/transfers/:id/receive`.
+- Sólo transferencias SUP-A pendientes pasan por `/supply/transfers/:id/receive`. Los traslados inmediatos ya se consideran recibidos y no requieren una segunda acción.
 - PUR-A es propietario de órdenes a proveedores. `POST /requisitions/:id/purchase-draft` recibe `{claveOperacion,orden:{proveedorId,sucursalId,precioIncluyeImpuesto,lineas:[...]}}` y **crea** una orden PUR-A en BORRADOR con `requisicionId` y clave idempotente. Exige que las cantidades no superen el faltante no comprometido (descuenta pendientes de transferencia y órdenes de compra activas); un usuario debe confirmarla después desde PUR-A con el permiso correspondiente.
 - PUR-A acredita las unidades aceptadas a `cantidadAtendida` solo cuando la recepción confirmada ingresa a la bodega destino de la requisición; no se marcan como atendidas compras recibidas en bodegas distintas.
 - La migración `20261028192500_sup_a_purchase_requisition_link` añade únicamente un FK opcional en `OrdenCompra` y un índice. Las OC históricas siguen sin vinculación.

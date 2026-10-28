@@ -111,6 +111,16 @@ describe('SUP-A partial fulfillment and stock posting',()=>{
   await expect(f.store.send(user,'req-1',{...d,lineas:[{...d.lineas[0],cantidad:'19'}]}))
    .rejects.toThrow('Clave reutilizada');
  });
+ it('one-click direct transfer does not require a requisition',async()=>{
+  const f=fixture();
+  const result=await f.store.immediate(user,{
+   claveOperacion:'SUP:DIRECT:0002',almacenOrigenId:'origin',almacenDestinoId:'dest',
+   lineas:[{articuloId:'art-1',ubicacionOrigenId:'from',
+    ubicacionDestinoId:'to',cantidad:'6'}]});
+  expect(result.estado).toBe('RECIBIDA');
+  expect(f.moves.map(x=>x.direction)).toEqual(['OUT','IN']);
+  expect(f.req.estado).toBe('ABIERTA');
+ });
  it('executes immediate transfer in one transaction without a pending receipt',async()=>{
   const f=fixture();
   const value=await f.store.send(user,'req-1',{

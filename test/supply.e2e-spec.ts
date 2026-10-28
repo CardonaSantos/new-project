@@ -14,7 +14,7 @@ describe('SUP-A HTTP request contracts',()=>{
  let app:INestApplication<App>;
  const methods={create:vi.fn().mockResolvedValue(response),list:vi.fn().mockResolvedValue(response),
   detail:vi.fn().mockResolvedValue(response),availability:vi.fn().mockResolvedValue(response),
-  send:vi.fn().mockResolvedValue(response),purchaseDraft:vi.fn().mockResolvedValue(response),receive:vi.fn().mockResolvedValue(response),
+  send:vi.fn().mockResolvedValue(response),immediate:vi.fn().mockResolvedValue(response),purchaseDraft:vi.fn().mockResolvedValue(response),receive:vi.fn().mockResolvedValue(response),
   cancel:vi.fn().mockResolvedValue(response),transfer:vi.fn().mockResolvedValue(response)};
  beforeEach(async()=>{
   vi.clearAllMocks();
@@ -62,6 +62,13 @@ describe('SUP-A HTTP request contracts',()=>{
   await request(app.getHttpServer()).post('/api/supply/requisitions/req/purchase-draft')
    .send({...payload,orden:{...payload.orden,lineas:[{...payload.orden.lineas[0],tasaImpuesto:'1.5'}]}})
    .expect(400);
+ });
+ it('allows a one-click warehouse transfer without requisition',async()=>{
+  await request(app.getHttpServer()).post('/api/supply/transfers/immediate').send({
+   claveOperacion:'SUP:DIRECT:0001',almacenOrigenId:'origin',almacenDestinoId:'dest',
+   lineas:[{articuloId:'art',ubicacionOrigenId:'from',ubicacionDestinoId:'to',cantidad:'4'}]
+  }).expect(201);
+  expect(methods.immediate).toHaveBeenCalledOnce();
  });
  it('accepts a partial receipt and rejects duplicate body keys',async()=>{
   await request(app.getHttpServer()).post('/api/supply/transfers/transfer/receive').send({

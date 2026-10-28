@@ -2,7 +2,7 @@ import {Body,Controller,Get,Param,Post,Query} from '@nestjs/common';
 import {CurrentUser} from '../auth/presentation/http/decorators/auth.decorators.js';
 import type {Principal} from '../auth/application/auth.service.js';
 import {SupplyStore} from './supply.store.js';
-import {SupplyAvailabilityDto,SupplyCancelDto,SupplyKeyDto,SupplyQueryDto,SupplyReceiveDto,SupplyRequestDto,SupplySendDto,SupplyPurchaseDraftDto} from './supply.dto.js';
+import {SupplyAvailabilityDto,SupplyCancelDto,SupplyKeyDto,SupplyQueryDto,SupplyReceiveDto,SupplyRequestDto,SupplySendDto,SupplyPurchaseDraftDto,SupplyImmediateDto} from './supply.dto.js';
 
 @Controller('supply/requisitions')
 export class SupplyRequisitionsController{
@@ -24,6 +24,9 @@ export class SupplyRequisitionsController{
 @Controller('supply/transfers')
 export class SupplyTransfersController{
  constructor(private readonly store:SupplyStore){}
+ @Post('immediate') immediate(@CurrentUser() u:Principal,@Body() d:SupplyImmediateDto){
+  return this.store.immediate(u,d);
+ }
  @Get(':id') detail(@CurrentUser() u:Principal,@Param('id') id:string){return this.store.transfer(u,id);}
  @Post(':id/receive') receive(@CurrentUser() u:Principal,@Param('id') id:string,@Body() d:SupplyReceiveDto){
   return this.store.receive(u,id,d);

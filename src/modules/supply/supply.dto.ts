@@ -53,3 +53,7 @@ export class SupplyAvailabilityDto{
 export class SupplyPurchaseDraftDto extends SupplyKeyDto{
  @ValidateNested() @Type(()=>PurchaseOrderDto) orden!:PurchaseOrderDto;
 }
+
+export class SupplyImmediateDto extends SupplySendDto{
+ @IsString() almacenDestinoId!:string;
+}

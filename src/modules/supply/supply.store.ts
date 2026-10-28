@@ -6,7 +6,7 @@ import {InventoryPostingEngine,type CostSlice} from '../inventory/infrastructure
 import {PurchaseOrdersStore} from '../purchases/infrastructure/prisma/purchase-orders.store.js';
 import {amount,price,qty} from '../inventory/domain/stock.policy.js';
 import type {Principal} from '../auth/application/auth.service.js';
-import type {SupplyAvailabilityDto,SupplyCancelDto,SupplyQueryDto,SupplyReceiveDto,SupplyRequestDto,SupplySendDto,SupplyPurchaseDraftDto} from './supply.dto.js';
+import type {SupplyAvailabilityDto,SupplyCancelDto,SupplyQueryDto,SupplyReceiveDto,SupplyRequestDto,SupplySendDto,SupplyPurchaseDraftDto,SupplyImmediateDto} from './supply.dto.js';
 
 type Tx=Prisma.TransactionClient;
 type D=Prisma.Decimal;
@@ -299,10 +299,68 @@ export class SupplyStore{
     movimientoIds:moves};
   }));
  }
+ // One-click transfer for a responsible operator who controls both warehouses.
+ // No requisition, approval, dispatch or extra receipt action is required.
+ async immediate(u:Principal,d:SupplyImmediateDto){
+  return this.engine.tx(tx=>this.once(tx,u,d.claveOperacion,'SUP_IMMEDIATE',{...d},async()=>{
+   const origin=await this.engine.warehouse(tx,d.almacenOrigenId);
+   const dest=await this.engine.warehouse(tx,d.almacenDestinoId);
+   if(origin.id===dest.id)throw new ConflictException('Almacenes deben ser diferentes');
+   await this.permission(tx,u,origin.sucursalId,'supply.send');
+   await this.permission(tx,u,dest.sucursalId,'supply.receive');
+   const lines=[];const seen=new Set<string>();
+   for(const l of d.lineas){
+    const n=amount(l.cantidad);
+    const key=[l.articuloId,l.ubicacionOrigenId,l.ubicacionDestinoId,l.loteId??''].join(':');
+    if(seen.has(key))throw new ConflictException('Línea repetida');
+    seen.add(key);
+    const article=await tx.articuloInventario.findUnique({where:{id:l.articuloId}});
+    if(!article?.activo||article.requiereLote!==Boolean(l.loteId))
+     throw new ConflictException('Artículo inactivo o lote incompatible');
+    if(l.loteId){
+     const lot=await tx.loteInventario.findUnique({where:{id:l.loteId}});
+     if(!lot||lot.articuloId!==l.articuloId)
+      throw new ConflictException('Lote ajeno al artículo');
+    }
+    const from=await this.engine.location(tx,l.ubicacionOrigenId);
+    const to=await this.engine.location(tx,l.ubicacionDestinoId);
+    if(from.almacenId!==origin.id||to.almacenId!==dest.id)
+     throw new ConflictException('Origen o destino incorrecto');
+    lines.push({articuloId:l.articuloId,ubicacionOrigenId:from.id,
+     ubicacionDestinoId:to.id,loteId:l.loteId??null,cantidadEnviada:n});
+   }
+   const transfer=await tx.transferenciaInventario.create({data:{
+    numero:'TR-SUP-'+randomUUID(),almacenOrigenId:origin.id,almacenDestinoId:dest.id,
+    usuarioId:u.id,estado:'RECIBIDA',nota:d.nota?.trim(),
+    despachadaEn:new Date(),recibidaEn:new Date(),
+    transferenciaInventarioLineasComoTransferencia:{create:lines}},
+    include:transferInclude});
+   const movementIds:string[]=[];
+   for(const l of transfer.transferenciaInventarioLineasComoTransferencia){
+    const posted=await this.engine.post(tx,{actorId:u.id,articuloId:l.articuloId,
+     ubicacionId:l.ubicacionOrigenId,loteId:l.loteId,
+     cantidad:qty(l.cantidadEnviada),direction:'OUT',tipo:'TRANSFERENCIA_SALIDA',
+     claveOperacion:'SUP:TR:'+transfer.id+':OUT:'+l.id,
+     referenciaTipo:'TRANSFERENCIA',referenciaId:transfer.id,
+     permission:'supply.send',nota:d.nota?.trim()});
+    movementIds.push(posted.movementId);
+    movementIds.push(...await this.receiveSlices(tx,u,transfer.id,{
+     ...l,capasEnTransito:posted.allocations as unknown as Prisma.JsonValue,
+     cantidadRecibida:zero()},l.cantidadEnviada,'IMMEDIATE'));
+    await tx.transferenciaInventarioLinea.update({where:{id:l.id},data:{
+     costoEnTransito:new Prisma.Decimal(posted.costoTotal),
+     capasEnTransito:posted.allocations as unknown as Prisma.InputJsonValue,
+     cantidadRecibida:l.cantidadEnviada}});
+   }
+   await this.event(tx,u,origin.sucursalId,'SUP_IMMEDIATE_TRANSFER',
+    'TransferenciaInventario',transfer.id,{origen:origin.id,destino:dest.id,lineas:lines.length});
+   return {id:transfer.id,estado:'RECIBIDA',movimientoIds};
+  }));
+ }
  async transfer(u:Principal,id:string){
   return this.engine.tx(async tx=>{
    const t=await tx.transferenciaInventario.findUnique({where:{id},include:transferInclude});
-   if(!t?.requisicionId)throw new NotFoundException('Transferencia SUP-A no encontrada');
+   if(!t||!t.numero.startsWith('TR-SUP-'))throw new NotFoundException('Transferencia SUP-A no encontrada');
    await this.permission(tx,u,t.almacenDestino.sucursalId,'supply.read');
    return {id:t.id,numero:t.numero,estado:t.estado,requisicionId:t.requisicionId,
     almacenOrigenId:t.almacenOrigenId,almacenDestinoId:t.almacenDestinoId,

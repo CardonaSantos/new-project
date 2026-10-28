@@ -43,6 +43,8 @@ Después, otra recepción por 2 completa automáticamente el envío y la requisi
 - Una requisición abierta puede tener varios envíos y recepciones. Las unidades recibidas solo se acreditan a `cantidadAtendida` tras postear IN a INV-B.
 - Se valida `enviado pendiente + atendido <= solicitado` al enviar, bajo transacción SERIALIZABLE.
 - La disponibilidad es sugerida, no reserva física. Enviar valida stock actual y lotes.
+- **Unidades comprometidas por compras:** los envíos descuentan también el saldo todavía no recibido en la bodega destino de las órdenes de compra vinculadas que estén en `BORRADOR` o `CONFIRMADA`. Así una misma requisición no puede quedar duplicada entre compras y traslado interno. Las órdenes canceladas o cerradas no comprometen nuevas unidades; las recepciones ya contabilizadas en destino no se descuentan otra vez.
+- `GET /requisitions/:id/availability` mantiene `pendiente` (unidades físicas aún no cubiertas por recepciones ni tránsito) y añade `comprometidoCompra` y `pendienteNoComprometido`. `sugeridoEnviar` y `faltante` se calculan sobre el **pendiente no comprometido**; por tanto una compra aún no recibida puede dejar `pendiente>0` con `sugeridoEnviar=0`.
 - Los envíos SUP-A no pueden despacharse ni recibirse desde el controlador genérico INV-B para evitar doble posteo.
 - Cancelar está prohibido mientras hay unidades en tránsito; las recepciones parciales quedan auditadas.
 - Sólo transferencias SUP-A pendientes pasan por `/supply/transfers/:id/receive`. Los traslados inmediatos ya se consideran recibidos y no requieren una segunda acción.

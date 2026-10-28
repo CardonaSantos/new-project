@@ -17,6 +17,7 @@ function fixture(){
   transferenciaInventariosComoRequisicion:[]};
  const moves:any[]=[];const transfers:any[]=[];
  const tx={
+  ordenCompra:{count:vi.fn().mockResolvedValue(0)},
   requisicion:{findUnique:vi.fn().mockImplementation(async()=>req),findUniqueOrThrow:vi.fn().mockImplementation(async()=>req),
    update:vi.fn().mockImplementation(async({data}:any)=>{Object.assign(req,data);return req;})},
   articuloInventario:{findUnique:vi.fn().mockResolvedValue({id:'art-1',activo:true,requiereLote:false})},

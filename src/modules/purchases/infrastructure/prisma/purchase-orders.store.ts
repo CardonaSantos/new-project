@@ -161,6 +161,12 @@ export class PurchaseOrdersStore{
    if(!row)throw new NotFoundException('Compra no encontrada');
    await scope(tx,u,row.sucursalId,'purchases.orders.approve');
    if(row.estado!=='BORRADOR')throw new ConflictException('Solo confirma borrador');
+   if(row.requisicionId){
+    const request=await tx.requisicion.findUnique({where:{id:row.requisicionId},
+     select:{estado:true}});
+    if(!request||request.estado!=='ABIERTA')
+     throw new ConflictException('La requisición asociada ya no está abierta');
+   }
    await tx.ordenCompra.update({where:{id},data:{estado:'CONFIRMADA',confirmadaEn:new Date()}});
    await audit(tx,u,row.sucursalId,'PUR_ORDER_CONFIRMED','OrdenCompra',id);
    return {id,estado:'CONFIRMADA'};

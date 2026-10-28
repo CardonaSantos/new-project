@@ -416,6 +416,8 @@ export class SupplyStore{
    if(req.estado!=='ABIERTA')throw new ConflictException('Requisición no cancelable');
    const active=req.transferenciaInventariosComoRequisicion.some(t=>t.estado==='EN_TRANSITO');
    if(active)throw new ConflictException('Hay mercancía en tránsito; recíbala o concilie antes de cancelar');
+   if(await tx.ordenCompra.count({where:{requisicionId:id,estado:{in:['BORRADOR','CONFIRMADA']}}}))
+    throw new ConflictException('La requisición tiene compras activas; cancele o cierre esas órdenes antes');
    await tx.requisicion.update({where:{id},data:{estado:'CANCELADA',nota:[
     req.nota,'Cancelación: '+d.motivo.trim()].filter(Boolean).join(' | ')}});
    await this.event(tx,u,dest.sucursalId,'SUP_REQUEST_CANCELLED','Requisicion',id,

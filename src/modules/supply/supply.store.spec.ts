@@ -70,7 +70,7 @@ function fixture(){
  };
  const db={$transaction:vi.fn()};
  return {store:new SupplyStore(db as unknown as PrismaService,
-  engine as unknown as InventoryPostingEngine),req,tx,engine,moves,transfers};
+  engine as unknown as InventoryPostingEngine,{} as any),req,tx,engine,moves,transfers};
 }
 describe('SUP-A partial fulfillment and stock posting',()=>{
  it('sends 20, receives 18 then 2, preserves valuation and closes requisition automatically',async()=>{

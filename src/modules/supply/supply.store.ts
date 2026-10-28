@@ -158,7 +158,7 @@ export class SupplyStore{
    await this.permission(tx,u,dest.sucursalId,'supply.request');
    if(d.orden.sucursalId!==dest.sucursalId)
     throw new ConflictException('La compra pertenece a otra sucursal');
-   const pending=new Map(this.shape(req).lineas.map((l:any)=>[l.articuloId,new Prisma.Decimal(l.pendiente)]));
+   const pending=new Map<string,D>(this.shape(req).lineas.map((l:any)=>[l.articuloId,new Prisma.Decimal(l.pendiente)]));
    const expected=new Map<string,D>();
    for(const line of d.orden.lineas){
     if(!pending.has(line.articuloId))throw new ConflictException('Artículo ajeno a la requisición');

@@ -40,6 +40,29 @@ export class PurchaseInvoicesStore{
   return {...row,pagado:paid.toFixed(2),acreditado:credit.toFixed(2),
    saldo:Prisma.Decimal.max(0,row.total.minus(paid).minus(credit)).toFixed(2)};
  }
+ // Validar contra recepciones CONFIRMADAS, nunca contra borradores. El contrato
+ // usa la cantidad comercial aceptada (no cantidadBase ni cantidadRechazada).
+ private async ensureReceiptCoverage(tx:Tx,
+  lines:{recepcionLineaId:string|null;cantidad:Prisma.Decimal}[]){
+  const requested=new Map<string,Prisma.Decimal>();
+  for(const line of lines){
+   if(!line.recepcionLineaId)continue; // facturas de servicios / gastos sin recepción
+   requested.set(line.recepcionLineaId,
+    (requested.get(line.recepcionLineaId)??new Prisma.Decimal(0)).plus(line.cantidad));
+  }
+  for(const [recepcionLineaId,quantity] of requested){
+   const received=await tx.recepcionCompraLinea.findUnique({
+    where:{id:recepcionLineaId},include:{recepcion:true}});
+   if(!received||received.recepcion.estado!=='CONFIRMADO')
+    throw new ConflictException('Línea de recepción no confirmada');
+   const previous=await tx.facturaProveedorLinea.aggregate({
+    where:{recepcionLineaId,factura:{estado:'CONFIRMADA'}},
+    _sum:{cantidad:true}});
+   const available=received.cantidadCompra.minus(previous._sum.cantidad??0);
+   if(quantity.gt(available))
+    throw new ConflictException('Cantidad facturada excede lo aceptado en la recepción');
+  }
+ }
  private async validate(tx:Tx,d:InvoiceDto){
   const supplier=await tx.proveedor.findUnique({where:{id:d.proveedorId}});
   const branch=await tx.sucursal.findUnique({where:{id:d.sucursalId}});
@@ -67,6 +90,7 @@ export class PurchaseInvoicesStore{
     cantidad:qty,precioUnitario:unit,subtotal:t.base,
     tasaImpuesto:rate,importeImpuesto:t.tax});
   }
+  await this.ensureReceiptCoverage(tx,lines);
   return {lines,subtotal,tax,total:subtotal.plus(tax)};
  }
  async create(u:Actor,d:InvoiceDto){
@@ -93,6 +117,9 @@ export class PurchaseInvoicesStore{
    if(!row)throw new NotFoundException('Factura inexistente');
    await scope(tx,u,row.sucursalId,'purchases.invoices.confirm');
    if(row.estado!=='BORRADOR')throw new ConflictException('Factura no está en borrador');
+   const invoiceLines=await tx.facturaProveedorLinea.findMany({
+    where:{facturaId:id},select:{recepcionLineaId:true,cantidad:true}});
+   await this.ensureReceiptCoverage(tx,invoiceLines);
    await tx.facturaProveedor.update({where:{id},data:{estado:'CONFIRMADA',confirmadaEn:new Date()}});
    await audit(tx,u,row.sucursalId,'PUR_INVOICE_CONFIRMED','FacturaProveedor',id);
    return {id,estado:'CONFIRMADA'};

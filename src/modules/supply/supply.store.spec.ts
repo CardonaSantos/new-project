@@ -1,5 +1,5 @@
 import {describe,expect,it,vi} from 'vitest';
-import {Prisma} from '../../../generated/prisma/client.js';
+import {Prisma} from '../../generated/prisma/client.js';
 import {SupplyStore} from './supply.store.js';
 import type {Principal} from '../auth/application/auth.service.js';
 import {PrismaService} from '../../infrastructure/database/prisma/prisma.service.js';

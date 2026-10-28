@@ -91,6 +91,8 @@ export class FinanceStore{
  }
  async createAccount(u:Principal,d:FinanceAccountCreateDto){
   return this.atomic(async tx=>{
+   // Recheck current access even when the idempotency key already exists.
+   await this.permission(tx,u,d.sucursalId,'finance.accounts.manage');
    const digest=createHash('sha256').update(JSON.stringify({actor:u.id,op:'FIN_ACCOUNT_CREATE',d})).digest('hex');
    const previous=await tx.operacionIdempotente.findUnique({where:{clave:d.claveOperacion}});
    if(previous){
@@ -99,7 +101,6 @@ export class FinanceStore{
      throw new ConflictException('Clave reutilizada con otros parámetros');
     return previous.resultado as {id:string;nombre:string;tipo:string;moneda:string;activa:boolean};
    }
-   await this.permission(tx,u,d.sucursalId,'finance.accounts.manage');
    const branch=await this.activeBranch(tx,d.sucursalId);
    const name=d.nombre.trim();
    if(name.length<2)throw new ConflictException('Nombre de cuenta financiera inválido');

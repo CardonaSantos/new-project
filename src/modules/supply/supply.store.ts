@@ -3,9 +3,10 @@ import {BadRequestException,ConflictException,Injectable,NotFoundException} from
 import {Prisma} from '../../generated/prisma/client.js';
 import {PrismaService} from '../../infrastructure/database/prisma/prisma.service.js';
 import {InventoryPostingEngine,type CostSlice} from '../inventory/infrastructure/prisma/inventory-posting.engine.js';
+import {PurchaseOrdersStore} from '../purchases/infrastructure/prisma/purchase-orders.store.js';
 import {amount,price,qty} from '../inventory/domain/stock.policy.js';
 import type {Principal} from '../auth/application/auth.service.js';
-import type {SupplyAvailabilityDto,SupplyCancelDto,SupplyQueryDto,SupplyReceiveDto,SupplyRequestDto,SupplySendDto} from './supply.dto.js';
+import type {SupplyAvailabilityDto,SupplyCancelDto,SupplyQueryDto,SupplyReceiveDto,SupplyRequestDto,SupplySendDto,SupplyPurchaseDraftDto} from './supply.dto.js';
 
 type Tx=Prisma.TransactionClient;
 type D=Prisma.Decimal;
@@ -19,7 +20,8 @@ const transferInclude={almacenOrigen:true,almacenDestino:true,
 
 @Injectable()
 export class SupplyStore{
- constructor(private readonly db:PrismaService,private readonly engine:InventoryPostingEngine){}
+ constructor(private readonly db:PrismaService,private readonly engine:InventoryPostingEngine,
+  private readonly purchases:PurchaseOrdersStore){}
 
  private async permission(tx:Tx,u:Principal,branchId:string,code:string){
   await this.engine.allowed(tx,u.id,code,branchId);
@@ -145,6 +147,30 @@ export class SupplyStore{
    return {requisicionId:id,almacenOrigenId:origin.id,almacenDestinoId:dest.id,
     lineas:lines,nota:'Sugerencia; no reserva existencias ni crea compras'};
   });
+ }
+ // This is a draft only: no payment or stock movement is performed here.
+ // PUR-A validates supplier, purchasing conversion, permissions and the requisition link.
+ async purchaseDraft(u:Principal,id:string,d:SupplyPurchaseDraftDto){
+  await this.engine.tx(async tx=>{
+   const req=await this.row(tx,id);
+   if(req.estado!=='ABIERTA')throw new ConflictException('Requisición no abierta');
+   const dest=await this.engine.warehouse(tx,req.almacenDestinoId);
+   await this.permission(tx,u,dest.sucursalId,'supply.request');
+   if(d.orden.sucursalId!==dest.sucursalId)
+    throw new ConflictException('La compra pertenece a otra sucursal');
+   const pending=new Map(this.shape(req).lineas.map((l:any)=>[l.articuloId,new Prisma.Decimal(l.pendiente)]));
+   const expected=new Map<string,D>();
+   for(const line of d.orden.lineas){
+    if(!pending.has(line.articuloId))throw new ConflictException('Artículo ajeno a la requisición');
+    const n=amount(line.cantidadCompra),factor=new Prisma.Decimal(line.factorAUnidadBase);
+    expected.set(line.articuloId,(expected.get(line.articuloId)??zero()).plus(n.mul(factor)));
+   }
+   for(const [art,count] of expected)
+    if(count.gt(pending.get(art)??zero()))
+     throw new ConflictException('La compra excede el faltante de la requisición');
+  });
+  // The purchase idempotency key is persisted by PUR-A in its own transaction.
+  return this.purchases.create(u,{...d.orden,requisicionId:id,claveOperacion:d.claveOperacion});
  }
  private async pending(tx:Tx,reqId:string,articleId:string){
   const transfers=await tx.transferenciaInventarioLinea.findMany({where:{

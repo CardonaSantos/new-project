@@ -1,4 +1,5 @@
 import {Type} from 'class-transformer';
+import {PurchaseOrderDto} from '../purchases/presentation/http/dto/purchases.dto.js';
 import {ArrayMaxSize,ArrayMinSize,IsArray,IsBoolean,IsInt,IsOptional,IsString,Matches,Max,MaxLength,Min,MinLength,ValidateNested} from 'class-validator';
 const quantity=/^(?=.*[1-9])(?:0|[1-9]\d{0,13})(?:\.\d{1,6})?$/;
 export class SupplyQueryDto{
@@ -47,4 +48,8 @@ export class SupplyCancelDto extends SupplyKeyDto{
 }
 export class SupplyAvailabilityDto{
  @IsString() almacenOrigenId!:string;
+}
+
+export class SupplyPurchaseDraftDto extends SupplyKeyDto{
+ @ValidateNested() @Type(()=>PurchaseOrderDto) orden!:PurchaseOrderDto;
 }

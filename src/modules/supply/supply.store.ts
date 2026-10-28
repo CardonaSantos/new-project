@@ -354,7 +354,7 @@ export class SupplyStore{
    }
    await this.event(tx,u,origin.sucursalId,'SUP_IMMEDIATE_TRANSFER',
     'TransferenciaInventario',transfer.id,{origen:origin.id,destino:dest.id,lineas:lines.length});
-   return {id:transfer.id,estado:'RECIBIDA',movimientoIds};
+   return {id:transfer.id,estado:'RECIBIDA',movimientoIds:movementIds};
   }));
  }
  async transfer(u:Principal,id:string){

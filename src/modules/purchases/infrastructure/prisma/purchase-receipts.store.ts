@@ -162,6 +162,39 @@ export class PurchaseReceiptsStore{
     await tx.recepcionCompraLinea.update({where:{id:line.id},data:{movimientoId:entry.movementId}});
     movements.push(entry.movementId);
    }
+   // A purchase draft linked to SUP-A satisfies a requisition only when
+   // the goods are physically received at its destination warehouse.
+   // Supplier purchases into a central warehouse do not falsely fulfill the request.
+   if(receipt.ordenCompraId){
+    const order=await tx.ordenCompra.findUnique({where:{id:receipt.ordenCompraId},
+     select:{requisicionId:true}});
+    if(order?.requisicionId){
+     const request=await tx.requisicion.findUnique({where:{id:order.requisicionId},
+      include:{requisicionLineasComoRequisicion:true}});
+     if(request?.estado==='ABIERTA'&&request.almacenDestinoId===receipt.almacenId){
+      for(const line of receipt.recepcionCompraLineasComoRecepcion){
+       const target=request.requisicionLineasComoRequisicion.find(x=>x.articuloId===line.articuloId);
+       if(!target)continue;
+       const transfers=await tx.transferenciaInventarioLinea.findMany({
+        where:{articuloId:line.articuloId,transferencia:{
+         requisicionId:request.id,estado:'EN_TRANSITO'}},
+        select:{cantidadEnviada:true,cantidadRecibida:true}});
+       const transit=transfers.reduce((sum,x)=>sum.plus(
+        x.cantidadEnviada.minus(x.cantidadRecibida??0)),new Prisma.Decimal(0));
+       const available=Prisma.Decimal.max(0,target.cantidadSolicitada.minus(
+        target.cantidadAtendida).minus(transit));
+       const accepted=Prisma.Decimal.min(available,line.cantidadBase);
+       if(accepted.lte(0))continue;
+       await tx.requisicionLinea.update({where:{id:target.id},
+        data:{cantidadAtendida:{increment:accepted}}});
+       target.cantidadAtendida=target.cantidadAtendida.plus(accepted);
+      }
+      if(request.requisicionLineasComoRequisicion.every(l=>l.cantidadAtendida.gte(l.cantidadSolicitada)))
+       await tx.requisicion.update({where:{id:request.id},
+        data:{estado:'ATENDIDA',atendidaEn:new Date()}});
+     }
+    }
+   }
    await tx.recepcionCompra.update({where:{id},data:{estado:'CONFIRMADO',recibidoEn:new Date()}});
    await audit(tx,u,receipt.almacen.sucursalId,'PUR_RECEIPT_CONFIRMED','RecepcionCompra',id,
     {movimientos:movements.length});

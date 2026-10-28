@@ -2480,6 +2480,10 @@ model NotaCreditoProveedor {
  sucursal Sucursal @relation(fields:[sucursalId],references:[id],onDelete:Restrict)
  numeroDocumento String
  motivo String
+ // Desglose fiscal de la nota: el crédito comercial se representa por
+ // subtotal + impuestos, sin alterar la factura ni el Kardex original.
+ subtotal Decimal @db.Decimal(18,2)
+ impuestos Decimal @default(0) @db.Decimal(18,2)
  total Decimal @db.Decimal(18,2)
  estado EstadoNotaCreditoProveedor @default(BORRADOR)
  devolucionId String?

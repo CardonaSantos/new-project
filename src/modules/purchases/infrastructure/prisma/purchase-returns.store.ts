@@ -132,11 +132,17 @@ export class PurchaseReturnsStore{
     if(!ret||ret.proveedorId!==d.proveedorId||ret.sucursalId!==d.sucursalId||ret.estado!=='CONFIRMADA')
      throw new ConflictException('Devolución vinculada no confirmada o incompatible');
    }
+   const gross=cash(d.total);
+   const taxes=cash(d.impuestos??'0',true);
+   if(taxes.gte(gross))throw new BadRequestException('Impuesto debe ser menor que el total de crédito');
+   const base=gross.minus(taxes);
    const row=await tx.notaCreditoProveedor.create({data:{
     proveedorId:d.proveedorId,sucursalId:d.sucursalId,
     numeroDocumento:invoiceNumbers(d.numeroDocumento),
-    motivo:d.motivo.trim(),total:cash(d.total),devolucionId:d.devolucionId??null}});
-   await audit(tx,u,d.sucursalId,'PUR_CREDIT_CREATED','NotaCreditoProveedor',row.id);
+    motivo:d.motivo.trim(),subtotal:base,impuestos:taxes,
+    total:gross,devolucionId:d.devolucionId??null}});
+   await audit(tx,u,d.sucursalId,'PUR_CREDIT_CREATED','NotaCreditoProveedor',row.id,
+    {subtotal:base.toFixed(2),impuestos:taxes.toFixed(2),total:gross.toFixed(2)});
    return {id:row.id,estado:row.estado};
   });
  }

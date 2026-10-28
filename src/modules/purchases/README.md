@@ -120,3 +120,9 @@ npm run prisma:deploy
 npm run prisma:seed
 ```
 CI comprueba contrato compilado y HTTP simulado. **Pendientes de certificación operativa:** pruebas PostgreSQL reales de migración, apertura/cierre de turno, compras parciales concurrentes, impuestos, notas de crédito con aplicaciones múltiples y FIFO/promedio con devoluciones. No confundir CI con una transacción real certificada.
+
+## Control de facturación por recepción y notas de crédito (fix de octubre)
+- Las líneas vinculadas a `recepcionLineaId` deben facturarse en **cantidad comercial aceptada** (no cantidad en unidad base). Una confirmación comprueba `SUM(cantidad)` de líneas de facturas `CONFIRMADA` por cada línea de recepción y rechaza el exceso; también agrega líneas repetidas dentro del mismo documento. Las facturas `BORRADOR` no reservan cantidades y las `ANULADA` no consumen cupo. El control se repite en `POST /purchases/invoices/:id/confirm` bajo transacción SERIALIZABLE, de modo que los borradores concurrentes se resuelvan por confirmación. Facturas sin recepción conservan su tratamiento comercial, sin descontar ni generar inventario.
+- Las notas de crédito mantienen el campo `total` y admiten opcionalmente `impuestos`. Se calcula `subtotal=total-impuestos`, ambos persistidos. Si se omite `impuestos`, se interpreta **crédito comercial sin ajuste de impuesto**, para conservar compatibilidad con Postman previo. Un impuesto declarado jamás puede igualar o superar el total.
+- La migración `20261028181500_pur_a_invoice_receipt_coverage_credit_tax` completa como `subtotal=total` e `impuestos=0` las notas históricas existentes, sin eliminarlas ni modificar pagos/reintegros, y añade la identidad contable `total = subtotal + impuestos`.
+- Una nota de crédito es un documento comercial distinto de la factura original; el IVA rectificado se informa por separado. **FIN-A** será responsable de los asientos fiscales consolidados.

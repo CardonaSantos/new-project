@@ -129,6 +129,9 @@ export class CreditDto{
  @IsString() @MinLength(1) numeroDocumento!:string;
  @IsString() @MinLength(5) @MaxLength(500) motivo!:string;
  @Matches(amount) total!:string;
+ // Por defecto el crédito es comercial, no modifica el IVA.
+ // El proveedor puede declarar explícitamente el impuesto rectificado.
+ @IsOptional() @Matches(amount) impuestos?:string;
  @IsOptional() @IsString() devolucionId?:string;
 }
 export class CreditApplyDto extends KeyDto{

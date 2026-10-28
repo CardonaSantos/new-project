@@ -46,6 +46,17 @@ export class PurchaseOrdersStore{
    throw new ConflictException('Proveedor no disponible');
   const branch=await tx.sucursal.findUnique({where:{id:d.sucursalId}});
   if(!branch?.activa)throw new ConflictException('Sucursal inactiva');
+  // Only SUP-A requisitions may be linked. Buying never automatically approves a request.
+  let request:Awaited<ReturnType<typeof tx.requisicion.findUnique>>|null=null;
+  if(d.requisicionId){
+   request=await tx.requisicion.findUnique({where:{id:d.requisicionId},include:{
+    almacenDestino:true,requisicionLineasComoRequisicion:true}});
+   if(!request||request.estado!=='ABIERTA'||request.almacenDestino.sucursalId!==d.sucursalId)
+    throw new ConflictException('Requisición no abierta o fuera de la sucursal');
+   const permitted=new Set(request.requisicionLineasComoRequisicion.map(l=>l.articuloId));
+   if(d.lineas.some(l=>!permitted.has(l.articuloId)))
+    throw new ConflictException('La propuesta incluye artículos ajenos a la requisición');
+  }
   const result=[];let total=new Prisma.Decimal(0);
   for(const l of d.lineas){
    const art=await tx.articuloInventario.findUnique({where:{id:l.articuloId}});
@@ -71,14 +82,19 @@ export class PurchaseOrdersStore{
  }
  async create(u:Actor,d:PurchaseOrderDto){
   return atomic(this.db,async tx=>{
+   const perform=async()=>{
    await scope(tx,u,d.sucursalId,'purchases.orders.create');
    const validated=await this.validate(tx,d);
    const row=await tx.ordenCompra.create({data:{numero:'OC-'+randomUUID(),sucursalId:d.sucursalId,
+    requisicionId:d.requisicionId??null,
     proveedorId:d.proveedorId,usuarioId:u.id,observaciones:d.observaciones?.trim(),
     precioIncluyeImpuesto:d.precioIncluyeImpuesto??false,totalEstimado:validated.total,
     ordenCompraLineasComoOrdenCompra:{create:validated.lines}}});
    await audit(tx,u,d.sucursalId,'PUR_ORDER_CREATED','OrdenCompra',row.id,{total:validated.total.toFixed(2)});
    return this.detailTx(tx,row.id);
+   };
+   return d.claveOperacion
+    ?once(tx,u,d.claveOperacion,'PUR_ORDER_CREATE',d,perform):perform();
   });
  }
  async edit(u:Actor,id:string,d:PurchaseOrderDto){
@@ -88,6 +104,8 @@ export class PurchaseOrdersStore{
    await scope(tx,u,row.sucursalId,'purchases.orders.create');
    if(row.estado!=='BORRADOR'||row.sucursalId!==d.sucursalId)
     throw new ConflictException('Compra confirmada o sucursal distinta');
+   if(row.requisicionId!==(d.requisicionId??null))
+    throw new ConflictException('No se puede cambiar el origen SUP-A de una orden');
    const validated=await this.validate(tx,d);
    await tx.ordenCompraLinea.deleteMany({where:{ordenCompraId:id}});
    await tx.ordenCompra.update({where:{id},data:{proveedorId:d.proveedorId,

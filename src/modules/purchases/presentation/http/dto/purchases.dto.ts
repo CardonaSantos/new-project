@@ -48,6 +48,8 @@ export class PurchaseOrderLineDto{
  @IsOptional() @IsBoolean() impuestoRecuperable?:boolean;
 }
 export class PurchaseOrderDto{
+ @IsOptional() @IsString() requisicionId?:string;
+ @IsOptional() @IsString() @MinLength(6) @MaxLength(120) claveOperacion?:string;
  @IsString() proveedorId!:string;
  @IsString() sucursalId!:string;
  @IsOptional() @IsBoolean() precioIncluyeImpuesto?:boolean;

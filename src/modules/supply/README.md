@@ -14,6 +14,7 @@ Prefijo `/api/supply`; token JWT y permisos por sucursal.
 | Listar | GET /requisitions?sucursalId=... | supply.read |
 | Detalle | GET /requisitions/:id | supply.read destino |
 | Stock sugerido | GET /requisitions/:id/availability?almacenOrigenId=... | supply.read en ambas sucursales |
+| Crear borrador de orden a proveedor | POST /requisitions/:id/purchase-draft | supply.request destino + purchases.orders.create sucursal |
 | Enviar / entrega inmediata | POST /requisitions/:id/send | supply.send origen; supply.receive destino para inmediato |
 | Cancelar pendiente | POST /requisitions/:id/cancel | supply.cancel destino |
 | Detalle envío | GET /transfers/:id | supply.read destino |
@@ -44,7 +45,9 @@ Después, otra recepción por 2 completa automáticamente el envío y la requisi
 - Los envíos SUP-A no pueden despacharse ni recibirse desde el controlador genérico INV-B para evitar doble posteo.
 - Cancelar está prohibido mientras hay unidades en tránsito; las recepciones parciales quedan auditadas.
 - Sólo transferencias SUP-A pasan por `/supply/transfers/:id/receive`.
-- PUR-A sigue siendo propietario de órdenes a proveedores. La compra de faltantes se integrará en el siguiente corte sin crear órdenes automáticamente en este primer corte.
+- PUR-A es propietario de órdenes a proveedores. `POST /requisitions/:id/purchase-draft` recibe `{claveOperacion,orden:{proveedorId,sucursalId,precioIncluyeImpuesto,lineas:[...]}}` y **crea** una orden PUR-A en BORRADOR con `requisicionId` y clave idempotente. Exige que las cantidades no superen el faltante no comprometido (descuenta pendientes de transferencia y órdenes de compra activas); un usuario debe confirmarla después desde PUR-A con el permiso correspondiente.
+- PUR-A acredita las unidades aceptadas a `cantidadAtendida` solo cuando la recepción confirmada ingresa a la bodega destino de la requisición; no se marcan como atendidas compras recibidas en bodegas distintas.
+- La migración `20261028192500_sup_a_purchase_requisition_link` añade únicamente un FK opcional en `OrdenCompra` y un índice. Las OC históricas siguen sin vinculación.
 - La versión inicial no resuelve pérdidas definitivas en tránsito. El pendiente permanece hasta un flujo de conciliación administrativa posterior; nunca se destruye valor contable silenciosamente.
 ## Validación
 ```sh
@@ -52,6 +55,7 @@ npm run prisma:validate
 npm run build
 npm test
 npm run test:e2e
+npm run prisma:deploy
 npm run prisma:seed
 ```
-No se requiere migración en este corte: los documentos de requisición/transferencia ya existían. Ejecutar seed agrega los permisos SUP-A al SUPER_ADMIN.
+Requisiciones y transferencias ya existían; la integración con PUR-A incorpora una migración aditiva para vincular borradores de OC. Ejecutar `npm run prisma:deploy` sobre la base correcta después de respaldo y luego `npm run prisma:seed` para permisos SUP-A.

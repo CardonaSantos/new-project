@@ -14,7 +14,7 @@ describe('SUP-A HTTP request contracts',()=>{
  let app:INestApplication<App>;
  const methods={create:vi.fn().mockResolvedValue(response),list:vi.fn().mockResolvedValue(response),
   detail:vi.fn().mockResolvedValue(response),availability:vi.fn().mockResolvedValue(response),
-  send:vi.fn().mockResolvedValue(response),receive:vi.fn().mockResolvedValue(response),
+  send:vi.fn().mockResolvedValue(response),purchaseDraft:vi.fn().mockResolvedValue(response),receive:vi.fn().mockResolvedValue(response),
   cancel:vi.fn().mockResolvedValue(response),transfer:vi.fn().mockResolvedValue(response)};
  beforeEach(async()=>{
   vi.clearAllMocks();
@@ -50,6 +50,18 @@ describe('SUP-A HTTP request contracts',()=>{
   expect(methods.send).toHaveBeenCalledOnce();
   await request(app.getHttpServer()).post('/api/supply/requisitions/req/send')
    .send({...dto,inmediato:'true'}).expect(400);
+ });
+ it('creates an idempotent PUR-A purchase draft through the SUP-A requisition',async()=>{
+  const payload={claveOperacion:'SUP:PUR:DRAFT:001',orden:{
+   proveedorId:'supplier',sucursalId:'branch',precioIncluyeImpuesto:true,
+   lineas:[{articuloId:'a',cantidadCompra:'2',factorAUnidadBase:'10',
+    precioUnitarioCompra:'11.20',tasaImpuesto:'0.12',impuestoRecuperable:true}]}};
+  await request(app.getHttpServer()).post('/api/supply/requisitions/req/purchase-draft')
+   .send(payload).expect(201);
+  expect(methods.purchaseDraft).toHaveBeenCalledOnce();
+  await request(app.getHttpServer()).post('/api/supply/requisitions/req/purchase-draft')
+   .send({...payload,orden:{...payload.orden,lineas:[{...payload.orden.lineas[0],cantidadCompra:'0'}]}})
+   .expect(400);
  });
  it('accepts a partial receipt and rejects duplicate body keys',async()=>{
   await request(app.getHttpServer()).post('/api/supply/transfers/transfer/receive').send({

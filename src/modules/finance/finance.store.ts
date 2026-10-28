@@ -1,14 +1,17 @@
-import {createHash} from 'node:crypto';
-import {ConflictException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
+import {createHash,randomUUID} from 'node:crypto';
+import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
 import {Prisma} from '../../generated/prisma/client.js';
 import {PrismaService} from '../../infrastructure/database/prisma/prisma.service.js';
 import type {Principal} from '../auth/application/auth.service.js';
-import type {FinanceAccountCreateDto,FinanceAccountQueryDto,FinanceMovementQueryDto} from './finance.dto.js';
+import {CashStore} from '../payments/infrastructure/prisma/cash.store.js';
+import {money,operationalDate} from '../payments/domain/payment.policy.js';
+import type {FinanceAccountCreateDto,FinanceAccountQueryDto,FinanceMovementQueryDto,
+ FinanceOperationIntentDto,FinanceExpenseCreateDto,FinanceExpenseQueryDto} from './finance.dto.js';
 
 type Tx=Prisma.TransactionClient;
 @Injectable()
 export class FinanceStore{
- constructor(private readonly db:PrismaService){}
+ constructor(private readonly db:PrismaService,private readonly cash:CashStore){}
  private async atomic<T>(run:(tx:Tx)=>Promise<T>):Promise<T>{
   for(let attempt=0;attempt<3;attempt++){
    try{return await this.db.$transaction(run,{isolationLevel:'Serializable',timeout:20000});}
@@ -89,38 +92,181 @@ export class FinanceStore{
     meta:{page:q.page,limit:q.limit,total,totalPages:Math.ceil(total/q.limit)}};
   });
  }
+
+ private digest(value:unknown){
+  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
+ }
+ private context(u:Principal,sucursalId:string,accion:string){
+  return this.digest({usuarioId:u.id,sucursalId,accion});
+ }
+ private async completeIntent<T extends Record<string,unknown>>(
+  tx:Tx,u:Principal,input:{operationId:string;sucursalId:string},accion:string,
+  run:()=>Promise<T>
+ ):Promise<T>{
+  const saved=await tx.operacionIdempotente.findUnique({where:{clave:input.operationId}});
+  if(!saved||saved.operacion!==accion||saved.hashSolicitud!==this.context(u,input.sucursalId,accion))
+   throw new ConflictException('Operación no emitida para este usuario, acción y sucursal');
+  const payloadHash=this.digest({usuarioId:u.id,accion,input});
+  if(saved.finalizada){
+   const old=saved.resultado as {payloadHash?:string;value?:T}|null;
+   if(!old||old.payloadHash!==payloadHash||!old.value)
+    throw new ConflictException('Operación reutilizada con parámetros distintos');
+   return old.value;
+  }
+  if(saved.expiraEn.getTime()<Date.now())
+   throw new ConflictException('Operación expirada; abra de nuevo el formulario');
+  const value=await run();
+  await tx.operacionIdempotente.update({where:{clave:input.operationId},data:{
+   resultado:{payloadHash,value} as Prisma.InputJsonValue,
+   finalizada:true,expiraEn:new Date(Date.now()+365*86400000)
+  }});
+  return value;
+ }
+ async issueIntent(u:Principal,d:FinanceOperationIntentDto){
+  return this.atomic(async tx=>{
+   await this.permission(tx,u,d.sucursalId,d.accion==='FIN_ACCOUNT_CREATE'
+    ?'finance.accounts.manage':'finance.expenses.create');
+   await this.activeBranch(tx,d.sucursalId);
+   const operationId='FIN:'+randomUUID();
+   const expiresAt=new Date(Date.now()+24*60*60*1000);
+   await tx.operacionIdempotente.create({data:{
+    clave:operationId,operacion:d.accion,
+    hashSolicitud:this.context(u,d.sucursalId,d.accion),
+    finalizada:false,expiraEn:expiresAt
+   }});
+   return {operationId,accion:d.accion,sucursalId:d.sucursalId,expiresAt};
+  });
+ }
  async createAccount(u:Principal,d:FinanceAccountCreateDto){
   return this.atomic(async tx=>{
-   // Recheck current access even when the idempotency key already exists.
    await this.permission(tx,u,d.sucursalId,'finance.accounts.manage');
-   const digest=createHash('sha256').update(JSON.stringify({actor:u.id,op:'FIN_ACCOUNT_CREATE',d})).digest('hex');
-   const previous=await tx.operacionIdempotente.findUnique({where:{clave:d.claveOperacion}});
-   if(previous){
-    if(previous.operacion!=='FIN_ACCOUNT_CREATE'||previous.hashSolicitud!==digest||
-     !previous.finalizada||!previous.resultado)
-     throw new ConflictException('Clave reutilizada con otros parámetros');
-    return previous.resultado as {id:string;nombre:string;tipo:string;moneda:string;activa:boolean};
-   }
-   const branch=await this.activeBranch(tx,d.sucursalId);
-   const name=d.nombre.trim();
-   if(name.length<2)throw new ConflictException('Nombre de cuenta financiera inválido');
-   if(await tx.cuentaFinanciera.findFirst({where:{sucursalId:d.sucursalId,nombre:name}}))
-    throw new ConflictException('Cuenta financiera ya registrada en esta sucursal');
-   const row=await tx.cuentaFinanciera.create({data:{
-    sucursalId:d.sucursalId,nombre:name,tipo:d.tipo,
-    moneda:branch.configuracionSucursalesComoSucursal?.moneda??'GTQ'
-   }});
-   await tx.eventoAuditoria.create({data:{usuarioId:u.id,sucursalId:d.sucursalId,
-    accion:'FIN_ACCOUNT_CREATED',entidad:'CuentaFinanciera',entidadId:row.id,
-    despues:{tipo:row.tipo,moneda:row.moneda}}});
-   await tx.eventoOutbox.create({data:{tipo:'FIN_ACCOUNT_CREATED',agregado:'CuentaFinanciera',
-    agregadoId:row.id,payload:{sucursalId:d.sucursalId,tipo:row.tipo}}});
-   const result={id:row.id,sucursalId:row.sucursalId,nombre:row.nombre,
-    tipo:row.tipo,moneda:row.moneda,activa:row.activa,saldoRegistrado:'0.00'};
-   await tx.operacionIdempotente.create({data:{clave:d.claveOperacion,
-    operacion:'FIN_ACCOUNT_CREATE',hashSolicitud:digest,resultado:result,
-    finalizada:true,expiraEn:new Date(Date.now()+365*86400000)}});
-   return result;
+   return this.completeIntent(tx,u,d,'FIN_ACCOUNT_CREATE',async()=>{
+    const branch=await this.activeBranch(tx,d.sucursalId);
+    const name=d.nombre.trim();
+    if(name.length<2)throw new BadRequestException('Nombre de cuenta financiera inválido');
+    if(await tx.cuentaFinanciera.findFirst({where:{sucursalId:d.sucursalId,nombre:name}}))
+     throw new ConflictException('Cuenta financiera ya registrada en esta sucursal');
+    const row=await tx.cuentaFinanciera.create({data:{
+     sucursalId:d.sucursalId,nombre:name,tipo:d.tipo,
+     moneda:branch.configuracionSucursalesComoSucursal?.moneda??'GTQ'
+    }});
+    await tx.eventoAuditoria.create({data:{usuarioId:u.id,sucursalId:d.sucursalId,
+     accion:'FIN_ACCOUNT_CREATED',entidad:'CuentaFinanciera',entidadId:row.id,
+     despues:{tipo:row.tipo,moneda:row.moneda}}});
+    await tx.eventoOutbox.create({data:{tipo:'FIN_ACCOUNT_CREATED',agregado:'CuentaFinanciera',
+     agregadoId:row.id,payload:{sucursalId:d.sucursalId,tipo:row.tipo}}});
+    return {id:row.id,sucursalId:row.sucursalId,nombre:row.nombre,
+     tipo:row.tipo,moneda:row.moneda,activa:row.activa,saldoRegistrado:'0.00'};
+   });
+  });
+ }
+ private async openPeriod(tx:Tx,sucursalId:string,fecha:Date){
+  if(await tx.cierreOperativo.findUnique({where:{sucursalId_fechaOperativa:{
+   sucursalId,fechaOperativa:fecha}}}))
+   throw new ConflictException('Período operativo cerrado; no admite nuevos gastos');
+ }
+ async createExpense(u:Principal,d:FinanceExpenseCreateDto){
+  const monto=money(d.monto);
+  if(!d.descripcion.trim()||d.descripcion.trim().length<3)
+   throw new BadRequestException('Descripción de gasto requerida');
+  if(d.origen==='CAJA'&&(!d.turnoId||d.cuentaFinancieraId))
+   throw new BadRequestException('Gasto de caja requiere únicamente turnoId');
+  if(d.origen==='CUENTA_FINANCIERA'&&(!d.cuentaFinancieraId||d.turnoId))
+   throw new BadRequestException('Gasto bancario requiere únicamente cuentaFinancieraId');
+  if(d.origen==='CUENTA_FINANCIERA'&&!d.documentoReferencia?.trim())
+   throw new BadRequestException('Referencia de pago externo obligatoria');
+  return this.atomic(async tx=>{
+   await this.permission(tx,u,d.sucursalId,'finance.expenses.create');
+   return this.completeIntent(tx,u,d,'FIN_EXPENSE_CREATE',async()=>{
+    const branch=await this.activeBranch(tx,d.sucursalId);
+    const fechaOperativa=operationalDate(new Date(),branch.zonaHoraria,
+     branch.configuracionSucursalesComoSucursal?.horaCorteOperativo??'04:00');
+    await this.openPeriod(tx,d.sucursalId,fechaOperativa);
+    if(d.proveedorId&&!await tx.proveedor.findFirst({where:{id:d.proveedorId,activo:true}}))
+     throw new ConflictException('Proveedor inexistente o inactivo');
+    let shiftId:string|null=null;
+    let cuentaId:string|null=null;
+    if(d.origen==='CAJA'){
+     // PAY-A owns cash shift checks. Reuse its public transactional helper
+     // within the *same* FIN-A transaction, never call a second HTTP endpoint.
+     const shift=await this.cash.shiftTx(tx,u,d.turnoId!,'finance.expenses.create');
+     if(shift.caja.sucursalId!==d.sucursalId)throw new ConflictException('Turno de otra sucursal');
+     if(shift.fechaOperativa.getTime()!==fechaOperativa.getTime())
+      throw new ConflictException('El turno corresponde a otro día operativo');
+     const moves=await tx.movimientoCaja.findMany({where:{turnoId:shift.id}});
+     const cashAvailable=moves.reduce((sum,m)=>sum.plus(m.tipo==='INGRESO'?m.monto:m.monto.neg()),
+      shift.fondoInicial);
+     if(monto.gt(cashAvailable))throw new ConflictException('Efectivo insuficiente en caja');
+     shiftId=shift.id;
+    }else{
+     const bank=await this.accountRow(tx,d.cuentaFinancieraId!);
+     if(!bank.activa||bank.sucursalId!==d.sucursalId)
+      throw new ConflictException('Cuenta financiera inactiva o de otra sucursal');
+     if(bank.moneda!==(branch.configuracionSucursalesComoSucursal?.moneda??'GTQ'))
+      throw new ConflictException('Moneda de la cuenta no corresponde a la sucursal');
+     cuentaId=bank.id;
+    }
+    const row=await tx.gastoOperativo.create({data:{
+     sucursalId:d.sucursalId,usuarioId:u.id,tipo:'OPERATIVO',
+     descripcion:d.descripcion.trim(),monto,
+     categoria:d.categoria?.trim()??null,
+     documentoReferencia:d.documentoReferencia?.trim()??null,
+     proveedorId:d.proveedorId??null,
+     turnoId:shiftId,cuentaFinancieraId:cuentaId
+    }});
+    let movimientoId:string;
+    if(shiftId){
+     const movement=await tx.movimientoCaja.create({data:{
+      turnoId:shiftId,tipo:'EGRESO',monto,
+      motivo:'Gasto operativo: '+row.descripcion,
+      gastoId:row.id,usuarioId:u.id
+     }});
+     movimientoId=movement.id;
+    }else{
+     const movement=await tx.movimientoFinanciero.create({data:{
+      cuentaId:cuentaId!,monto:monto.neg(),
+      referenciaTipo:'GASTO_OPERATIVO',referenciaId:row.id,
+      descripcion:row.descripcion
+     }});
+     movimientoId=movement.id;
+    }
+    await tx.eventoAuditoria.create({data:{usuarioId:u.id,sucursalId:d.sucursalId,
+     accion:'FIN_EXPENSE_RECORDED',entidad:'GastoOperativo',entidadId:row.id,
+     despues:{monto:monto.toFixed(2),origen:d.origen,movimientoId,
+      fechaOperativa:fechaOperativa.toISOString().slice(0,10)}}});
+    await tx.eventoOutbox.create({data:{
+     tipo:'FIN_EXPENSE_RECORDED',agregado:'GastoOperativo',agregadoId:row.id,
+     payload:{sucursalId:d.sucursalId,origen:d.origen,monto:monto.toFixed(2),movimientoId}
+    }});
+    return {id:row.id,sucursalId:d.sucursalId,monto:monto.toFixed(2),
+     origen:d.origen,movimientoId,fechaOperativa:fechaOperativa.toISOString().slice(0,10),
+     estado:'REGISTRADO'};
+   });
+  });
+ }
+ async expenses(u:Principal,q:FinanceExpenseQueryDto){
+  return this.atomic(async tx=>{
+   await this.permission(tx,u,q.sucursalId,'finance.expenses.read');
+   const where={sucursalId:q.sucursalId};
+   const [rows,total]=await Promise.all([
+    tx.gastoOperativo.findMany({where,orderBy:[{registradoEn:'desc'},{id:'desc'}],
+     skip:(q.page-1)*q.limit,take:q.limit}),
+    tx.gastoOperativo.count({where})
+   ]);
+   return {data:rows.map(x=>({...x,monto:x.monto.toFixed(2)})),
+    meta:{page:q.page,limit:q.limit,total,totalPages:Math.ceil(total/q.limit)}};
+  });
+ }
+ async expense(u:Principal,id:string){
+  return this.atomic(async tx=>{
+   const row=await tx.gastoOperativo.findUnique({where:{id},
+    include:{movimientoCajasComoGasto:true}});
+   if(!row)throw new NotFoundException('Gasto operativo inexistente');
+   await this.permission(tx,u,row.sucursalId,'finance.expenses.read');
+   const movement=row.cuentaFinancieraId?await tx.movimientoFinanciero.findFirst({
+    where:{referenciaTipo:'GASTO_OPERATIVO',referenciaId:id}}):null;
+   return {...row,monto:row.monto.toFixed(2),movimientoFinanciero:movement?
+    {...movement,monto:movement.monto.toFixed(2)}:null};
   });
  }
 }

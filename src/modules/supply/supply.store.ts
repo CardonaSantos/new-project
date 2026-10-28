@@ -137,11 +137,14 @@ export class SupplyStore{
     if(p.lote&&(p.lote.bloqueado||p.lote.fechaVencimiento&&p.lote.fechaVencimiento<new Date()))continue;
     stock.set(p.articuloId,(stock.get(p.articuloId)??zero()).plus(p.cantidad));
    }
+   const purchases=await this.pendingPurchases(tx,id,dest.id);
    const lines=this.shape(req).lineas.map((l:any)=>{
-    const remaining=new Prisma.Decimal(l.pendiente);
+    const committed=purchases.get(l.articuloId)??zero();
+    const remaining=Prisma.Decimal.max(zero(),new Prisma.Decimal(l.pendiente).minus(committed));
     const available=stock.get(l.articuloId)??zero();
     const sendable=Prisma.Decimal.min(remaining,available);
-    return {...l,disponibleOrigen:qty(available),sugeridoEnviar:qty(sendable),
+    return {...l,disponibleOrigen:qty(available),comprometidoCompra:qty(committed),
+     pendienteNoComprometido:qty(remaining),sugeridoEnviar:qty(sendable),
      faltante:qty(remaining.minus(sendable))};
    });
    return {requisicionId:id,almacenOrigenId:origin.id,almacenDestinoId:dest.id,
@@ -171,6 +174,25 @@ export class SupplyStore{
   });
   // The purchase idempotency key is persisted by PUR-A in its own transaction.
   return this.purchases.create(u,{...d.orden,requisicionId:id,claveOperacion:d.claveOperacion});
+ }
+ // Mirror PUR-A's active-order commitment calculation so an unreceived
+ // purchase cannot also be fulfilled by a warehouse shipment.
+ private async pendingPurchases(tx:Tx,reqId:string,destinationWarehouseId:string){
+  const planned=await tx.ordenCompraLinea.findMany({where:{
+   ordenCompra:{requisicionId:reqId,estado:{in:['BORRADOR','CONFIRMADA']}}},
+   select:{articuloId:true,cantidadCompra:true,factorAUnidadBase:true,
+    recepcionCompraLineasComoOrdenCompraLinea:{where:{
+     recepcion:{estado:'CONFIRMADO',almacenId:destinationWarehouseId}},
+     select:{cantidadBase:true}}}});
+  const pending=new Map<string,D>();
+  for(const line of planned){
+   const received=line.recepcionCompraLineasComoOrdenCompraLinea.reduce(
+    (sum,r)=>sum.plus(r.cantidadBase),zero());
+   const outstanding=Prisma.Decimal.max(zero(),
+    line.cantidadCompra.mul(line.factorAUnidadBase).minus(received));
+   pending.set(line.articuloId,(pending.get(line.articuloId)??zero()).plus(outstanding));
+  }
+  return pending;
  }
  private async pending(tx:Tx,reqId:string,articleId:string){
   const transfers=await tx.transferenciaInventarioLinea.findMany({where:{
@@ -230,10 +252,13 @@ export class SupplyStore{
    if(origin.id===dest.id)throw new ConflictException('Origen y destino deben ser diferentes');
    await this.permission(tx,u,origin.sucursalId,'supply.send');
    if(d.inmediato)await this.permission(tx,u,dest.sucursalId,'supply.receive');
+   const purchases=await this.pendingPurchases(tx,id,dest.id);
    const requested=new Map<string,D>();
    for(const l of req.requisicionLineasComoRequisicion){
-    requested.set(l.articuloId,l.cantidadSolicitada.minus(l.cantidadAtendida).minus(
-     await this.pending(tx,id,l.articuloId)));
+    const transit=await this.pending(tx,id,l.articuloId);
+    const committed=purchases.get(l.articuloId)??zero();
+    requested.set(l.articuloId,Prisma.Decimal.max(zero(),
+     l.cantidadSolicitada.minus(l.cantidadAtendida).minus(transit).minus(committed)));
    }
    const seen=new Set<string>();
    const totals=new Map<string,D>();

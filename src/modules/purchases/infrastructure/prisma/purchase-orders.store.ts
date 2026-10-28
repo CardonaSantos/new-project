@@ -47,9 +47,8 @@ export class PurchaseOrdersStore{
   const branch=await tx.sucursal.findUnique({where:{id:d.sucursalId}});
   if(!branch?.activa)throw new ConflictException('Sucursal inactiva');
   // Only SUP-A requisitions may be linked. Buying never automatically approves a request.
-  let request:Awaited<ReturnType<typeof tx.requisicion.findUnique>>|null=null;
   if(d.requisicionId){
-   request=await tx.requisicion.findUnique({where:{id:d.requisicionId},include:{
+   const request=await tx.requisicion.findUnique({where:{id:d.requisicionId},include:{
     almacenDestino:true,requisicionLineasComoRequisicion:true}});
    if(!request||request.estado!=='ABIERTA'||request.almacenDestino.sucursalId!==d.sucursalId)
     throw new ConflictException('Requisición no abierta o fuera de la sucursal');

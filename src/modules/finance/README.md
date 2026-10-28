@@ -1,30 +1,46 @@
-# FIN-A — Finanzas y cierre operativo (macroflujo 21)
+# FIN-A — Finanzas, gastos y cierre operativo (macroflujo 21)
 
-**Estado:** PR de desarrollo inicial. FIN-A no está terminado y no se debe fusionar este PR hasta completar gastos, movimientos y cierre, además de pruebas con PostgreSQL DEV.
+**Estado:** PR #12 abierto en BORRADOR. FIN-A no está listo para merge: las fases de conciliación y cierre operativo siguen pendientes.
 
-## Propiedad e invariantes
-- PAY-A sigue siendo dueño de caja, turnos, pagos al cliente, venta interna y reembolsos. No replicar esos movimientos.
-- PUR-A sigue siendo dueño de las órdenes, facturas y pagos a proveedores. FIN-A solo debe reconocer movimientos financieros confirmados, nunca crear pagos ficticios.
-- FIN-A es dueño de CuentaFinanciera, MovimientoFinanciero, GastoOperativo y CierreOperativo. Los 4 modelos ya existen en Prisma.
-- No se confunde el saldo de MovimientoFinanciero con saldo bancario real. Las cuentas operativas se limitan en esta entrega inicial a una sucursal, moneda de configuración y tipos BANCO, TARJETA_EMPRESA, EFECTIVO_EXTERNO.
-- Un registro de cuenta NO crea fondos iniciales ni movimientos. Cualquier dinero contabilizado requiere un evento financiero de fuente verificable.
-- `horaCorteOperativo` y `zonaHoraria` por sucursal rigen el cierre. No usar UTC civil como fecha operativa sin conversión. Un cierre debe capturar snapshot con historial y prohibir modificaciones retrospectivas sin corrección auditada.
-- Dinero decimal exacto, autorización por sucursal real, idempotencia, transacciones serializables, auditoría y outbox.
+## Decisión UX: una acción por decisión real
+- Registro de gasto = **un clic «Guardar gasto»**. No hay solicitud de aprobación ni segundo clic para contabilizar.
+- Al abrir el formulario, el cliente realiza **internamente** `POST /api/finance/operation-intents` para recibir un `operationId` emitido por el servidor; no pide al usuario generar/copiar claves. El formulario conserva este identificador durante reintentos, caídas de red y doble clic. **No emitir uno nuevo por cada intento de guardar**.
+- Una solicitud confirmada devuelve el mismo resultado ante reintentos; el mismo identificador con datos distintos => HTTP 409.
+- No crear intenciones al cargar todas las páginas: solicitar solo cuando se abre un formulario de alta. Las intenciones sin usar caducan en 24 horas y no registran dinero.
 
-## FIN-A — fase inicial operativa (este PR parcial)
-- `GET /api/finance/accounts?sucursalId=...&page=1&limit=20`: cuentas por sucursal, paginadas, `saldoRegistrado` agregado desde movimientos firmados.
-- `POST /api/finance/accounts`: alta idempotente por sucursal (claveOperacion), auditada. Nombre de 2–160 y tipo permitido.
-- `GET /api/finance/accounts/:id`: detalle y saldo registrado.
-- `GET /api/finance/accounts/:id/movements?page=1&limit=20`: historial registrado sin crear movimientos.
-- Permisos `finance.read`, `finance.accounts.manage`, `finance.movements.read`, sincronizables por seed.
-- **Sin migración nueva por ahora**: se utilizan tablas existentes y no se alteran datos de negocio.
+## Fase 1: cuentas y libro financiero
+- `GET /api/finance/accounts?sucursalId=...`: cuentas financieras, paginadas y con `saldoRegistrado` desde movimientos firmados.
+- `GET /api/finance/accounts/:id`, `GET /api/finance/accounts/:id/movements`.
+- `POST /api/finance/accounts`: alta idempotente, auditada y autorizada. **Cambio de contrato:** sustituye `claveOperacion` (antes enviada por cliente) por `operationId` generado por servidor.
+- `saldoRegistrado` no equivale a saldo bancario conciliado.
 
-## Próximos incrementos para completar FIN-A
-1. Gastos operativos con idempotencia, adjuntos/referencias, fuentes de fondos validadas y autorización, incluidos egresos de caja mediante el propietario PAY-A; sin dos asientos por el mismo gasto.
-2. Movimientos bancarios conciliables vinculados a hechos confirmados (PAY-A/PUR-A), conciliación explícita y reversas auditadas. Definir apertura/fondos y aprobación financiera antes de los write endpoints.
-3. Vista previa de cierre por sucursal y fecha operativa, considerando zona horaria/corte; validación de turnos abiertos, pagos pendientes y gastos.
-4. Cierre inmutable `CierreOperativo` único por sucursal/día; reporte histórico, idempotencia, pruebas de carreras y conciliación.
-5. Validación en PostgreSQL de desarrollo, Postman y CI; entonces solicitar merge.
+## Fase 2: gastos operativos
+- `POST /api/finance/operation-intents` body `{"sucursalId":"...","accion":"FIN_EXPENSE_CREATE"}` o `FIN_ACCOUNT_CREATE`: devuelve `operationId`, vencimiento y contexto.
+- `POST /api/finance/expenses`:
+  - Caja: `{"operationId":"...","sucursalId":"...","origen":"CAJA","turnoId":"...","monto":"75.00","descripcion":"Artículos de limpieza","categoria":"Limpieza"}`.
+  - Cuenta externa: `{"operationId":"...","sucursalId":"...","origen":"CUENTA_FINANCIERA","cuentaFinancieraId":"...","monto":"250.00","descripcion":"Electricidad","documentoReferencia":"TRANSFERENCIA-123"}`.
+- `GET /api/finance/expenses?sucursalId=...`, `GET /api/finance/expenses/:id`.
+- Un gasto desde caja inserta **un `GastoOperativo` + un `MovimientoCaja` EGRESO** con `gastoId` único, en una sola transacción. Reutiliza `CashStore.shiftTx` de PAY-A dentro de la transacción, verifica turno propio, sucursal, día operativo, fondos y permisos.
+- Un gasto desde cuenta financiera inserta **un `GastoOperativo` + un `MovimientoFinanciero` negativo** `GASTO_OPERATIVO`, sin movimiento de caja. Exige cuenta activa, sucursal/moneda coincidente y comprobante. Índice parcial de DB impide doble asiento financiero por gasto.
+- Operaciones `SERIALIZABLE`, reintentos de conflictos transitorios, registro de auditoría y outbox; fallos revocan íntegramente la operación. No se registra una salida bancaria real: el gasto indica pago externo declarado, pendiente de conciliación bancaria.
+- Solo `tipo=OPERATIVO` para esta ruta: compras inventariables y pagos a proveedores siguen en PUR-A/INV-B.
+- Permisos: `finance.expenses.read`, `finance.expenses.create`. `SUPER_ADMIN` los obtiene con el `seed`.
 
-## Restricciones
-No FEL, integración bancaria automática ni dispositivos físicos en FIN-A. Esta fase NO contabiliza gastos/cierres aún. No aplicar migraciones/seed en producción sin verificar DATABASE_URL, respaldo y política de despliegue.
+## Integraciones y límites
+- **PAY-A**: caja y turnos, cobros y reembolsos. FIN-A no abre caja ni emite un movimiento manual paralelo. La operación usa la misma transacción para el gasto y su caja.
+- **PUR-A**: facturas y pagos a proveedores permanecen allí. No registrar adicionalmente un GastoOperativo por esos pagos. Integración de pagos externos confirmados con asientos financieros está pendiente.
+- **INV-B / SUP-A**: stock/valoraciones y traslados no se registran como gastos operativos.
+- **DEL-A / REP-A**: futuras liquidaciones e informes consumirán saldos y referencias del registro único.
+
+## Pendientes para completar el bloque FIN-A
+- Conciliación y enlace sin duplicidad de pagos externos PAY-A/PUR-A, y su cobertura de regresión.
+- Correcciones/reversas auditadas (sin modificar retroactivamente el registro).
+- Vista previa y cierre inmutable por sucursal y fecha operativa; hora de corte y zona horaria.
+- Prueba CI, migraciones sobre PostgreSQL DEV y Postman, idempotencia concurrente, permisos restringidos por sucursal.
+- No mergear PR #12 hasta que estos puntos estén implementados y verificados.
+
+## Despliegue DEV
+1. Revisar `git status` antes de cambiar de rama; conservar cambios locales en Auth/PUR-A no relacionados.
+2. Confirmar `DATABASE_URL` y `DIRECT_URL` de DEV.
+3. `npm run prisma:deploy`, `npm run prisma:seed`, `npm run build`, `npm test`, `npm run test:e2e`.
+4. Ejecutar la nueva colección Postman FIN-A Fase 2. La colección antigua F00–F08 de Fase 1 usa `claveOperacion` y debe reemplazarse.

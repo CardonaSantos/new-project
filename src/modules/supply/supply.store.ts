@@ -278,7 +278,10 @@ export class SupplyStore{
    const t=await tx.transferenciaInventario.findUnique({where:{id},include:transferInclude});
    if(!t?.requisicionId)throw new NotFoundException('Transferencia SUP-A no encontrada');
    await this.permission(tx,u,t.almacenDestino.sucursalId,'supply.read');
-   return {...t,lineas:t.transferenciaInventarioLineasComoTransferencia.map(l=>({
+   return {id:t.id,numero:t.numero,estado:t.estado,requisicionId:t.requisicionId,
+    almacenOrigenId:t.almacenOrigenId,almacenDestinoId:t.almacenDestinoId,
+    despachadaEn:t.despachadaEn,recibidaEn:t.recibidaEn,nota:t.nota,
+    lineas:t.transferenciaInventarioLineasComoTransferencia.map(l=>({
     id:l.id,articuloId:l.articuloId,ubicacionOrigenId:l.ubicacionOrigenId,
     ubicacionDestinoId:l.ubicacionDestinoId,loteId:l.loteId,
     enviada:qty(l.cantidadEnviada),recibida:qty(l.cantidadRecibida??zero()),

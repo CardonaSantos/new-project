@@ -1,6 +1,6 @@
 import {Type} from 'class-transformer';
 import {ArrayMaxSize,ArrayMinSize,IsArray,IsBoolean,IsInt,IsOptional,IsString,Matches,Max,MaxLength,Min,MinLength,ValidateNested} from 'class-validator';
-const quantity=/^(?:0|[1-9]\d{0,13})(?:\.\d{1,6})?$/;
+const quantity=/^(?=.*[1-9])(?:0|[1-9]\d{0,13})(?:\.\d{1,6})?$/;
 export class SupplyQueryDto{
  @IsString() sucursalId!:string;
  @IsOptional() @Type(()=>Number) @IsInt() @Min(1) page=1;

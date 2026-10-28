@@ -41,7 +41,7 @@ export class PurchaseOrdersStore{
    const row=await this.detailTx(tx,id);await scope(tx,u,row.sucursalId,'purchases.read');return row;
   });
  }
- private async validate(tx:Tx,d:PurchaseOrderDto){
+ private async validate(tx:Tx,d:PurchaseOrderDto,excludeOrderId?:string){
   if(!await tx.proveedor.findFirst({where:{id:d.proveedorId,activo:true}}))
    throw new ConflictException('Proveedor no disponible');
   const branch=await tx.sucursal.findUnique({where:{id:d.sucursalId}});
@@ -77,6 +77,47 @@ export class PurchaseOrdersStore{
     tasaImpuesto:rate,impuestoEstimado:computed.tax,impuestoRecuperable:l.impuestoRecuperable??false,
     subtotal:sub});
   }
+  if(d.requisicionId){
+   const req=await tx.requisicion.findUnique({where:{id:d.requisicionId},
+    include:{almacenDestino:true,requisicionLineasComoRequisicion:true}});
+   if(!req||req.estado!=='ABIERTA'||req.almacenDestino.sucursalId!==d.sucursalId)
+    throw new ConflictException('Requisición de compra no disponible');
+   const planned=await tx.ordenCompraLinea.findMany({where:{
+    ordenCompra:{requisicionId:req.id,estado:{in:['BORRADOR','CONFIRMADA']},
+     ...(excludeOrderId?{id:{not:excludeOrderId}}:{})}},
+    include:{recepcionCompraLineasComoOrdenCompraLinea:{include:{
+     recepcion:{select:{estado:true,almacenId:true}}}}}});
+   const inTransit=await tx.transferenciaInventarioLinea.findMany({where:{
+    transferencia:{requisicionId:req.id,estado:'EN_TRANSITO'}},
+    select:{articuloId:true,cantidadEnviada:true,cantidadRecibida:true}});
+   const need=new Map<string,Prisma.Decimal>();
+   const reserved=new Map<string,Prisma.Decimal>();
+   for(const l of result){
+    const base=l.cantidadCompra.mul(l.factorAUnidadBase);
+    if(!base.eq(base.toDecimalPlaces(6)))
+     throw new ConflictException('Cantidad de compra no convertible exactamente a unidad base');
+    need.set(l.articuloId,(need.get(l.articuloId)??new Prisma.Decimal(0)).plus(base));
+   }
+   for(const old of planned){
+    const totalUnits=old.cantidadCompra.mul(old.factorAUnidadBase);
+    const receivedAtDestination=old.recepcionCompraLineasComoOrdenCompraLinea.filter(
+     r=>r.recepcion.estado==='CONFIRMADO'&&r.recepcion.almacenId===req.almacenDestinoId)
+     .reduce((sum,r)=>sum.plus(r.cantidadBase),new Prisma.Decimal(0));
+    reserved.set(old.articuloId,(reserved.get(old.articuloId)??new Prisma.Decimal(0)).plus(
+     Prisma.Decimal.max(0,totalUnits.minus(receivedAtDestination))));
+   }
+   for(const t of inTransit)reserved.set(t.articuloId,
+    (reserved.get(t.articuloId)??new Prisma.Decimal(0)).plus(
+     t.cantidadEnviada.minus(t.cantidadRecibida??0)));
+   for(const [articleId,units] of need){
+    const line=req.requisicionLineasComoRequisicion.find(x=>x.articuloId===articleId);
+    if(!line)throw new ConflictException('Artículo ajeno a la requisición');
+    const available=line.cantidadSolicitada.minus(line.cantidadAtendida).minus(
+     reserved.get(articleId)??0);
+    if(units.gt(available))
+     throw new ConflictException('Compra excede el faltante no comprometido de la requisición');
+   }
+  }
   return {lines:result,total};
  }
  async create(u:Actor,d:PurchaseOrderDto){
@@ -105,7 +146,7 @@ export class PurchaseOrdersStore{
     throw new ConflictException('Compra confirmada o sucursal distinta');
    if(row.requisicionId!==(d.requisicionId??null))
     throw new ConflictException('No se puede cambiar el origen SUP-A de una orden');
-   const validated=await this.validate(tx,d);
+   const validated=await this.validate(tx,d,id);
    await tx.ordenCompraLinea.deleteMany({where:{ordenCompraId:id}});
    await tx.ordenCompra.update({where:{id},data:{proveedorId:d.proveedorId,
     observaciones:d.observaciones?.trim(),precioIncluyeImpuesto:d.precioIncluyeImpuesto??false,

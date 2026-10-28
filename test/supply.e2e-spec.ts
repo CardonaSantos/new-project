@@ -60,7 +60,7 @@ describe('SUP-A HTTP request contracts',()=>{
    .send(payload).expect(201);
   expect(methods.purchaseDraft).toHaveBeenCalledOnce();
   await request(app.getHttpServer()).post('/api/supply/requisitions/req/purchase-draft')
-   .send({...payload,orden:{...payload.orden,lineas:[{...payload.orden.lineas[0],cantidadCompra:'0'}]}})
+   .send({...payload,orden:{...payload.orden,lineas:[{...payload.orden.lineas[0],tasaImpuesto:'1.5'}]}})
    .expect(400);
  });
  it('accepts a partial receipt and rejects duplicate body keys',async()=>{

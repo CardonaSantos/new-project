@@ -122,6 +122,15 @@ describe('SUP-A partial fulfillment and stock posting',()=>{
   expect(f.moves.map(x=>x.direction)).toEqual(['OUT','IN']);
   expect(f.req.estado).toBe('ABIERTA');
  });
+ it('blocks cancellation while a linked supplier purchase remains active',async()=>{
+  const f=fixture();
+  f.tx.ordenCompra.count.mockResolvedValueOnce(1);
+  await expect(f.store.cancel(user,'req-1',{
+   claveOperacion:'SUP:CANCEL:ACTIVE:001',motivo:'Ya no se necesita el producto',
+  })).rejects.toThrow('compras activas');
+  expect(f.tx.requisicion.update).not.toHaveBeenCalled();
+  expect(f.moves).toHaveLength(0);
+ });
  it('executes immediate transfer in one transaction without a pending receipt',async()=>{
   const f=fixture();
   const value=await f.store.send(user,'req-1',{

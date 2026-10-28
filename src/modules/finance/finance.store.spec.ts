@@ -46,6 +46,10 @@ describe('FIN-A account registration and read-only ledger',()=>{
   expect(a.saldoRegistrado).toBe('0.00');
   await expect(f.store.createAccount(actor,{...d,nombre:'Otra cuenta'})).rejects.toThrow('Clave reutilizada');
   expect(f.accounts).toHaveLength(1);
+  // Permissions can be revoked after an operation was initially accepted.
+  f.tx.usuarioRol.findFirst.mockResolvedValueOnce(null);
+  await expect(f.store.createAccount(actor,d)).rejects.toBeInstanceOf(ForbiddenException);
+  expect(f.tx.cuentaFinanciera.create).toHaveBeenCalledTimes(1);
  });
  it('denies branch access before reading confidential finance data',async()=>{
   const f=setup(false);

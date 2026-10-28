@@ -7,9 +7,9 @@ import {locationBookValue} from './inventory-ledger.js';
 type Tx=Prisma.TransactionClient;
 export type StockPosting={
  actorId:string;ubicacionId:string;articuloId:string;loteId?:string|null;
- cantidad:string;direction:'IN'|'OUT';tipo:'AJUSTE_ENTRADA'|'AJUSTE_SALIDA'|'MERMA'|'TRANSFERENCIA_SALIDA'|'TRANSFERENCIA_ENTRADA'|'PRODUCCION_SALIDA'|'PRODUCCION_ENTRADA'|'CONSUMO';
+ cantidad:string;direction:'IN'|'OUT';tipo:'COMPRA'|'DEVOLUCION'|'CONSUMO_INTERNO'|'AJUSTE_ENTRADA'|'AJUSTE_SALIDA'|'MERMA'|'TRANSFERENCIA_SALIDA'|'TRANSFERENCIA_ENTRADA'|'PRODUCCION_SALIDA'|'PRODUCCION_ENTRADA'|'CONSUMO';
  costoUnitario?:string;costoTotalOverride?:string;claveOperacion:string;referenciaTipo:string;referenciaId:string;nota?:string;
- permission:'inventory.adjust'|'inventory.transfer'|'recipes.produce'|'kitchen.manage'|'orders.create'|'orders.manage';allowBlocked?:boolean;
+ permission:'purchases.receipts.confirm'|'purchases.returns.manage'|'inventory.consume.internal'|'inventory.adjust'|'inventory.transfer'|'recipes.produce'|'kitchen.manage'|'orders.create'|'orders.manage';allowBlocked?:boolean;
 };
 export type CostSlice={cantidad:string;costoUnitario:string;costoTotal?:string};
 @Injectable()
@@ -39,8 +39,8 @@ export class InventoryPostingEngine{
  }
  async post(tx:Tx,v:StockPosting){
   const count=amount(v.cantidad);
-  if(v.costoTotalOverride!==undefined&&(v.direction!=='IN'||!['TRANSFERENCIA_ENTRADA','PRODUCCION_ENTRADA'].includes(v.tipo)))
-   throw new BadRequestException('Solo una recepción de transferencia puede fijar costoTotal');
+  if(v.costoTotalOverride!==undefined&&(v.direction!=='IN'||!['TRANSFERENCIA_ENTRADA','PRODUCCION_ENTRADA','COMPRA'].includes(v.tipo)))
+   throw new BadRequestException('costoTotal explícito solo para entradas documentales de transferencia, producción o compra');
   const l=await this.location(tx,v.ubicacionId);
   await this.allowed(tx,v.actorId,v.permission,l.almacen.sucursalId);
   const art=await tx.articuloInventario.findUnique({where:{id:v.articuloId}});

@@ -144,6 +144,7 @@ enum EfectoModificador {
 }
 
 enum TipoMovimientoInventario {
+  CONSUMO_INTERNO
   COMPRA
   CONSUMO
   PRODUCCION_ENTRADA
@@ -209,6 +210,7 @@ enum EstadoOrdenCompra {
   BORRADOR
   CONFIRMADA
   CANCELADA
+  CERRADA
 }
 
 enum EstadoRequisicion {
@@ -277,6 +279,8 @@ model EmpresaConfiguracion {
 }
 
 model Sucursal {
+  devolucionesProveedor DevolucionProveedor[]
+  notasCreditoProveedor NotaCreditoProveedor[]
   id            String   @id @default(cuid())
   codigo        String   @unique
   nombre        String
@@ -773,6 +777,7 @@ model ReglaEmpaqueLinea {
 // ============================================================================
 
 model Almacen {
+  devolucionesProveedor DevolucionProveedor[]
   id         String   @id @default(cuid())
   sucursalId String
   sucursal   Sucursal @relation("Almacen_sucursal_Sucursal", fields: [sucursalId], references: [id], onDelete: Restrict)
@@ -1079,6 +1084,8 @@ model ConsumoOrdenLinea {
 // ============================================================================
 
 model Proveedor {
+  devolucionesProveedor DevolucionProveedor[]
+  notasCreditoProveedor NotaCreditoProveedor[]
   id        String   @id @default(cuid())
   nombre    String
   nit       String?
@@ -1114,6 +1121,9 @@ model PresentacionCompra {
 }
 
 model OrdenCompra {
+  cerradaEn     DateTime?         @db.Timestamptz(3)
+  motivoCierre String?
+  precioIncluyeImpuesto Boolean @default(false)
   id            String            @id @default(cuid())
   numero        String            @unique
   proveedorId   String
@@ -1144,6 +1154,9 @@ model OrdenCompraLinea {
   cantidadCompra       Decimal             @db.Decimal(20, 6)
   factorAUnidadBase    Decimal             @db.Decimal(24, 10)
   precioUnitarioCompra Decimal             @db.Decimal(18, 6)
+  tasaImpuesto         Decimal             @default(0) @db.Decimal(8,6)
+  impuestoEstimado     Decimal             @default(0) @db.Decimal(18,2)
+  impuestoRecuperable  Boolean             @default(false)
   subtotal             Decimal             @db.Decimal(18, 2)
 
   // Relaciones inversas (navegación Prisma)
@@ -1172,6 +1185,9 @@ model RecepcionCompra {
 }
 
 model RecepcionCompraLinea {
+  devolucionesProveedorLinea DevolucionProveedorLinea[]
+  movimientoId String? @unique
+  cantidadRechazada Decimal @default(0) @db.Decimal(20,6)
   id                   String             @id @default(cuid())
   recepcionId          String
   recepcion            RecepcionCompra    @relation("RecepcionCompraLinea_recepcion_RecepcionCompra", fields: [recepcionId], references: [id], onDelete: Restrict)
@@ -1187,6 +1203,11 @@ model RecepcionCompraLinea {
   factorAUnidadBase    Decimal            @db.Decimal(24, 10)
   cantidadBase         Decimal            @db.Decimal(20, 6)
   precioUnitarioCompra Decimal            @db.Decimal(18, 6)
+  tasaImpuesto         Decimal            @default(0) @db.Decimal(8,6)
+  importeImpuesto      Decimal            @default(0) @db.Decimal(18,2)
+  importeComercial     Decimal            @default(0) @db.Decimal(18,2)
+  precioIncluyeImpuesto Boolean           @default(false)
+  impuestoRecuperable  Boolean            @default(false)
   costoTotal           Decimal            @db.Decimal(18, 2)
 
   // Relaciones inversas (navegación Prisma)
@@ -1196,6 +1217,12 @@ model RecepcionCompraLinea {
 }
 
 model FacturaProveedor {
+  aplicacionesNotaCredito AplicacionNotaCreditoProveedor[]
+  estado EstadoFacturaCompra @default(BORRADOR)
+  precioIncluyeImpuesto Boolean @default(false)
+  confirmadaEn DateTime? @db.Timestamptz(3)
+  anuladaEn DateTime? @db.Timestamptz(3)
+  motivoAnulacion String?
   id               String    @id @default(cuid())
   proveedorId      String
   proveedor        Proveedor @relation("FacturaProveedor_proveedor_Proveedor", fields: [proveedorId], references: [id], onDelete: Restrict)
@@ -1219,6 +1246,8 @@ model FacturaProveedor {
 }
 
 model FacturaProveedorLinea {
+  tasaImpuesto Decimal @default(0) @db.Decimal(8,6)
+  importeImpuesto Decimal @default(0) @db.Decimal(18,2)
   id               String                @id @default(cuid())
   facturaId        String
   factura          FacturaProveedor      @relation("FacturaProveedorLinea_factura_FacturaProveedor", fields: [facturaId], references: [id], onDelete: Restrict)
@@ -1233,6 +1262,11 @@ model FacturaProveedorLinea {
 }
 
 model PagoProveedor {
+  estado EstadoPagoProveedor @default(PENDIENTE)
+  confirmadoEn DateTime? @db.Timestamptz(3)
+  verificadoPorId String?
+  motivoRechazo String?
+  sucursalId String?
   id                 String            @id @default(cuid())
   proveedorId        String
   proveedor          Proveedor         @relation("PagoProveedor_proveedor_Proveedor", fields: [proveedorId], references: [id], onDelete: Restrict)
@@ -1253,6 +1287,7 @@ model PagoProveedor {
 }
 
 model AplicacionPagoProveedor {
+  creadaEn DateTime @default(now()) @db.Timestamptz(3)
   id        String           @id @default(cuid())
   pagoId    String
   pago      PagoProveedor    @relation("AplicacionPagoProveedor_pago_PagoProveedor", fields: [pagoId], references: [id], onDelete: Restrict)
@@ -2379,4 +2414,120 @@ model PrecioModificador {
   vigenteDesde DateTime @default(now()) @db.Timestamptz(3)
   vigenteHasta DateTime? @db.Timestamptz(3)
   @@index([modificadorId, sucursalId, vigenteDesde])
+}
+
+enum EstadoFacturaCompra {
+  BORRADOR
+  CONFIRMADA
+  ANULADA
+}
+enum EstadoPagoProveedor {
+  PENDIENTE
+  CONFIRMADO
+  RECHAZADO
+}
+enum EstadoDevolucionProveedor {
+  BORRADOR
+  CONFIRMADA
+  CANCELADA
+}
+enum EstadoNotaCreditoProveedor {
+  BORRADOR
+  CONFIRMADA
+  CANCELADA
+}
+enum EstadoReintegroProveedor {
+  PENDIENTE
+  CONFIRMADO
+  RECHAZADO
+}
+
+model DevolucionProveedor {
+ id String @id @default(cuid())
+ proveedorId String
+ proveedor Proveedor @relation(fields:[proveedorId],references:[id],onDelete:Restrict)
+ sucursalId String
+ sucursal Sucursal @relation(fields:[sucursalId],references:[id],onDelete:Restrict)
+ almacenId String
+ almacen Almacen @relation(fields:[almacenId],references:[id],onDelete:Restrict)
+ estado EstadoDevolucionProveedor @default(BORRADOR)
+ motivo String
+ usuarioId String
+ confirmadoEn DateTime? @db.Timestamptz(3)
+ creadoEn DateTime @default(now()) @db.Timestamptz(3)
+ lineas DevolucionProveedorLinea[]
+ @@index([sucursalId,estado,creadoEn])
+}
+model DevolucionProveedorLinea {
+ id String @id @default(cuid())
+ devolucionId String
+ devolucion DevolucionProveedor @relation(fields:[devolucionId],references:[id],onDelete:Restrict)
+ recepcionLineaId String
+ recepcionLinea RecepcionCompraLinea @relation(fields:[recepcionLineaId],references:[id],onDelete:Restrict)
+ articuloId String
+ ubicacionId String
+ loteId String?
+ cantidadBase Decimal @db.Decimal(20,6)
+ costoContable Decimal? @db.Decimal(18,6)
+ movimientoId String? @unique
+ @@index([recepcionLineaId])
+}
+model NotaCreditoProveedor {
+ id String @id @default(cuid())
+ proveedorId String
+ proveedor Proveedor @relation(fields:[proveedorId],references:[id],onDelete:Restrict)
+ sucursalId String
+ sucursal Sucursal @relation(fields:[sucursalId],references:[id],onDelete:Restrict)
+ numeroDocumento String
+ motivo String
+ // Desglose fiscal de la nota: el crédito comercial se representa por
+ // subtotal + impuestos, sin alterar la factura ni el Kardex original.
+ subtotal Decimal @db.Decimal(18,2)
+ impuestos Decimal @default(0) @db.Decimal(18,2)
+ total Decimal @db.Decimal(18,2)
+ estado EstadoNotaCreditoProveedor @default(BORRADOR)
+ devolucionId String?
+ creadaEn DateTime @default(now()) @db.Timestamptz(3)
+ confirmadaEn DateTime? @db.Timestamptz(3)
+ aplicaciones AplicacionNotaCreditoProveedor[]
+ reintegros ReintegroProveedor[]
+ @@unique([proveedorId,numeroDocumento])
+ @@index([sucursalId,estado])
+}
+model AplicacionNotaCreditoProveedor {
+ id String @id @default(cuid())
+ notaId String
+ nota NotaCreditoProveedor @relation(fields:[notaId],references:[id],onDelete:Restrict)
+ facturaId String
+ factura FacturaProveedor @relation(fields:[facturaId],references:[id],onDelete:Restrict)
+ monto Decimal @db.Decimal(18,2)
+ creadaEn DateTime @default(now()) @db.Timestamptz(3)
+ @@unique([notaId,facturaId])
+}
+model ReintegroProveedor {
+ id String @id @default(cuid())
+ notaId String
+ nota NotaCreditoProveedor @relation(fields:[notaId],references:[id],onDelete:Restrict)
+ metodo MetodoPago
+ monto Decimal @db.Decimal(18,2)
+ referencia String?
+ turnoCajaId String?
+ estado EstadoReintegroProveedor @default(PENDIENTE)
+ confirmadoEn DateTime? @db.Timestamptz(3)
+ usuarioId String
+ creadoEn DateTime @default(now()) @db.Timestamptz(3)
+ movimientoCajaId String? @unique
+}
+model ConsumoInterno {
+ id String @id @default(cuid())
+ articuloId String
+ ubicacionId String
+ loteId String?
+ cantidad Decimal @db.Decimal(20,6)
+ destinoUso String
+ motivo String
+ responsableId String
+ movimientoId String @unique
+ creadoEn DateTime @default(now()) @db.Timestamptz(3)
+ @@index([ubicacionId,creadoEn])
 }

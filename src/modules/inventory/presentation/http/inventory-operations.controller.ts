@@ -2,7 +2,8 @@ import {Body,Controller,Get,Param,Patch,Post,Query} from '@nestjs/common';
 import {CurrentUser} from '../../../auth/presentation/http/decorators/auth.decorators.js';
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {InventoryOperationsStore} from '../../infrastructure/prisma/inventory-operations.store.js';
-import {ManualPostingDto,LotCreateDto,LotStatusDto,StockBranchDto,CountCreateDto,TransferCreateDto,OperationKeyDto} from './dto/inventory-operations.dto.js';
+import {InventoryInternalConsumptionStore} from '../../infrastructure/prisma/inventory-internal-consumption.store.js';
+import {ManualPostingDto,LotCreateDto,LotStatusDto,StockBranchDto,CountCreateDto,TransferCreateDto,OperationKeyDto,InternalConsumptionDto} from './dto/inventory-operations.dto.js';
 @Controller('inventory/stock')
 export class InventoryStockController{
  constructor(private readonly store:InventoryOperationsStore){}
@@ -59,4 +60,11 @@ export class InventoryOperationalReportsController{
  @Get('valuation') valuation(@CurrentUser() u:Principal,@Query() q:StockBranchDto){return this.store.valuation(u,q);}
  @Get('expiry') expiry(@CurrentUser() u:Principal,@Query() q:StockBranchDto){return this.store.expiry(u,q);}
  @Get('reconciliation') reconciliation(@CurrentUser() u:Principal,@Query() q:StockBranchDto){return this.store.reconciliation(u,q);}
+}
+
+@Controller('inventory/internal-consumption')
+export class InventoryInternalConsumptionController{
+ constructor(private readonly store:InventoryInternalConsumptionStore){}
+ @Post() consume(@CurrentUser() u:Principal,@Body() d:InternalConsumptionDto){
+  return this.store.execute(u,d);}
 }

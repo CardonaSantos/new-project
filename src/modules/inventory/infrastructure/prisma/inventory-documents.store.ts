@@ -212,6 +212,7 @@ export class InventoryDocumentsStore{
   return this.engine.tx(async tx=>{
    const row=await tx.transferenciaInventario.findUnique({where:{id},include:transferInclude});
    if(!row)throw new NotFoundException('Transferencia inexistente');
+   if(row.requisicionId)throw new ConflictException('Transferencia SUP-A: use el flujo de abastecimiento');
    if(row.estado!=='BORRADOR')throw new ConflictException('Solo se despachan borradores');
    await this.engine.allowed(tx,u.id,'inventory.transfer',row.almacenOrigen.sucursalId);
    await this.engine.allowed(tx,u.id,'inventory.transfer',row.almacenDestino.sucursalId);
@@ -236,6 +237,7 @@ export class InventoryDocumentsStore{
   return this.engine.tx(async tx=>{
    const row=await tx.transferenciaInventario.findUnique({where:{id},include:transferInclude});
    if(!row)throw new NotFoundException('Transferencia inexistente');
+   if(row.requisicionId)throw new ConflictException('Transferencia SUP-A: use /supply/transfers/:id/receive');
    if(row.estado!=='EN_TRANSITO')throw new ConflictException('Transferencia no está en tránsito');
    await this.engine.allowed(tx,u.id,'inventory.transfer',row.almacenDestino.sucursalId);
    for(const line of row.transferenciaInventarioLineasComoTransferencia){

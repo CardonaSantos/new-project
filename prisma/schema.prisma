@@ -1132,6 +1132,8 @@ model OrdenCompra {
   sucursal      Sucursal          @relation("OrdenCompra_sucursal_Sucursal", fields: [sucursalId], references: [id], onDelete: Restrict)
   usuarioId     String
   usuario       Usuario           @relation("OrdenCompra_usuario_Usuario", fields: [usuarioId], references: [id], onDelete: Restrict)
+  requisicionId String?
+  requisicion   Requisicion?      @relation("OrdenCompra_requisicion_Requisicion", fields: [requisicionId], references: [id], onDelete: SetNull)
   estado        EstadoOrdenCompra @default(BORRADOR)
   observaciones String?
   totalEstimado Decimal           @default(0) @db.Decimal(18, 2)
@@ -1141,6 +1143,7 @@ model OrdenCompra {
   // Relaciones inversas (navegación Prisma)
   ordenCompraLineasComoOrdenCompra OrdenCompraLinea[] @relation("OrdenCompraLinea_ordenCompra_OrdenCompra")
   recepcionesCompraComoOrdenCompra RecepcionCompra[]  @relation("RecepcionCompra_ordenCompra_OrdenCompra")
+  @@index([requisicionId,estado])
 }
 
 model OrdenCompraLinea {
@@ -1317,6 +1320,7 @@ model Requisicion {
   // Relaciones inversas (navegación Prisma)
   requisicionLineasComoRequisicion        RequisicionLinea[]        @relation("RequisicionLinea_requisicion_Requisicion")
   transferenciaInventariosComoRequisicion TransferenciaInventario[] @relation("TransferenciaInventario_requisicion_Requisicion")
+  ordenesCompraComoRequisicion OrdenCompra[] @relation("OrdenCompra_requisicion_Requisicion")
 }
 
 model RequisicionLinea {

@@ -12,6 +12,7 @@ import {RecipesModule} from './modules/recipes/recipes.module.js';
 import {OrdersModule} from './modules/orders/orders.module.js';
 import {PaymentsModule} from './modules/payments/payments.module.js';
 import {PurchasesModule} from './modules/purchases/purchases.module.js';
+import {SupplyModule} from './modules/supply/supply.module.js';
 @Module({
  imports:[
   ConfigModule.forRoot({isGlobal:true,cache:true,validate:validateEnvironment}),
@@ -25,6 +26,7 @@ import {PurchasesModule} from './modules/purchases/purchases.module.js';
   OrdersModule,
   PaymentsModule,
   PurchasesModule,
+  SupplyModule,
   CoreModule,
  ],
 })

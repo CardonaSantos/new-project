@@ -131,6 +131,48 @@
       ]
     },
     {
+      "name": "02b Crear cliente de reemplazo activo",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/customers",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"claveOperacion\": \"CUS-ORD:{{integrationRun}}:replacement\",\n  \"nombre\": \"Cliente reemplazo ORD-A DEV {{integrationRun}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Cliente reemplazo activo creado',()=>pm.response.to.have.status(201));",
+              "pm.collectionVariables.set('replacementCustomerId',pm.response.json().id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "03 Desactivar el segundo cliente",
       "request": {
         "method": "POST",
@@ -494,7 +536,7 @@
       ]
     },
     {
-      "name": "11 Reasignar cliente activo en orden abierta",
+      "name": "11 Reasignar a otro cliente activo en orden abierta",
       "request": {
         "method": "PATCH",
         "header": [
@@ -514,7 +556,7 @@
         "url": "{{baseUrl}}/api/orders/{{integrationOrderId}}",
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"version\": 3,\n  \"clienteId\": \"{{activeCustomerId}}\"\n}",
+          "raw": "{\n  \"version\": 3,\n  \"clienteId\": \"{{replacementCustomerId}}\"\n}",
           "options": {
             "raw": {
               "language": "json"
@@ -530,7 +572,7 @@
             "exec": [
               "const v=Number(pm.collectionVariables.get('integrationOrderVersion'));",
               "if(!Number.isInteger(v)||v<1)throw new Error('integrationOrderVersion faltante');",
-              "pm.request.body.update(JSON.stringify({version:v,clienteId:pm.collectionVariables.get('activeCustomerId')}));"
+              "pm.request.body.update({mode:'raw',raw:JSON.stringify({version:v,clienteId:pm.collectionVariables.get('replacementCustomerId')})});"
             ]
           }
         },
@@ -539,8 +581,8 @@
           "script": {
             "type": "text/javascript",
             "exec": [
-              "pm.test('Edición con cliente visible permitida',()=>pm.response.to.have.status(200));",
-              "pm.expect(pm.response.json().clienteId).to.eql(pm.collectionVariables.get('activeCustomerId'));"
+              "pm.test('Reasignación de cliente activo permitida',()=>pm.response.to.have.status(200));",
+              "pm.expect(pm.response.json().clienteId).to.eql(pm.collectionVariables.get('replacementCustomerId'));"
             ]
           }
         }
@@ -572,8 +614,8 @@
           "script": {
             "type": "text/javascript",
             "exec": [
-              "pm.test('El cliente del pedido es el autorizado',()=>pm.response.to.have.status(200));",
-              "pm.expect(pm.response.json().clienteId).to.eql(pm.collectionVariables.get('activeCustomerId'));"
+              "pm.test('La nueva asignación persiste',()=>pm.response.to.have.status(200));",
+              "pm.expect(pm.response.json().clienteId).to.eql(pm.collectionVariables.get('replacementCustomerId'));"
             ]
           }
         }
@@ -704,6 +746,10 @@
     },
     {
       "key": "integrationRun",
+      "value": ""
+    },
+    {
+      "key": "replacementCustomerId",
       "value": ""
     }
   ]

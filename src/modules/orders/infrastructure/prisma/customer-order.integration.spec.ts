@@ -77,6 +77,18 @@ describe('ORD-A ↔ DEL-A D1 integration (transaction boundary)',()=>{
   expect(h.tx.eventoOutbox.create).not.toHaveBeenCalled();
   expect(h.tx.operacionIdempotente.create).not.toHaveBeenCalled();
  });
+ it('cannot replay a cached order-create after orders.create permission was revoked',async()=>{
+  const h=rig();
+  h.tx.operacionIdempotente.findUnique.mockResolvedValue({
+   operacion:'ORDER_CREATE',hashSolicitud:'any-hash',finalizada:true,
+   resultado:{orderId:'order-1'}
+  });
+  h.engine.allowed.mockRejectedValue(new ForbiddenException('Permiso revocado'));
+  await expect(h.store.create(principal,create('customer-a')))
+   .rejects.toThrow('Permiso revocado');
+  expect(h.tx.operacionIdempotente.findUnique).not.toHaveBeenCalled();
+  expect(h.tx.orden.create).not.toHaveBeenCalled();
+ });
  it('does not require customers.read for anonymous orders without clienteId',async()=>{
   const h=rig();
   await h.store.create(principal,create(undefined,'ORD:CUST:ANONYMOUS:1'));

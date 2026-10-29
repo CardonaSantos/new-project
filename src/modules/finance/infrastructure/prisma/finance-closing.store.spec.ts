@@ -71,6 +71,13 @@ describe('FIN-A operational closing transaction',()=>{
   await expect(f.store.confirm(actor,{...input,operationId:f.issue()}))
    .rejects.toThrow('ya está cerrado');
  });
+ it('denies a revoked user's closing request before any persisted snapshot',async()=>{
+  const f=setup();
+  f.tx.usuarioRol.findFirst.mockResolvedValue(null);
+  await expect(f.store.confirm(actor,{sucursalId:'b',fechaOperativa:'2026-10-10',
+   operationId:f.issue()})).rejects.toThrow('Permiso de cierre insuficiente');
+  expect(f.closes).toHaveLength(0);
+ });
  it('blocks closing a day with an open cash shift or open order',async()=>{
   for(const mode of [1,2]){
    const f=setup(mode===1?1:0,mode===2?1:0);

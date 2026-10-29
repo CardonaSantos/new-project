@@ -1,4 +1,8 @@
 import {Module} from '@nestjs/common';
+import {FinanceBankRepositoryPort} from './application/ports/finance-bank.repository.port.js';
+import {FinanceBankService} from './application/finance-bank.service.js';
+import {FinanceBankStore} from './infrastructure/prisma/finance-bank.store.js';
+import {FinanceBankController,FinanceReverseController} from './presentation/http/finance-bank.controller.js';
 import {PrismaModule} from '../../infrastructure/database/prisma/prisma.module.js';
 import {PaymentsModule} from '../payments/payments.module.js';
 import {FinanceService} from './application/finance.service.js';
@@ -13,10 +17,12 @@ import {FinanceAccountsController,FinanceExpensesController,FinanceIntentsContro
 @Module({
  imports:[PrismaModule,PaymentsModule],
  controllers:[FinanceIntentsController,FinanceAccountsController,FinanceExpensesController,
-  FinanceReconciliationController,FinanceRoutingController,FinanceClosingController],
+  FinanceReconciliationController,FinanceRoutingController,FinanceClosingController,
+  FinanceBankController,FinanceReverseController],
  providers:[FinanceService,FinanceStore,{provide:FinanceRepositoryPort,useExisting:FinanceStore},
+  FinanceBankService,FinanceBankStore,{provide:FinanceBankRepositoryPort,useExisting:FinanceBankStore},
   FinanceClosingService,FinanceClosingStore,
   {provide:FinanceClosingRepositoryPort,useExisting:FinanceClosingStore}],
- exports:[FinanceService,FinanceRepositoryPort,FinanceClosingService],
+ exports:[FinanceService,FinanceRepositoryPort,FinanceClosingService,FinanceBankService],
 })
 export class FinanceModule{}

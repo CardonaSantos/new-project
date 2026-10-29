@@ -1,6 +1,6 @@
 export interface FinanceAccountQueryDto{sucursalId:string;page:number;limit:number}
 export interface FinanceOperationIntentDto{
- sucursalId:string;accion:'FIN_ACCOUNT_CREATE'|'FIN_EXPENSE_CREATE'|'FIN_EXTERNAL_POST'|'FIN_ROUTING_UPSERT'|'FIN_DAY_CLOSE'
+ sucursalId:string;accion:'FIN_ACCOUNT_CREATE'|'FIN_EXPENSE_CREATE'|'FIN_EXTERNAL_POST'|'FIN_ROUTING_UPSERT'|'FIN_DAY_CLOSE'|'FIN_STATEMENT_IMPORT'|'FIN_STATEMENT_MATCH'|'FIN_STATEMENT_UNMATCH'|'FIN_LEDGER_REVERSE'
 }
 export interface FinanceAccountCreateDto{
  operationId:string;sucursalId:string;nombre:string;tipo:'BANCO'|'TARJETA_EMPRESA'|'EFECTIVO_EXTERNO'

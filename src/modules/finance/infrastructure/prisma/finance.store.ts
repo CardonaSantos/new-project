@@ -130,7 +130,10 @@ export class FinanceStore{
    const code=d.accion==='FIN_ACCOUNT_CREATE'?'finance.accounts.manage':
     d.accion==='FIN_EXPENSE_CREATE'?'finance.expenses.create':
     d.accion==='FIN_ROUTING_UPSERT'?'finance.routing.manage':
-    d.accion==='FIN_DAY_CLOSE'?'finance.closing.execute':'finance.movements.post';
+    d.accion==='FIN_DAY_CLOSE'?'finance.closing.execute':
+    d.accion==='FIN_STATEMENT_IMPORT'?'finance.statements.import':
+    d.accion==='FIN_STATEMENT_MATCH'||d.accion==='FIN_STATEMENT_UNMATCH'?'finance.statements.match':
+    d.accion==='FIN_LEDGER_REVERSE'?'finance.reversals.create':'finance.movements.post';
    await this.permission(tx,u,d.sucursalId,code);
    await this.activeBranch(tx,d.sucursalId);
    const operationId='FIN:'+randomUUID();

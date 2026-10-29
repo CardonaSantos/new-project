@@ -18,9 +18,10 @@ function context(){
   rutaFinanciera:{findUnique:vi.fn().mockImplementation(async()=>route)},
   configuracionSucursal:{findUnique:vi.fn().mockResolvedValue({moneda:'GTQ'})},
   sucursal:{findUnique:vi.fn().mockResolvedValue({
-   id:'branch',activa:true,configuracionSucursalesComoSucursal:{moneda:'GTQ'}})},
+   id:'branch',activa:true,zonaHoraria:'America/Guatemala',configuracionSucursalesComoSucursal:{moneda:'GTQ'}})},
   cuentaFinanciera:{findUnique:vi.fn().mockResolvedValue({
    id:'bank',sucursalId:'branch',activa:true,moneda:'GTQ',tipo:'BANCO'})},
+  cierreOperativo:{findUnique:vi.fn().mockResolvedValue(null)},
   movimientoCaja:{create:vi.fn().mockResolvedValue({})},
   movimientoFinanciero:{
    findFirst:vi.fn().mockImplementation(async()=>ledger[0]??null),

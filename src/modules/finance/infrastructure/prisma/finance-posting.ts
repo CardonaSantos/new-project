@@ -1,6 +1,7 @@
 import {ConflictException} from '@nestjs/common';
 import {Prisma} from '../../../../generated/prisma/client.js';
 import {customerCreditAllowed,type FinancialSource} from '../../domain/ledger.policy.js';
+import {assertFinancialPeriodOpen} from './finance-period.guard.js';
 
 export type FinancialTx=Prisma.TransactionClient;
 export type {FinancialSource} from '../../domain/ledger.policy.js';
@@ -31,6 +32,7 @@ export async function postVerifiedExternalMovement(tx:FinancialTx,input:{
    throw new ConflictException('Origen ya registrado con cuenta o importe distinto');
   return {id:existing.id,created:false,cuentaId:existing.cuentaId,monto:existing.monto.toFixed(2)};
  }
+ await assertFinancialPeriodOpen(tx,branch);
  const row=await tx.movimientoFinanciero.create({data:{
   cuentaId:input.cuentaId,monto:input.monto,
   referenciaTipo:input.referenciaTipo,referenciaId:input.referenciaId,

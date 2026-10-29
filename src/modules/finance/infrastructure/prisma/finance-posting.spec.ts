@@ -6,7 +6,8 @@ function setup(){
  let existing:any=null;
  const tx={
   sucursal:{findUnique:vi.fn().mockResolvedValue({id:'branch',activa:true,
-   configuracionSucursalesComoSucursal:{moneda:'GTQ'}})},
+   zonaHoraria:'America/Guatemala',configuracionSucursalesComoSucursal:{moneda:'GTQ'}})},
+  cierreOperativo:{findUnique:vi.fn().mockResolvedValue(null)},
   cuentaFinanciera:{findUnique:vi.fn().mockResolvedValue({id:'bank',sucursalId:'branch',
    activa:true,moneda:'GTQ',tipo:'BANCO'})},
   movimientoFinanciero:{
@@ -46,6 +47,16 @@ describe('FIN-A unique external journal posting',()=>{
   f.tx.cuentaFinanciera.findUnique.mockResolvedValueOnce({
    id:'bank',sucursalId:'branch',activa:true,moneda:'GTQ',tipo:'TARJETA_EMPRESA'});
   await expect(f.post()).rejects.toThrow('no admite cobros');
+ });
+ it('rejects new postings after today's financial close but preserves old retries',async()=>{
+  const f=setup();
+  const first=await f.post();
+  f.tx.cierreOperativo.findUnique.mockResolvedValue({id:'closed'});
+  const replay=await f.post();
+  expect(replay.id).toBe(first.id);
+  await expect(f.post({referenciaId:'pay-2'}))
+   .rejects.toThrow('Día operativo cerrado');
+  expect(f.tx.movimientoFinanciero.create).toHaveBeenCalledOnce();
  });
  it('never writes a zero-value financial movement',async()=>{
   const f=setup();

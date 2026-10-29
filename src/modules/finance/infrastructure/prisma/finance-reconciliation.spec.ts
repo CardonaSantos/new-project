@@ -22,8 +22,9 @@ function setup(){
   referenciaExterna:'REFUND-1',pago:payment};
  const tx={
   sucursal:{findUnique:vi.fn().mockResolvedValue({
-   id:'branch',activa:true,configuracionSucursalesComoSucursal:{moneda:'GTQ'}})},
+   id:'branch',activa:true,zonaHoraria:'America/Guatemala',configuracionSucursalesComoSucursal:{moneda:'GTQ'}})},
   usuarioRol:{findFirst:vi.fn().mockResolvedValue({id:'admin-grant'})},
+  cierreOperativo:{findUnique:vi.fn().mockResolvedValue(null)},
   cuentaFinanciera:{findUnique:vi.fn().mockResolvedValue({
    id:'bank',sucursalId:'branch',activa:true,moneda:'GTQ',tipo:'BANCO'})},
   operacionIdempotente:{

@@ -5,6 +5,7 @@ import {PrismaService} from '../../../../infrastructure/database/prisma/prisma.s
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {money,formatted,operationalDate,assertShiftOperationalDate} from '../../domain/payment.policy.js';
 import {allowed,audit,runOnce,txSerializable,type Tx} from './payment-shared.js';
+import {assertFinancialPeriodOpen} from '../../../finance/infrastructure/prisma/finance-period.guard.js';
 import type {RegisterDto,RegisterPatchDto,ShiftOpenDto,ShiftCloseDto,ShiftMovementDto,PageDto} from '../../presentation/http/dto/payments.dto.js';
 @Injectable()
 export class CashStore{
@@ -55,9 +56,9 @@ export class CashStore{
    await allowed(tx,u,register.sucursalId,'cash.open');
    if(await tx.turnoCaja.findFirst({where:{OR:[{cajaId:d.cajaId},{cajeroId:u.id}],cerradaEn:null}}))
     throw new ConflictException('Caja o cajero ya tiene turno abierto');
+   const fechaOperativa=await assertFinancialPeriodOpen(tx,register.sucursal);
    const shift=await tx.turnoCaja.create({data:{cajaId:d.cajaId,cajeroId:u.id,
-    fechaOperativa:operationalDate(new Date(),register.sucursal.zonaHoraria,
-     register.sucursal.configuracionSucursalesComoSucursal?.horaCorteOperativo??'04:00'),
+    fechaOperativa,
     fondoInicial:initial}});
    await audit(tx,u,register.sucursalId,'CASH_SHIFT_OPENED','TurnoCaja',shift.id);
    return {shiftId:shift.id};
@@ -76,6 +77,7 @@ export class CashStore{
   if(!allowPreviousDayForClosing){
    assertShiftOperationalDate(shift.fechaOperativa,new Date(),shift.caja.sucursal.zonaHoraria,
     shift.caja.sucursal.configuracionSucursalesComoSucursal?.horaCorteOperativo??'04:00');
+   await assertFinancialPeriodOpen(tx,shift.caja.sucursal);
   }
   return shift;
  }

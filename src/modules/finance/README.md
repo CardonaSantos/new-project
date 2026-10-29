@@ -26,6 +26,21 @@
 - Solo `tipo=OPERATIVO` para esta ruta: compras inventariables y pagos a proveedores siguen en PUR-A/INV-B.
 - Permisos: `finance.expenses.read`, `finance.expenses.create`. `SUPER_ADMIN` los obtiene con el `seed`.
 
+## Fase 3: imputación de operaciones externas PAY-A / PUR-A
+
+**Estado: implementación para revisión CI y pruebas DEV; NO es conciliación bancaria.**
+El usuario del POS no atraviesa pantallas financieras adicionales. La imputación automática ocurre en la transacción de confirmación si ya se conoce la cuenta; los casos sin cuenta quedan visibles únicamente en gestión financiera.
+
+- `GET /api/finance/reconciliation/pending?sucursalId=...&sourceType=PAGO|PAGO_PROVEEDOR|REEMBOLSO_PAGO&page=1&limit=20`: lista **paginada de operaciones externas confirmadas**, con estado `PENDIENTE_CUENTA` o `REGISTRADO`. El paginado es sobre las operaciones elegibles, no exclusivamente sobre las pendientes; la UI puede mostrar ambos y filtrar su página, sin cargar millones de registros.
+- `POST /api/finance/operation-intents` `{"sucursalId":"...","accion":"FIN_EXTERNAL_POST"}`: intención segura del servidor al abrir el formulario de imputación financiera. El usuario no escribe el identificador.
+- `POST /api/finance/reconciliation/post` `{"operationId":"FIN:...","sucursalId":"...","sourceType":"PAGO","sourceId":"...","cuentaFinancieraId":"..."}`: en una sola transacción revisa el origen y los permisos, registra un único asiento firmado en la cuenta de esa sucursal y deja auditoría/outbox.
+- Un `PAGO` externo de PAY-A produce **+monto**; un `PAGO_PROVEEDOR` confirmado produce **-monto**; un `REEMBOLSO_PAGO` con referencia verificada produce **-monto** en la misma cuenta del cobro original.
+- No se imputan cobros/pagos en `EFECTIVO` en cuentas financieras externas, tampoco pagos pendientes/rechazados. Las transferencias PAY-A requieren intento `CONFIRMADO`, las tarjetas código de autorización y otros medios referencia verificable.
+- PUR-A acepta un campo **opcional** `cuentaFinancieraId` en `POST /api/purchases/payments`. Si se proporciona, el pago externo crea el débito bancario **automáticamente durante su confirmación**, sin un segundo clic. Si no se proporciona, el pago sigue su flujo normal y FIN-A lo reporta como `PENDIENTE_CUENTA` para vinculación administrativa posterior. Para efectivo nunca se permite usar `cuentaFinancieraId`.
+- La migración `20261028235000_fin_a_external_ledger_unique` garantiza `UNIQUE` sobre (`referenciaTipo`,`referenciaId`) cuando proviene de `PAGO`, `REEMBOLSO_PAGO` o `PAGO_PROVEEDOR`. No existe posibilidad de generar dos asientos del mismo origen en diferentes cuentas.
+- Permisos: `finance.reconciliation.read`, `finance.movements.post` (sin otorgarlos automáticamente a cajeros). `saldoRegistrado` **no** indica conciliación con estados bancarios; la respuesta `conciliadoBanco:false` es deliberada.
+- Esta fase no inventa una cuenta bancaria para PAY-A, cuyo modelo `Pago` no dispone todavía de vínculo a `CuentaFinanciera`. Su imputación desde FIN-A es una tarea administrativa posterior, no una exigencia durante el cobro. Automatización futura requerirá configuración de cuentas de liquidación/clearing por método y sucursal, y auditoría.
+
 ## Integraciones y límites
 - **PAY-A**: caja y turnos, cobros y reembolsos. FIN-A no abre caja ni emite un movimiento manual paralelo. La operación usa la misma transacción para el gasto y su caja.
 - **PUR-A**: facturas y pagos a proveedores permanecen allí. No registrar adicionalmente un GastoOperativo por esos pagos. Integración de pagos externos confirmados con asientos financieros está pendiente.
@@ -33,7 +48,7 @@
 - **DEL-A / REP-A**: futuras liquidaciones e informes consumirán saldos y referencias del registro único.
 
 ## Pendientes para completar el bloque FIN-A
-- Conciliación y enlace sin duplicidad de pagos externos PAY-A/PUR-A, y su cobertura de regresión.
+- [EN PROGRESO] Imputación sin duplicados de PAY-A/PUR-A/reembolsos; pendiente confirmación DEV, pagos históricos y conciliación contra extractos bancarios.
 - Correcciones/reversas auditadas (sin modificar retroactivamente el registro).
 - Vista previa y cierre inmutable por sucursal y fecha operativa; hora de corte y zona horaria.
 - Prueba CI, migraciones sobre PostgreSQL DEV y Postman, idempotencia concurrente, permisos restringidos por sucursal.

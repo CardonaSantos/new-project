@@ -9,11 +9,16 @@ const checksum=(x:unknown)=>createHash('sha256').update(JSON.stringify(x)).diges
 function setup(){
  const attempts=new Map<string,any>(),lines:any[]=[],reverses:any[]=[],events:any[]=[],logs:any[]=[];
  const movements:any[]=[
-  {id:'payment-1',cuentaId:'bank-1',monto:new Prisma.Decimal('1.00'),referenciaTipo:'PAGO',referenciaId:'p-1'},
-  {id:'expense-1',cuentaId:'bank-1',monto:new Prisma.Decimal('-2.00'),referenciaTipo:'GASTO_OPERATIVO',referenciaId:'e-1'}
+  {id:'payment-1',cuentaId:'bank-1',monto:new Prisma.Decimal('1.00'),referenciaTipo:'PAGO',referenciaId:'p-1',creadoEn:new Date('2026-10-29T16:00:00Z')},
+  {id:'expense-1',cuentaId:'bank-1',monto:new Prisma.Decimal('-2.00'),referenciaTipo:'GASTO_OPERATIVO',referenciaId:'e-1',creadoEn:new Date('2026-10-29T16:00:00Z')}
  ];
  const dbTx={
   usuarioRol:{findFirst:vi.fn(async()=>({id:'grant'}))},
+  pago:{findUnique:vi.fn(async({where}:any)=>where.id==='p-1'?{
+   id:'p-1',cobradoEn:new Date('2026-10-29T16:00:00Z'),referencia:'AUTH-1',
+   codigoAutorizacion:'AUTH-1',terminalReferencia:null,
+   cuenta:{orden:{sucursalId:'b'}}
+  }:null)},
   sucursal:{findUnique:vi.fn(async()=>({activa:true,zonaHoraria:'America/Guatemala',
    configuracionSucursalesComoSucursal:{moneda:'GTQ',horaCorteOperativo:'04:00'}}))},
   cuentaFinanciera:{findUnique:vi.fn(async()=>({id:'bank-1',sucursalId:'b',activa:true,moneda:'GTQ'}))},
@@ -65,7 +70,7 @@ function setup(){
 describe('FIN-A bank transactions: import, reconciliation and corrections',()=>{
  it('imports signed lines once and retries idempotently',async()=>{
   const f=setup(),d={operationId:f.issue('FIN_STATEMENT_IMPORT'),sucursalId:'b',
-   cuentaFinancieraId:'bank-1',lineas:[{claveExterna:'bank-log-1',fecha:'2026-10-29',monto:'1.00'}]};
+   cuentaFinancieraId:'bank-1',lineas:[{claveExterna:'bank-log-1',fecha:'2026-10-29',monto:'1.00',referencia:'AUTH-1'}]};
   const a=await f.store.importLines(actor,d),b=await f.store.importLines(actor,d);
   expect(a).toEqual(b);expect(a.importadas).toBe(1);expect(f.lines).toHaveLength(1);
   await expect(f.store.importLines(actor,{...d,lineas:[{...d.lineas[0],monto:'2.00'}]}))
@@ -75,7 +80,7 @@ describe('FIN-A bank transactions: import, reconciliation and corrections',()=>{
  it('blocks amount mismatch and retains one-to-one match with audited unmatch',async()=>{
   const f=setup();
   await f.store.importLines(actor,{operationId:f.issue('FIN_STATEMENT_IMPORT'),sucursalId:'b',
-   cuentaFinancieraId:'bank-1',lineas:[{claveExterna:'bank-log-1',fecha:'2026-10-29',monto:'1.00'}]});
+   cuentaFinancieraId:'bank-1',lineas:[{claveExterna:'bank-log-1',fecha:'2026-10-29',monto:'1.00',referencia:'AUTH-1'}]});
   const wrong={operationId:f.issue('FIN_STATEMENT_MATCH'),sucursalId:'b',
    lineaId:'line-1',movimientoId:'expense-1'};
   await expect(f.store.match(actor,wrong)).rejects.toThrow('Importes');
@@ -90,7 +95,61 @@ describe('FIN-A bank transactions: import, reconciliation and corrections',()=>{
    lineaId:'line-1',motivo:'Cruce equivocado de referencia bancaria'};
   expect((await f.store.unmatch(actor,und)).estado).toBe('PENDIENTE');
   expect(f.lines[0].movimientoFinancieroId).toBeNull();
+  expect(f.lines[0].validacionReferencia).toBeNull();
   expect(f.events.some(e=>e.accion==='FIN_STATEMENT_UNMATCHED')).toBe(true);
+ });
+ it('denies cross-branch and revoked user access without mutating statements',async()=>{
+  const f=setup();
+  f.dbTx.usuarioRol.findFirst.mockResolvedValueOnce(null);
+  await expect(f.store.list(actor,{sucursalId:'b',cuentaFinancieraId:'bank-1',
+   page:1,limit:20})).rejects.toThrow('Permiso bancario insuficiente');
+  expect(f.lines).toHaveLength(0);
+  const foreign=setup();
+  foreign.dbTx.cuentaFinanciera.findUnique.mockResolvedValueOnce({
+   id:'bank-1',sucursalId:'elsewhere',activa:true,moneda:'GTQ'
+  });
+  await expect(foreign.store.importLines(actor,{
+   operationId:foreign.issue('FIN_STATEMENT_IMPORT'),sucursalId:'b',
+   cuentaFinancieraId:'bank-1',lineas:[{claveExterna:'k-123',fecha:'2026-10-29',monto:'1',referencia:'AUTH-1'}]
+  })).rejects.toThrow('no disponible');
+  expect(foreign.lines).toHaveLength(0);
+ });
+ it('requires additional permission and a reason for mismatched bank references',async()=>{
+  const f=setup();
+  await f.store.importLines(actor,{operationId:f.issue('FIN_STATEMENT_IMPORT'),sucursalId:'b',
+   cuentaFinancieraId:'bank-1',lineas:[{claveExterna:'mismatch-123',fecha:'2026-10-29',
+    monto:'1',referencia:'WRONG-AUTH'}]});
+  const d={operationId:f.issue('FIN_STATEMENT_MATCH'),sucursalId:'b',lineaId:'line-1',
+   movimientoId:'payment-1'};
+  await expect(f.store.match(actor,d)).rejects.toThrow('Referencia o fecha bancaria');
+  expect(f.lines[0].movimientoFinancieroId).toBeNull();
+  const forced={...d,operationId:f.issue('FIN_STATEMENT_MATCH'),forzarConciliacion:true,
+   justificacion:'Diferencia documentada por carta de confirmación bancaria.'};
+  f.dbTx.usuarioRol.findFirst.mockImplementation(async({where}:any)=>{
+   const codes=where.OR.flatMap((x:any)=>x.rol?.rolPermisosComoRol?.some?.permiso?.codigo??[]);
+   return codes.includes('finance.statements.override')?null:{id:'grant'};
+  });
+  await expect(f.store.match(actor,forced)).rejects.toThrow('Permiso bancario insuficiente');
+  expect(f.lines[0].movimientoFinancieroId).toBeNull();
+  f.dbTx.usuarioRol.findFirst.mockResolvedValue({id:'grant'});
+  const matched=await f.store.match(actor,forced);
+  expect(matched.validacionReferencia).toBe('EXCEPCION_AUTORIZADA');
+  expect(f.lines[0].justificacionConciliacion).toMatch(/confirmación bancaria/);
+  expect(f.events.some(x=>x.accion==='FIN_STATEMENT_MATCHED'&&
+   x.despues.validacionReferencia==='EXCEPCION_AUTORIZADA')).toBe(true);
+ });
+ it('requires an authorized exception for bank dates after the compensation window',async()=>{
+  const f=setup();
+  await f.store.importLines(actor,{operationId:f.issue('FIN_STATEMENT_IMPORT'),sucursalId:'b',
+   cuentaFinancieraId:'bank-1',lineas:[{claveExterna:'late-123',fecha:'2026-11-20',
+    monto:'1',referencia:'AUTH-1'}]});
+  const data={operationId:f.issue('FIN_STATEMENT_MATCH'),sucursalId:'b',lineaId:'line-1',
+   movimientoId:'payment-1'};
+  await expect(f.store.match(actor,data)).rejects.toThrow('ventana de compensación');
+  expect(f.lines[0].movimientoFinancieroId).toBeNull();
+  await expect(f.store.match(actor,{...data,forzarConciliacion:true,justificacion:'Corta'}))
+   .rejects.toThrow('Justificación');
+  expect(f.lines[0].movimientoFinancieroId).toBeNull();
  });
  it('does not permit direct PAY-A reversals and records a single signed expense reversal',async()=>{
   const f=setup();

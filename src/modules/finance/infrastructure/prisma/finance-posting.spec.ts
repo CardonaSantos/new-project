@@ -48,7 +48,7 @@ describe('FIN-A unique external journal posting',()=>{
    id:'bank',sucursalId:'branch',activa:true,moneda:'GTQ',tipo:'TARJETA_EMPRESA'});
   await expect(f.post()).rejects.toThrow('no admite cobros');
  });
- it('rejects new postings after today's financial close but preserves old retries',async()=>{
+ it('rejects new postings after the daily financial close but preserves old retries',async()=>{
   const f=setup();
   const first=await f.post();
   f.tx.cierreOperativo.findUnique.mockResolvedValue({id:'closed'});

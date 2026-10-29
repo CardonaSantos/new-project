@@ -77,5 +77,11 @@ describe('FIN-A phase four HTTP contracts',()=>{
   await request(app.getHttpServer()).post('/api/finance/reversals')
    .send({operationId,sucursalId:'b',movimientoId:'m',motivo:'Corrección aprobada por contabilidad'}).expect(201);
   expect(bank.reverse).toHaveBeenCalledOnce();
+  await request(app.getHttpServer()).post('/api/finance/bank-statements/match')
+   .send({operationId,sucursalId:'b',lineaId:'x',movimientoId:'m',
+    forzarConciliacion:true,justificacion:'Breve'}).expect(400);
+  await request(app.getHttpServer()).post('/api/finance/bank-statements/match')
+   .send({operationId,sucursalId:'b',lineaId:'x',movimientoId:'m',
+    forzarConciliacion:'si'}).expect(400);
  });
 });

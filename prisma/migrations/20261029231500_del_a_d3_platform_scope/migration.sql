@@ -1,5 +1,10 @@
 BEGIN;
 
+CREATE INDEX "Pago_recibidoPorRepartidor_cobradoPorId_cobradoEn_idx"
+ ON "Pago"("recibidoPorRepartidor","cobradoPorId","cobradoEn");
+CREATE INDEX "LiquidacionRepartidor_sucursalId_repartidorId_estado_idx"
+ ON "LiquidacionRepartidor"("sucursalId","repartidorId","estado");
+
 -- Backfill unambiguous existing platform settlements only; no data removal.
 ALTER TABLE "LiquidacionCanalExterno" ADD COLUMN "sucursalId" TEXT;
 UPDATE "LiquidacionCanalExterno" AS l

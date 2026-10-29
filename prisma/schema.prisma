@@ -1830,6 +1830,7 @@ model Pago {
   liquidacionRepartidorLineasComoPago LiquidacionRepartidorLinea? @relation("LiquidacionRepartidorLinea_pago_Pago")
 
   @@index([cuentaId, cobradoEn])
+  @@index([recibidoPorRepartidor, cobradoPorId, cobradoEn])
 }
 
 model ReembolsoPago {
@@ -2107,6 +2108,8 @@ model LiquidacionRepartidor {
   // Relaciones inversas (navegación Prisma)
   movimientoCajasComoLiquidacionRepartidor   MovimientoCaja?              @relation("MovimientoCaja_liquidacionRepartidor_LiquidacionRepartidor")
   liquidacionRepartidorLineasComoLiquidacion LiquidacionRepartidorLinea[] @relation("LiquidacionRepartidorLinea_liquidacion_LiquidacionRepartidor")
+
+  @@index([sucursalId, repartidorId, estado])
 }
 
 model LiquidacionRepartidorLinea {

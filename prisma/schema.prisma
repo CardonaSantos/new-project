@@ -292,6 +292,7 @@ model Sucursal {
   actualizadoEn DateTime @updatedAt @db.Timestamptz(3)
 
   // Relaciones inversas (navegación Prisma)
+  clienteSucursalesComoSucursal          ClienteSucursal[]            @relation("ClienteSucursal_sucursal_Sucursal")
   configuracionSucursalesComoSucursal     ConfiguracionSucursal?       @relation("ConfiguracionSucursal_sucursal_Sucursal")
   mediosComoSucursal Media[] @relation("Media_sucursal_Sucursal")
   dispositivosComoSucursal                Dispositivo[]                @relation("Dispositivo_sucursal_Sucursal")
@@ -1393,6 +1394,7 @@ model Cliente {
   creadoEn DateTime @default(now()) @db.Timestamptz(3)
 
   // Relaciones inversas (navegación Prisma)
+  clienteSucursalesComoCliente    ClienteSucursal[]  @relation("ClienteSucursal_cliente_Cliente")
   direccionClientesComoCliente DireccionCliente[] @relation("DireccionCliente_cliente_Cliente")
   ordenesComoCliente           Orden[]            @relation("Orden_cliente_Cliente")
   ventasComoCliente            Venta[]            @relation("Venta_cliente_Cliente")
@@ -1409,6 +1411,7 @@ model DireccionCliente {
   latitud    Decimal? @db.Decimal(10, 7)
   longitud   Decimal? @db.Decimal(10, 7)
   principal  Boolean  @default(false)
+  activa     Boolean  @default(true)
 
   // Relaciones inversas (navegación Prisma)
   entregasComoDireccion Entrega[] @relation("Entrega_direccion_DireccionCliente")
@@ -2597,4 +2600,17 @@ model ConsumoInterno {
  movimientoId String @unique
  creadoEn DateTime @default(now()) @db.Timestamptz(3)
  @@index([ubicacionId,creadoEn])
+}
+
+
+// DEL-A: visibilidad del cliente por sede sin duplicar su identidad comercial.
+model ClienteSucursal {
+  clienteId  String
+  sucursalId String
+  creadaEn   DateTime @default(now()) @db.Timestamptz(3)
+  cliente    Cliente  @relation("ClienteSucursal_cliente_Cliente", fields: [clienteId], references: [id], onDelete: Restrict)
+  sucursal   Sucursal @relation("ClienteSucursal_sucursal_Sucursal", fields: [sucursalId], references: [id], onDelete: Restrict)
+
+  @@id([clienteId, sucursalId])
+  @@index([sucursalId, clienteId])
 }

@@ -48,6 +48,8 @@ const permissions=[
  ['payments.read','payments'],['payments.collect','payments'],['payments.verify','payments'],
  ['payments.split','payments'],['sales.read','payments'],
  ['payments.refund','payments'],['delivery.manage','delivery'],['reservations.manage','reservations'],
+ ['customers.read','customers'],['customers.create','customers'],['customers.manage','customers'],
+ ['customers.global.manage','customers'],
  ['reports.read','reports'],['settings.manage','settings']
 ] as const;
 try{

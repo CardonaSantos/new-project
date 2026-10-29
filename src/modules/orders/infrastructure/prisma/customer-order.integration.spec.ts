@@ -28,7 +28,8 @@ function rig(){
  };
  const engine={tx:vi.fn(async(run:(tx:any)=>Promise<any>)=>run(tx)),
   allowed:vi.fn().mockResolvedValue(undefined)};
- const customer={assertSelectableInTx:vi.fn().mockResolvedValue(undefined)};
+ const customer={assertVisibleInTx:vi.fn().mockResolvedValue(undefined),
+  assertSelectableInTx:vi.fn().mockResolvedValue(undefined)};
  const store=new OrderStore(
   {} as PrismaService,engine as unknown as InventoryPostingEngine,
   {} as IdentityRepository,{} as TableStore,
@@ -53,6 +54,8 @@ describe('ORD-A ↔ DEL-A D1 integration (transaction boundary)',()=>{
  it('creates an order only after selecting active, scoped customer in the SAME tx',async()=>{
   const h=rig();
   await expect(h.store.create(principal,create('customer-a'))).resolves.toEqual({id:'order-1'});
+  expect(h.customer.assertVisibleInTx)
+   .toHaveBeenCalledExactlyOnceWith(h.tx,principal.id,'branch-a','customer-a');
   expect(h.customer.assertSelectableInTx)
    .toHaveBeenCalledExactlyOnceWith(h.tx,principal.id,'branch-a','customer-a');
   expect(h.tx.orden.create).toHaveBeenCalledWith({data:expect.objectContaining({
@@ -89,9 +92,24 @@ describe('ORD-A ↔ DEL-A D1 integration (transaction boundary)',()=>{
   expect(h.tx.operacionIdempotente.findUnique).not.toHaveBeenCalled();
   expect(h.tx.orden.create).not.toHaveBeenCalled();
  });
+ it('cannot replay cached order after losing customers.read despite retaining orders.create',async()=>{
+  const h=rig();
+  h.customer.assertVisibleInTx.mockRejectedValue(
+   new ForbiddenException('Permiso insuficiente en la sucursal'));
+  h.tx.operacionIdempotente.findUnique.mockResolvedValue({
+   operacion:'ORDER_CREATE',hashSolicitud:'old',finalizada:true,
+   resultado:{orderId:'order-1'}
+  });
+  await expect(h.store.create(principal,create('customer-a')))
+   .rejects.toThrow('Permiso insuficiente');
+  expect(h.tx.operacionIdempotente.findUnique).not.toHaveBeenCalled();
+  expect(h.customer.assertSelectableInTx).not.toHaveBeenCalled();
+  expect(h.tx.orden.create).not.toHaveBeenCalled();
+ });
  it('does not require customers.read for anonymous orders without clienteId',async()=>{
   const h=rig();
   await h.store.create(principal,create(undefined,'ORD:CUST:ANONYMOUS:1'));
+  expect(h.customer.assertVisibleInTx).not.toHaveBeenCalled();
   expect(h.customer.assertSelectableInTx).not.toHaveBeenCalled();
   expect(h.tx.orden.create).toHaveBeenCalledOnce();
  });

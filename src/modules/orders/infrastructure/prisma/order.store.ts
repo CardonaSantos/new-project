@@ -172,6 +172,7 @@ export class OrderStore{
    await this.engine.allowed(tx,u.id,'orders.create',d.sucursalId);
    const branch=await tx.sucursal.findUnique({where:{id:d.sucursalId}});
    if(!branch?.activa)throw new ConflictException('Sucursal inexistente o inactiva');
+   if(d.clienteId)await this.customerSelection.assertVisibleInTx(tx,u.id,d.sucursalId,d.clienteId);
    return runOnce(tx,u,d.claveOperacion,'ORDER_CREATE',d,async()=>{
    if(d.modalidad==='MESA'&&!d.mesaId)throw new BadRequestException('Servicio MESA requiere mesaId');
    if(d.modalidad!=='MESA'&&d.mesaId)throw new BadRequestException('mesaId solo en modalidad MESA');

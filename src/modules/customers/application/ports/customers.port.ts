@@ -25,6 +25,10 @@ export abstract class CustomersPort{
 // application code never imports Prisma, and infrastructure adapters share the
 // ORD-A transaction to avoid detached read/write checks and TOCTOU races.
 export abstract class CustomerSelectionPort{
+ // Revalidate permissions/scope before idempotent replays; historic inactive
+ // customers are still referencable for a previously committed order.
+ abstract assertVisibleInTx(transaction:unknown,actorId:string,
+  sucursalId:string,clienteId:string):Promise<void>;
  abstract assertSelectableInTx(transaction:unknown,actorId:string,
   sucursalId:string,clienteId:string):Promise<void>;
 }

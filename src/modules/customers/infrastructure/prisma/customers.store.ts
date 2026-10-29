@@ -127,17 +127,22 @@ export class CustomersStore extends CustomersPort implements CustomerSelectionPo
    });
   });
  }
- async assertSelectableInTx(transaction:unknown,actorId:string,branchId:string,
-  clienteId:string):Promise<void>{
-  // The enclosing Orders transaction is the owner. Never open a second
-  // transaction here: a detached validation may race with deactivation.
+ private async readableInTx(transaction:unknown,actorId:string,branchId:string,clienteId:string){
+  // Orders owns the SERIALIZABLE transaction, including permission checks.
   const tx=transaction as Tx;
   await this.require(tx,actorId,branchId,'customers.read');
   await this.branch(tx,branchId);
-  // Serialize selection against customer deactivation (FOR UPDATE).
-  // Under SERIALIZABLE a conflicting concurrent change is retried by ORD-A.
+  // FOR SHARE serializes against Cliente FOR UPDATE used on deactivation.
   await tx.$queryRaw`SELECT "id" FROM "Cliente" WHERE "id"=${clienteId} FOR SHARE`;
-  const customer=await this.visibleCustomer(tx,actorId,clienteId,branchId);
+  return this.visibleCustomer(tx,actorId,clienteId,branchId);
+ }
+ async assertVisibleInTx(transaction:unknown,actorId:string,branchId:string,
+  clienteId:string):Promise<void>{
+  await this.readableInTx(transaction,actorId,branchId,clienteId);
+ }
+ async assertSelectableInTx(transaction:unknown,actorId:string,branchId:string,
+  clienteId:string):Promise<void>{
+  const customer=await this.readableInTx(transaction,actorId,branchId,clienteId);
   if(!customer.activo)throw new ConflictException('Cliente inactivo');
  }
  async list(actor:Principal,q:CustomerQuery){

@@ -129,7 +129,8 @@ export class FinanceStore{
   return this.atomic(async tx=>{
    const code=d.accion==='FIN_ACCOUNT_CREATE'?'finance.accounts.manage':
     d.accion==='FIN_EXPENSE_CREATE'?'finance.expenses.create':
-    d.accion==='FIN_ROUTING_UPSERT'?'finance.routing.manage':'finance.movements.post';
+    d.accion==='FIN_ROUTING_UPSERT'?'finance.routing.manage':
+    d.accion==='FIN_DAY_CLOSE'?'finance.closing.execute':'finance.movements.post';
    await this.permission(tx,u,d.sucursalId,code);
    await this.activeBranch(tx,d.sucursalId);
    const operationId='FIN:'+randomUUID();

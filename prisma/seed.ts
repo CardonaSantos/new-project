@@ -33,6 +33,7 @@ const permissions=[
  ['finance.expenses.read','finance'],['finance.expenses.create','finance'],
  ['finance.reconciliation.read','finance'],['finance.movements.post','finance'],
  ['finance.routing.read','finance'],['finance.routing.manage','finance'],
+ ['finance.closing.read','finance'],['finance.closing.execute','finance'],
  ['purchases.manage','purchases'],['purchases.read','purchases'],
  ['purchases.suppliers.manage','purchases'],['purchases.presentations.manage','purchases'],
  ['purchases.orders.create','purchases'],['purchases.orders.approve','purchases'],

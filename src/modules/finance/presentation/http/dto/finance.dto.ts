@@ -8,8 +8,8 @@ export class FinanceAccountQueryDto{
 }
 export class FinanceOperationIntentDto{
  @IsString() @MinLength(1) sucursalId!:string;
- @IsIn(['FIN_ACCOUNT_CREATE','FIN_EXPENSE_CREATE','FIN_EXTERNAL_POST','FIN_ROUTING_UPSERT'])
- accion!:'FIN_ACCOUNT_CREATE'|'FIN_EXPENSE_CREATE'|'FIN_EXTERNAL_POST'|'FIN_ROUTING_UPSERT';
+ @IsIn(['FIN_ACCOUNT_CREATE','FIN_EXPENSE_CREATE','FIN_EXTERNAL_POST','FIN_ROUTING_UPSERT','FIN_DAY_CLOSE'])
+ accion!:'FIN_ACCOUNT_CREATE'|'FIN_EXPENSE_CREATE'|'FIN_EXTERNAL_POST'|'FIN_ROUTING_UPSERT'|'FIN_DAY_CLOSE';
 }
 export class FinanceOperationDto{
  @Matches(/^FIN:[0-9a-f-]{36}$/) operationId!:string;

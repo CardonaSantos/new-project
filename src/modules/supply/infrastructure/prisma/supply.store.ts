@@ -1,12 +1,13 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {BadRequestException,ConflictException,Injectable,NotFoundException} from '@nestjs/common';
-import {Prisma} from '../../generated/prisma/client.js';
-import {PrismaService} from '../../infrastructure/database/prisma/prisma.service.js';
-import {InventoryPostingEngine,type CostSlice} from '../inventory/infrastructure/prisma/inventory-posting.engine.js';
-import {PurchaseOrdersStore} from '../purchases/infrastructure/prisma/purchase-orders.store.js';
-import {amount,price,qty} from '../inventory/domain/stock.policy.js';
-import type {Principal} from '../auth/application/auth.service.js';
-import type {SupplyAvailabilityDto,SupplyCancelDto,SupplyQueryDto,SupplyReceiveDto,SupplyRequestDto,SupplySendDto,SupplyPurchaseDraftDto,SupplyImmediateDto} from './supply.dto.js';
+import {Prisma} from '../../../../generated/prisma/client.js';
+import {PrismaService} from '../../../../infrastructure/database/prisma/prisma.service.js';
+import {InventoryPostingEngine,type CostSlice} from '../../../inventory/infrastructure/prisma/inventory-posting.engine.js';
+import {PurchaseOrdersStore} from '../../../purchases/infrastructure/prisma/purchase-orders.store.js';
+import {amount,price,qty} from '../../../inventory/domain/stock.policy.js';
+import {supplyVisibleStatus} from '../../domain/supply.policy.js';
+import type {Principal} from '../../../auth/application/auth.service.js';
+import type {SupplyAvailabilityDto,SupplyCancelDto,SupplyQueryDto,SupplyReceiveDto,SupplyRequestDto,SupplySendDto,SupplyPurchaseDraftDto,SupplyImmediateDto} from '../../application/contracts/supply.types.js';
 
 type Tx=Prisma.TransactionClient;
 type D=Prisma.Decimal;
@@ -66,8 +67,7 @@ export class SupplyStore{
   });
   const delivered=lineas.some((x:any)=>new Prisma.Decimal(x.recibido).gt(0));
   const pendingTransit=lineas.some((x:any)=>new Prisma.Decimal(x.enTransito).gt(0));
-  const estadoVisible=row.estado==='ATENDIDA'?'ATENDIDA':row.estado==='CANCELADA'?'CANCELADA':
-   delivered?'PARCIAL':pendingTransit?'EN_PROCESO':'SOLICITADA';
+  const estadoVisible=supplyVisibleStatus(row.estado,delivered,pendingTransit);
   return {id:row.id,numero:row.numero,almacenDestinoId:row.almacenDestinoId,
    solicitanteId:row.solicitanteId,estado:row.estado,estadoVisible,
    nota:row.nota,creadaEn:row.creadaEn,atendidaEn:row.atendidaEn,

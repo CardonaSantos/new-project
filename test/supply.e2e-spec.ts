@@ -5,8 +5,8 @@ import request from 'supertest';
 import type {App} from 'supertest/types';
 import type {NextFunction,Request,Response} from 'express';
 import type {Principal} from '../src/modules/auth/application/auth.service.js';
-import {SupplyStore} from '../src/modules/supply/supply.store.js';
-import {SupplyRequisitionsController,SupplyTransfersController} from '../src/modules/supply/supply.controller.js';
+import {SupplyService} from '../src/modules/supply/application/supply.service.js';
+import {SupplyRequisitionsController,SupplyTransfersController} from '../src/modules/supply/presentation/http/supply.controller.js';
 const user:Principal={id:'u1',email:'buyer@example.test',nombre:'Comprador',
  sessionId:'session-1',debeCambiarContrasena:false,versionAutorizacion:1};
 const response={id:'resource',estado:'ABIERTA'};
@@ -20,7 +20,7 @@ describe('SUP-A HTTP request contracts',()=>{
   vi.clearAllMocks();
   const testing=await Test.createTestingModule({
    controllers:[SupplyRequisitionsController,SupplyTransfersController],
-   providers:[{provide:SupplyStore,useValue:methods}],
+   providers:[{provide:SupplyService,useValue:methods}],
   }).compile();
   app=testing.createNestApplication<App>();app.setGlobalPrefix('api');
   app.use((req:Request&{auth?:Principal},_res:Response,next:NextFunction)=>{req.auth=user;next();});

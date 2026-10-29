@@ -1,9 +1,10 @@
 import {createHash} from 'node:crypto';
-import {ConflictException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
+import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
 import {Prisma} from '../../../../generated/prisma/client.js';
 import {PrismaService} from '../../../../infrastructure/database/prisma/prisma.service.js';
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {operationalDate} from '../../../payments/domain/payment.policy.js';
+import {FinancePolicyError} from '../../domain/finance-policy.error.js';
 import {assertBankDate,assertStatementAmount,assertReversibleSource,bankExternalKey,financeReason} from '../../domain/bank-reconciliation.policy.js';
 import type {BankQuery,BankImportInput,BankMatchInput,BankUnmatchInput,BankReverseInput} from '../../application/contracts/finance-bank.types.js';
 type Tx=Prisma.TransactionClient;
@@ -15,6 +16,8 @@ export class FinanceBankStore{
   for(let retry=0;retry<3;retry++){
    try{return await this.db.$transaction(run,{isolationLevel:'Serializable',timeout:20000})}
    catch(e){
+    if(e instanceof FinancePolicyError)
+     throw e.category==='VALIDATION'?new BadRequestException(e.message):new ConflictException(e.message);
     if(e instanceof Prisma.PrismaClientKnownRequestError&&['P2034','P2002'].includes(e.code)){
      if(retry<2)continue;
      throw new ConflictException('Operación financiera en conflicto; consulte y reintente');
@@ -107,14 +110,14 @@ export class FinanceBankStore{
   });
  }
  async importLines(u:Principal,d:BankImportInput){
-  const keys=new Set<string>();
-  for(const item of d.lineas){
-   assertStatementAmount(item.monto);assertBankDate(item.fecha);
-   const key=bankExternalKey(item.claveExterna);
-   if(keys.has(key))throw new ConflictException('Línea de extracto duplicada en el lote');
-   keys.add(key);
-  }
   return this.atomic(async tx=>{
+   const keys=new Set<string>();
+   for(const item of d.lineas){
+    assertStatementAmount(item.monto);assertBankDate(item.fecha);
+    const key=bankExternalKey(item.claveExterna);
+    if(keys.has(key))throw new ConflictException('Línea de extracto duplicada en el lote');
+    keys.add(key);
+   }
    await this.permission(tx,u,d.sucursalId,'finance.statements.import');
    return this.once(tx,u,d,'FIN_STATEMENT_IMPORT',async()=>{
     await this.account(tx,d.sucursalId,d.cuentaFinancieraId);
@@ -162,8 +165,8 @@ export class FinanceBankStore{
   });
  }
  async unmatch(u:Principal,d:BankUnmatchInput){
-  const motivo=financeReason(d.motivo);
   return this.atomic(async tx=>{
+   const motivo=financeReason(d.motivo);
    await this.permission(tx,u,d.sucursalId,'finance.statements.match');
    return this.once(tx,u,d,'FIN_STATEMENT_UNMATCH',async()=>{
     const row=await tx.lineaExtractoBancario.findUnique({where:{id:d.lineaId}});
@@ -181,8 +184,8 @@ export class FinanceBankStore{
   });
  }
  async reverse(u:Principal,d:BankReverseInput){
-  const motivo=financeReason(d.motivo);
   return this.atomic(async tx=>{
+   const motivo=financeReason(d.motivo);
    await this.permission(tx,u,d.sucursalId,'finance.reversals.create');
    return this.once(tx,u,d,'FIN_LEDGER_REVERSE',async()=>{
     const orig=await tx.movimientoFinanciero.findUnique({where:{id:d.movimientoId}});

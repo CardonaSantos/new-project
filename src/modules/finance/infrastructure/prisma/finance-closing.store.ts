@@ -1,9 +1,10 @@
 import {createHash} from 'node:crypto';
-import {ConflictException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
+import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
 import {Prisma} from '../../../../generated/prisma/client.js';
 import {PrismaService} from '../../../../infrastructure/database/prisma/prisma.service.js';
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {operationalDate} from '../../../payments/domain/payment.policy.js';
+import {FinancePolicyError} from '../../domain/finance-policy.error.js';
 import {ensureCloseEligible,financialBusinessWindow} from '../../domain/operational-close.policy.js';
 import type {ClosePreviewQuery,CloseConfirmInput} from '../../application/contracts/finance-closing.types.js';
 type Tx=Prisma.TransactionClient;
@@ -16,6 +17,8 @@ export class FinanceClosingStore{
   for(let i=0;i<3;i++){
    try{return await this.db.$transaction(run,{isolationLevel:'Serializable',timeout:20000})}
    catch(e){
+    if(e instanceof FinancePolicyError)
+     throw e.category==='VALIDATION'?new BadRequestException(e.message):new ConflictException(e.message);
     if(e instanceof Prisma.PrismaClientKnownRequestError&&['P2034','P2002'].includes(e.code)){
      if(i<2)continue;
      throw new ConflictException('Cierre concurrente; consulte el estado del día');

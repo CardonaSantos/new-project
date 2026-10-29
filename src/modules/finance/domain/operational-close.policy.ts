@@ -1,10 +1,10 @@
-import {BadRequestException,ConflictException} from '@nestjs/common';
+import {FinancePolicyError} from './finance-policy.error.js';
 const datePattern=/^\d{4}-\d{2}-\d{2}$/;
 function parseDay(day:string){
- if(!datePattern.test(day))throw new BadRequestException('Fecha operativa inválida');
+ if(!datePattern.test(day))throw new FinancePolicyError('VALIDATION','Fecha operativa inválida');
  const value=new Date(day+'T00:00:00.000Z');
  if(!Number.isFinite(value.getTime())||value.toISOString().slice(0,10)!==day)
-  throw new BadRequestException('Fecha operativa inexistente');
+  throw new FinancePolicyError('VALIDATION','Fecha operativa inexistente');
  return value;
 }
 function localParts(time:Date,timeZone:string){
@@ -17,7 +17,7 @@ function localParts(time:Date,timeZone:string){
 function utcForLocal(day:Date,cut:string,zone:string){
  const [h,m]=cut.split(':').map(Number);
  if(!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(cut))
-  throw new BadRequestException('Hora de corte inválida');
+  throw new FinancePolicyError('VALIDATION','Hora de corte inválida');
  const requested=Date.UTC(day.getUTCFullYear(),day.getUTCMonth(),day.getUTCDate(),h,m);
  let timestamp=requested;
  for(let i=0;i<5;i++){
@@ -30,18 +30,18 @@ function utcForLocal(day:Date,cut:string,zone:string){
  const check=localParts(new Date(timestamp),zone);
  if(check.year!==day.getUTCFullYear()||check.month!==day.getUTCMonth()+1||
   check.day!==day.getUTCDate()||check.hour!==h||check.minute!==m)
-  throw new BadRequestException('Hora de corte inexistente o ambigua en zona horaria');
+  throw new FinancePolicyError('VALIDATION','Hora de corte inexistente o ambigua en zona horaria');
  return new Date(timestamp);
 }
 export function financialBusinessWindow(day:string,zone:string,cut:string){
  const value=parseDay(day);
  const next=new Date(value.getTime()+86400000);
  const from=utcForLocal(value,cut,zone),to=utcForLocal(next,cut,zone);
- if(from>=to)throw new BadRequestException('Zona horaria o período inválido');
+ if(from>=to)throw new FinancePolicyError('VALIDATION','Zona horaria o período inválido');
  return {date:value,from,to};
 }
 export function ensureCloseEligible(target:Date,current:Date,openShifts:number,openOrders:number){
- if(target>=current)throw new ConflictException('Solo se cierran días operativos anteriores al actual');
- if(openShifts)throw new ConflictException('Hay turnos de caja abiertos para este día');
- if(openOrders)throw new ConflictException('Hay órdenes del día pendientes de cierre');
+ if(target>=current)throw new FinancePolicyError('CONFLICT','Solo se cierran días operativos anteriores al actual');
+ if(openShifts)throw new FinancePolicyError('CONFLICT','Hay turnos de caja abiertos para este día');
+ if(openOrders)throw new FinancePolicyError('CONFLICT','Hay órdenes del día pendientes de cierre');
 }

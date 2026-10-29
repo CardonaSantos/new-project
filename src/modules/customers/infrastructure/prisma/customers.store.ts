@@ -63,6 +63,7 @@ export class CustomersStore extends CustomersPort implements CustomerSelectionPo
   return row;
  }
  private async editableCustomer(tx:Tx,actorId:string,id:string,branch:string){
+  await this.lockCustomer(tx,id);
   const row=await this.visibleCustomer(tx,actorId,id,branch);
   const [links,orders,sales,reservations]=await Promise.all([
    tx.clienteSucursal.findMany({where:{clienteId:id},select:{sucursalId:true}}),
@@ -113,13 +114,17 @@ export class CustomersStore extends CustomersPort implements CustomerSelectionPo
  }
  private addressData(d:{alias?:string|null;direccion?:string;referencia?:string|null;
   latitud?:string|null;longitud?:string|null}){
-  return policy(()=>({
+  return policy(()=>{
+   if(d.direccion!==undefined&&d.direccion.trim().length<5)
+    throw new CustomerPolicyError('Dirección demasiado corta');
+   return ({
    ...(d.alias!==undefined?{alias:cleanOptional(d.alias)}:{}),
    ...(d.direccion!==undefined?{direccion:d.direccion.trim()}:{}),
    ...(d.referencia!==undefined?{referencia:cleanOptional(d.referencia)}:{}),
    ...(d.latitud!==undefined?{latitud:coordinate(d.latitud,'latitud')}:{}),
    ...(d.longitud!==undefined?{longitud:coordinate(d.longitud,'longitud')}:{})
-  }));
+   });
+  });
  }
  async assertSelectable(actorId:string,branchId:string,clienteId:string):Promise<void>{
   await this.atomic(async tx=>{
@@ -134,8 +139,7 @@ export class CustomersStore extends CustomersPort implements CustomerSelectionPo
    await this.require(tx,actor.id,q.sucursalId,'customers.read');
    await this.branch(tx,q.sucursalId);
    const elevated=await this.has(tx,actor.id,q.sucursalId,'customers.global.manage',true);
-   const where:Prisma.ClienteWhereInput={
-    ...(elevated?{}:scope(q.sucursalId)),
+   const filters:Prisma.ClienteWhereInput={
     ...(q.activo===undefined?{}:{activo:q.activo}),
     ...(q.search?.trim()?{OR:[
      {nombre:{contains:q.search.trim(),mode:'insensitive'}},
@@ -143,15 +147,7 @@ export class CustomersStore extends CustomersPort implements CustomerSelectionPo
      {nit:{contains:q.search.trim(),mode:'insensitive'}}
     ]}:{})
    };
-   // Condiciones AND: la búsqueda jamás elimina el filtro de visibilidad.
-   const scoped:Prisma.ClienteWhereInput=elevated?where:{
-    AND:[scope(q.sucursalId),{...(q.activo===undefined?{}:{activo:q.activo}),
-     ...(q.search?.trim()?{OR:[
-      {nombre:{contains:q.search.trim(),mode:'insensitive'}},
-      {telefono:{contains:q.search.trim()}},
-      {nit:{contains:q.search.trim(),mode:'insensitive'}}
-     ]}:{})}]
-   };
+   const scoped:Prisma.ClienteWhereInput=elevated?filters:{AND:[scope(q.sucursalId),filters]};
    const [rows,total]=await Promise.all([
     tx.cliente.findMany({where:scoped,orderBy:[{creadoEn:'desc'},{id:'desc'}],
      skip:(q.page-1)*q.limit,take:q.limit,
@@ -190,9 +186,9 @@ export class CustomersStore extends CustomersPort implements CustomerSelectionPo
   // El permiso de escritura autoriza devolver el registro recién afectado,
   // aunque el rol no disponga del permiso independiente de lectura.
   return this.atomic(async tx=>{
-   await this.require(tx,actor.id,branch,'customers.create').catch(async()=>{
-    await this.require(tx,actor.id,branch,'customers.manage');
-   });
+   const mayReadResult=await this.has(tx,actor.id,branch,'customers.create')||
+    await this.has(tx,actor.id,branch,'customers.manage');
+   if(!mayReadResult)throw new ForbiddenException('Permiso de clientes insuficiente');
    const row=await this.visibleCustomer(tx,actor.id,id,branch);
    return {id:row.id,nombre:row.nombre,nit:row.nit,telefono:row.telefono,
     email:row.email,notas:row.notas,activo:row.activo,creadoEn:row.creadoEn};
@@ -214,7 +210,6 @@ export class CustomersStore extends CustomersPort implements CustomerSelectionPo
    await this.branch(tx,d.sucursalId);
    return this.once(tx,actor,'CUSTOMER_UPDATE',d,{id,...d},async()=>{
     await this.editableCustomer(tx,actor.id,id,d.sucursalId);
-    await this.lockCustomer(tx,id);
     await tx.cliente.update({where:{id},data:changes});
     await this.event(tx,actor,d.sucursalId,'CUSTOMER_UPDATED','Cliente',id,Object.keys(changes));
     return {id};
@@ -228,7 +223,6 @@ export class CustomersStore extends CustomersPort implements CustomerSelectionPo
    await this.branch(tx,d.sucursalId);
    return this.once(tx,actor,'CUSTOMER_DEACTIVATE',d,{id,...d},async()=>{
     const row=await this.editableCustomer(tx,actor.id,id,d.sucursalId);
-    await this.lockCustomer(tx,id);
     if(row.activo){
      await tx.cliente.update({where:{id},data:{activo:false}});
      await this.event(tx,actor,d.sucursalId,'CUSTOMER_DEACTIVATED','Cliente',id);
@@ -256,7 +250,6 @@ export class CustomersStore extends CustomersPort implements CustomerSelectionPo
    return this.once(tx,actor,'CUSTOMER_ADDRESS_CREATE',d,{id,...d},async()=>{
     const customer=await this.editableCustomer(tx,actor.id,id,d.sucursalId);
     if(!customer.activo)throw new ConflictException('Cliente inactivo');
-    await this.lockCustomer(tx,id);
     const exists=await tx.direccionCliente.count({where:{clienteId:id,activa:true,principal:true}});
     const primary=d.principal===true||(!exists&&d.principal!==false);
     if(primary)await tx.direccionCliente.updateMany({where:{clienteId:id,activa:true,principal:true},
@@ -286,7 +279,6 @@ export class CustomersStore extends CustomersPort implements CustomerSelectionPo
    return this.once(tx,actor,'CUSTOMER_ADDRESS_UPDATE',d,{id,addressId,...d},async()=>{
     const customer=await this.editableCustomer(tx,actor.id,id,d.sucursalId);
     if(!customer.activo)throw new ConflictException('Cliente inactivo');
-    await this.lockCustomer(tx,id);
     await this.address(tx,id,addressId);
     await tx.direccionCliente.update({where:{id:addressId},data:changes});
     await this.event(tx,actor,d.sucursalId,'CUSTOMER_ADDRESS_UPDATED','DireccionCliente',
@@ -303,7 +295,6 @@ export class CustomersStore extends CustomersPort implements CustomerSelectionPo
    return this.once(tx,actor,'CUSTOMER_ADDRESS_PRIMARY',d,{id,addressId,...d},async()=>{
     const customer=await this.editableCustomer(tx,actor.id,id,d.sucursalId);
     if(!customer.activo)throw new ConflictException('Cliente inactivo');
-    await this.lockCustomer(tx,id);
     await this.address(tx,id,addressId);
     await tx.direccionCliente.updateMany({where:{clienteId:id,activa:true,principal:true},
       data:{principal:false}});
@@ -319,7 +310,6 @@ export class CustomersStore extends CustomersPort implements CustomerSelectionPo
    await this.branch(tx,d.sucursalId);
    return this.once(tx,actor,'CUSTOMER_ADDRESS_DEACTIVATE',d,{id,addressId,...d},async()=>{
     await this.editableCustomer(tx,actor.id,id,d.sucursalId);
-    await this.lockCustomer(tx,id);
     const row=await tx.direccionCliente.findFirst({where:{id:addressId,clienteId:id}});
     if(!row)throw new NotFoundException('Dirección inexistente');
     if(row.activa){

@@ -253,6 +253,12 @@ export class PaymentsStore{
    if(!payment)throw new NotFoundException('Pago inexistente');
    const branch=payment.cuenta.orden.sucursalId;
    await allowed(tx,u,branch,'payments.refund');
+   if(payment.recibidoPorRepartidor){
+    const courierLine=await tx.liquidacionRepartidorLinea.findUnique({
+     where:{pagoId:payment.id},include:{liquidacion:true}});
+    if(courierLine?.liquidacion.estado!=='CERRADA')
+     throw new ConflictException('Efectivo del repartidor debe liquidarse antes de reembolsar');
+   }
    // Every refund changes financial totals, including an external refund for
    // which the original bank route has not yet been configured.
    const sucursal=await tx.sucursal.findUnique({where:{id:branch},

@@ -4,7 +4,7 @@ import {Prisma} from '../../../../generated/prisma/client.js';
 import {PrismaService} from '../../../../infrastructure/database/prisma/prisma.service.js';
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {CustomersPort,CustomerSelectionPort} from '../../application/ports/customers.port.js';
-import type {BranchCommand,CustomerQuery,CustomerCreate,CustomerUpdate,AddressCreate,AddressUpdate}
+import type {BranchCommand,CustomerQuery,CustomerOptionsQuery,CustomerCreate,CustomerUpdate,AddressCreate,AddressUpdate}
  from '../../application/ports/customers.port.js';
 import {cleanOptional,coordinate,normalizeCustomerName,CustomerPolicyError} from '../../domain/customer.policy.js';
 
@@ -63,6 +63,7 @@ export class CustomersStore extends CustomersPort implements CustomerSelectionPo
   return row;
  }
  private async editableCustomer(tx:Tx,actorId:string,id:string,branch:string){
+  await this.visibleCustomer(tx,actorId,id,branch);
   await this.lockCustomer(tx,id);
   const row=await this.visibleCustomer(tx,actorId,id,branch);
   const [links,orders,sales,reservations]=await Promise.all([
@@ -155,6 +156,21 @@ export class CustomersStore extends CustomersPort implements CustomerSelectionPo
     tx.cliente.count({where:scoped})
    ]);
    return {data:rows,meta:meta(q.page,q.limit,total)};
+  });
+ }
+ async options(actor:Principal,q:CustomerOptionsQuery){
+  return this.atomic(async tx=>{
+   await this.require(tx,actor.id,q.sucursalId,'customers.read');
+   await this.branch(tx,q.sucursalId);
+   const global=await this.has(tx,actor.id,q.sucursalId,'customers.global.manage',true);
+   const filter:Prisma.ClienteWhereInput={activo:true,
+    ...(q.cursor?{id:{gt:q.cursor}}:{}),
+    ...(q.search?.trim()?{nombre:{contains:q.search.trim(),mode:'insensitive'}}:{})};
+   const where:Prisma.ClienteWhereInput=global?filter:{AND:[scope(q.sucursalId),filter]};
+   const rows=await tx.cliente.findMany({where,select:{id:true,nombre:true},
+    orderBy:{id:'asc'},take:q.limit+1});
+   const slice=rows.slice(0,q.limit);
+   return {data:slice,nextCursor:rows.length>q.limit?slice[slice.length-1]?.id??null:null};
   });
  }
  async detail(actor:Principal,id:string,branchId:string){

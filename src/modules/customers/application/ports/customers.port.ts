@@ -2,6 +2,7 @@ import type {Principal} from '../../../auth/application/auth.service.js';
 
 export type BranchCommand={sucursalId:string;claveOperacion:string};
 export type CustomerQuery={sucursalId:string;page:number;limit:number;search?:string;activo?:boolean};
+export type CustomerOptionsQuery={sucursalId:string;limit:number;search?:string;cursor?:string};
 export type CustomerCreate=BranchCommand&{nombre:string;nit?:string|null;telefono?:string|null;email?:string|null;notas?:string|null};
 export type CustomerUpdate=BranchCommand&{nombre?:string;nit?:string|null;telefono?:string|null;email?:string|null;notas?:string|null};
 export type AddressCreate=BranchCommand&{alias?:string|null;direccion:string;referencia?:string|null;latitud?:string|null;longitud?:string|null;principal?:boolean};
@@ -9,6 +10,7 @@ export type AddressUpdate=BranchCommand&{alias?:string|null;direccion?:string;re
 
 export abstract class CustomersPort{
  abstract list(actor:Principal,q:CustomerQuery):Promise<unknown>;
+ abstract options(actor:Principal,q:CustomerOptionsQuery):Promise<unknown>;
  abstract detail(actor:Principal,id:string,sucursalId:string):Promise<unknown>;
  abstract create(actor:Principal,command:CustomerCreate):Promise<unknown>;
  abstract update(actor:Principal,id:string,command:CustomerUpdate):Promise<unknown>;

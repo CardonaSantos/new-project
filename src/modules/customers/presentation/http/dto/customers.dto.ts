@@ -11,6 +11,11 @@ export class CustomerListDto extends CustomerBranchQueryDto{
  @IsOptional() @IsString() @MaxLength(100) search?:string;
  @IsOptional() @Transform(({value})=>bool(value)) @IsBoolean() activo?:boolean;
 }
+export class CustomerOptionsDto extends CustomerBranchQueryDto{
+ @IsOptional() @IsString() @MaxLength(100) search?:string;
+ @IsOptional() @IsString() @MaxLength(120) cursor?:string;
+ @IsOptional() @Type(()=>Number) @IsInt() @Min(1) @Max(50) limit=20;
+}
 export class CustomerMutationDto extends CustomerBranchQueryDto{
  @IsString() @Matches(/^[A-Za-z0-9][A-Za-z0-9:_.-]{5,119}$/) claveOperacion!:string;
 }

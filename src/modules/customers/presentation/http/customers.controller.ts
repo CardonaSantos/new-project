@@ -2,7 +2,7 @@ import {Body,Controller,Get,Header,Param,Patch,Post,Query} from '@nestjs/common'
 import {CurrentUser} from '../../../auth/presentation/http/decorators/auth.decorators.js';
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {CustomersService} from '../../application/customers.service.js';
-import {CustomerBranchQueryDto,CustomerListDto,CustomerMutationDto,CreateCustomerDto,
+import {CustomerBranchQueryDto,CustomerListDto,CustomerOptionsDto,CustomerMutationDto,CreateCustomerDto,
  UpdateCustomerDto,DeactivateCustomerDto,CreateAddressDto,UpdateAddressDto} from './dto/customers.dto.js';
 
 @Controller('customers')
@@ -10,6 +10,10 @@ export class CustomersController {
  constructor(private readonly customers:CustomersService){}
  @Get() @Header('Cache-Control','no-store')
  list(@CurrentUser() actor:Principal,@Query() q:CustomerListDto){return this.customers.list(actor,q);}
+ @Get('options') @Header('Cache-Control','no-store')
+ options(@CurrentUser() actor:Principal,@Query() q:CustomerOptionsDto){
+  return this.customers.options(actor,q);
+ }
  @Post()
  create(@CurrentUser() actor:Principal,@Body() d:CreateCustomerDto){return this.customers.create(actor,d);}
  @Get(':id') @Header('Cache-Control','no-store')

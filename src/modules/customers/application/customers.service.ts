@@ -1,13 +1,14 @@
 import {Injectable} from '@nestjs/common';
 import type {Principal} from '../../auth/application/auth.service.js';
 import {CustomersPort} from './ports/customers.port.js';
-import type {BranchCommand,CustomerQuery,CustomerCreate,CustomerUpdate,AddressCreate,AddressUpdate}
+import type {BranchCommand,CustomerQuery,CustomerOptionsQuery,CustomerCreate,CustomerUpdate,AddressCreate,AddressUpdate}
  from './ports/customers.port.js';
 
 @Injectable()
 export class CustomersService{
  constructor(private readonly port:CustomersPort){}
  list(a:Principal,q:CustomerQuery){return this.port.list(a,q);}
+ options(a:Principal,q:CustomerOptionsQuery){return this.port.options(a,q);}
  detail(a:Principal,id:string,s:string){return this.port.detail(a,id,s);}
  create(a:Principal,d:CustomerCreate){return this.port.create(a,d);}
  update(a:Principal,id:string,d:CustomerUpdate){return this.port.update(a,id,d);}

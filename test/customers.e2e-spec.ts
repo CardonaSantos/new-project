@@ -15,6 +15,7 @@ describe('DEL-A D1 HTTP contracts',()=>{
  const svc={
   list:vi.fn().mockResolvedValue({data:[],meta:{page:1,limit:20,total:0,totalPages:0}}),
   detail:vi.fn().mockResolvedValue({id:'customer-1'}),
+  options:vi.fn().mockResolvedValue({data:[{id:'customer-1',nombre:'Ana'}],nextCursor:null}),
   create:vi.fn().mockResolvedValue({id:'customer-1'}),
   update:vi.fn().mockResolvedValue({id:'customer-1'}),
   deactivate:vi.fn().mockResolvedValue({id:'customer-1',activo:false}),
@@ -43,6 +44,13 @@ describe('DEL-A D1 HTTP contracts',()=>{
   await request(app.getHttpServer()).get('/api/customers?sucursalId=branch-1&limit=101').expect(400);
   await request(app.getHttpServer()).get('/api/customers/customer-1').expect(400);
   await request(app.getHttpServer()).get('/api/customers/customer-1?sucursalId=branch-1').expect(200);
+ });
+ it('returns scoped minimal customer options without contact details',async()=>{
+  const res=await request(app.getHttpServer())
+   .get('/api/customers/options?sucursalId=branch-1&limit=20').expect(200);
+  expect(res.body.data[0]).toEqual({id:'customer-1',nombre:'Ana'});
+  expect(res.body).toHaveProperty('nextCursor',null);
+  await request(app.getHttpServer()).get('/api/customers/options?sucursalId=branch-1&limit=51').expect(400);
  });
  it('validates create/update/deactivate and rejects unexpected personal fields',async()=>{
   await request(app.getHttpServer()).post('/api/customers')

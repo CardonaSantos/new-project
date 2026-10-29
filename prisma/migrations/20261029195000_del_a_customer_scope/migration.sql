@@ -1,3 +1,5 @@
+BEGIN;
+
 -- DEL-A D1. Aditiva: no cambia ni borra identidades, órdenes ni entregas históricas.
 CREATE TABLE "ClienteSucursal" (
     "clienteId" TEXT NOT NULL,
@@ -33,3 +35,5 @@ CREATE UNIQUE INDEX "DireccionCliente_clienteId_principal_activa_key"
 CREATE INDEX "Orden_clienteId_sucursalId_idx" ON "Orden"("clienteId","sucursalId");
 CREATE INDEX "Venta_clienteId_sucursalId_idx" ON "Venta"("clienteId","sucursalId");
 CREATE INDEX "Reserva_clienteId_sucursalId_idx" ON "Reserva"("clienteId","sucursalId");
+
+COMMIT;

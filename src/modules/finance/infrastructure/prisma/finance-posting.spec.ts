@@ -11,7 +11,7 @@ function setup(){
   cuentaFinanciera:{findUnique:vi.fn().mockResolvedValue({id:'bank',sucursalId:'branch',
    activa:true,moneda:'GTQ',tipo:'BANCO'})},
   movimientoFinanciero:{
-   findFirst:vi.fn().mockImplementation(async()=>existing),
+   findFirst:vi.fn().mockImplementation(async({where}:any)=>existing?.referenciaId===where.referenciaId&&existing?.referenciaTipo===where.referenciaTipo?existing:null),
    create:vi.fn().mockImplementation(async({data}:any)=>{
     existing={id:'entry-1',...data};return existing;
    })

@@ -2,14 +2,14 @@
 import {Body,Controller,Get,Param,Patch,Post,Query} from '@nestjs/common';
 import {CurrentUser} from '../../../auth/presentation/http/decorators/auth.decorators.js';
 import type {Principal} from '../../../auth/application/auth.service.js';
-import {CashStore} from '../../infrastructure/prisma/cash.store.js';
-import {PaymentsStore} from '../../infrastructure/prisma/payments.store.js';
+import {CashService} from '../../application/cash.service.js';
+import {PaymentsService} from '../../application/payments.service.js';
 import {BranchDto,PageDto,RegisterDto,RegisterPatchDto,ShiftOpenDto,ShiftCloseDto,
  ShiftMovementDto,CollectDto,ConfirmAttemptDto,CancelAttemptDto,RefundDto,SplitDto,EqualSplitDto}
  from './dto/payments.dto.js';
 @Controller('cash')
 export class CashController{
- constructor(private readonly cash:CashStore){}
+ constructor(private readonly cash:CashService){}
  @Get('registers') registers(@CurrentUser() u:Principal,@Query() q:BranchDto){
   return this.cash.registers(u,q.sucursalId);}
  @Post('registers') create(@CurrentUser() u:Principal,@Body() d:RegisterDto){return this.cash.create(u,d);}
@@ -25,7 +25,7 @@ export class CashController{
 }
 @Controller('accounts')
 export class AccountsController{
- constructor(private readonly payments:PaymentsStore){}
+ constructor(private readonly payments:PaymentsService){}
  @Get('order/:orderId') accounts(@CurrentUser() u:Principal,@Param('orderId') id:string){
   return this.payments.accounts(u,id);}
  @Post('order/:orderId/finalize') finalize(@CurrentUser() u:Principal,
@@ -41,7 +41,7 @@ export class AccountsController{
 }
 @Controller('payment-attempts')
 export class AttemptsController{
- constructor(private readonly payments:PaymentsStore){}
+ constructor(private readonly payments:PaymentsService){}
  @Post(':id/confirm') confirm(@CurrentUser() u:Principal,@Param('id') id:string,
   @Body() d:ConfirmAttemptDto){return this.payments.confirm(u,id,d);}
  @Post(':id/cancel') cancel(@CurrentUser() u:Principal,@Param('id') id:string,
@@ -49,20 +49,20 @@ export class AttemptsController{
 }
 @Controller('payments')
 export class PaymentsController{
- constructor(private readonly payments:PaymentsStore){}
+ constructor(private readonly payments:PaymentsService){}
  @Post(':id/refund') refund(@CurrentUser() u:Principal,@Param('id') id:string,
   @Body() d:RefundDto){return this.payments.refund(u,id,d);}
 }
 @Controller('sales')
 export class SalesController{
- constructor(private readonly payments:PaymentsStore){}
+ constructor(private readonly payments:PaymentsService){}
  @Get() list(@CurrentUser() u:Principal,@Query() q:PageDto){return this.payments.sales(u,q);}
  @Get(':id') detail(@CurrentUser() u:Principal,@Param('id') id:string){
   return this.payments.sale(u,id);}
 }
 @Controller('payment-reports')
 export class PaymentReportsController{
- constructor(private readonly payments:PaymentsStore){}
+ constructor(private readonly payments:PaymentsService){}
  @Get('summary') summary(@CurrentUser() u:Principal,@Query() q:BranchDto){
   return this.payments.paymentSummary(u,q.sucursalId);}
 }

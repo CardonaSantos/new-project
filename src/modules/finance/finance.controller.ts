@@ -3,7 +3,8 @@ import {CurrentUser} from '../auth/presentation/http/decorators/auth.decorators.
 import type {Principal} from '../auth/application/auth.service.js';
 import {FinanceStore} from './finance.store.js';
 import {FinanceAccountCreateDto,FinanceAccountQueryDto,FinanceMovementQueryDto,
- FinanceOperationIntentDto,FinanceExpenseCreateDto,FinanceExpenseQueryDto} from './finance.dto.js';
+ FinanceOperationIntentDto,FinanceExpenseCreateDto,FinanceExpenseQueryDto,
+ FinanceExternalPendingQueryDto,FinanceExternalPostDto} from './finance.dto.js';
 
 @Controller('finance/operation-intents')
 export class FinanceIntentsController{
@@ -40,5 +41,16 @@ export class FinanceExpensesController{
  }
  @Get(':id') detail(@CurrentUser() u:Principal,@Param('id') id:string){
   return this.store.expense(u,id);
+ }
+}
+
+@Controller('finance/reconciliation')
+export class FinanceReconciliationController{
+ constructor(private readonly store:FinanceStore){}
+ @Get('pending') pending(@CurrentUser() u:Principal,@Query() q:FinanceExternalPendingQueryDto){
+  return this.store.pendingExternal(u,q);
+ }
+ @Post('post') post(@CurrentUser() u:Principal,@Body() d:FinanceExternalPostDto){
+  return this.store.postExternal(u,d);
  }
 }

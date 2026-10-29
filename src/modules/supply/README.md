@@ -1,5 +1,5 @@
 # SUP-A — Abastecimiento interno (macroflujo 20)
-**Estado:** desarrollo activo en PR #9. No fusionar antes de pruebas reales.
+**Estado:** SUP-A fusionado desde PR #9. Refactor hexagonal de mantenimiento sobre la rama FIN-A; no cambia reglas ni rutas.
 ## Principio de UX
 - **Solicitar → Enviar → Recibir**, sin autorización administrativa por cada movimiento.
 - **Traslado inmediato**: `POST /transfers/immediate` mueve directamente de almacén a almacén en una sola transacción, sin requisición previa; también se admite `inmediato:true` en un envío ligado a requisición.
@@ -62,3 +62,14 @@ npm run prisma:deploy
 npm run prisma:seed
 ```
 Requisiciones y transferencias ya existían; la integración con PUR-A incorpora una migración aditiva para vincular borradores de OC. Ejecutar `npm run prisma:deploy` sobre la base correcta después de respaldo y luego `npm run prisma:seed` para permisos SUP-A.
+
+
+## Arquitectura hexagonal
+- `domain/`: políticas puras de estado visible.
+- `application/contracts/` y `application/ports/`: contratos de comando y persistencia desacoplados de Nest/Prisma.
+- `application/supply.service.ts`: entrada de casos de uso, utilizada por controladores.
+- `infrastructure/prisma/supply.store.ts`: lógica transaccional **existente** preservada de INV-B/PUR-A, idempotencia y auditoría.
+- `presentation/http/`: controladores y DTOs validados. Los controladores no usan Prisma.
+- `supply.module.ts`: inyección por puerto con `useExisting`.
+
+No se modificaron los flujos ya probados de requisición, OC, envío, recepción o traslado inmediato.

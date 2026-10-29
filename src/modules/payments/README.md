@@ -68,3 +68,12 @@ npm run prisma:deploy
 npm run prisma:seed
 ```
 CI usa mocks para HTTP; no declara transacciones con la base real validadas. Probar con Postman en una PostgreSQL de pruebas: apertura y cierre, pago efectivo y mixto, transferencia pendiente/confirmación, sobrecobro, doble submit, división, reembolsos, Kardex sin nuevos consumos, aislamiento de sucursales y permisos.
+
+
+## Arquitectura hexagonal — refactor de mantenimiento
+- `domain/`: reglas puras de dinero, corte operativo, reembolso y pagos existentes.
+- `application/ports/`: contratos CashPort y PaymentsPort.
+- `application/`: servicios de casos de uso para rutas HTTP, sin dependencia Prisma.
+- `infrastructure/prisma/`: lógica de turnos/caja/cobros/ventas y sus integraciones FIN-A.
+- `presentation/http/`: controladores y DTOs HTTP existentes.
+- Las dependencias de otros módulos sobre stores internos se conservan temporalmente para no romper transacciones atómicas; migrar mediante puertos específicos donde corresponda.

@@ -309,8 +309,10 @@ model Sucursal {
   configuracionProveedorPagosComoSucursal ConfiguracionProveedorPago[] @relation("ConfiguracionProveedorPago_sucursal_Sucursal")
   ventasComoSucursal                      Venta[]                      @relation("Venta_sucursal_Sucursal")
   cuentaFinancierasComoSucursal           CuentaFinanciera[]           @relation("CuentaFinanciera_sucursal_Sucursal")
+  rutasFinancierasComoSucursal           RutaFinanciera[]             @relation("RutaFinanciera_sucursal_Sucursal")
   gastoOperativosComoSucursal             GastoOperativo[]             @relation("GastoOperativo_sucursal_Sucursal")
   cierreOperativosComoSucursal            CierreOperativo[]            @relation("CierreOperativo_sucursal_Sucursal")
+  reversasFinancierasComoSucursal ReversaFinanciera[] @relation("ReversaFinanciera_sucursal_Sucursal")
   liquidacionRepartidoresComoSucursal     LiquidacionRepartidor[]      @relation("LiquidacionRepartidor_sucursal_Sucursal")
   reservasComoSucursal                    Reserva[]                    @relation("Reserva_sucursal_Sucursal")
   sesionAutoserviciosComoSucursal         SesionAutoservicio[]         @relation("SesionAutoservicio_sucursal_Sucursal")
@@ -399,6 +401,9 @@ model Usuario {
 
   perfil PerfilUsuario? @relation("PerfilUsuario_usuario_Usuario")
   mediosSubidos Media[] @relation("Media_subidaPor_Usuario")
+  lineasExtractoImportadas LineaExtractoBancario[] @relation("LineaExtracto_importador_Usuario")
+  lineasExtractoConciliadas LineaExtractoBancario[] @relation("LineaExtracto_conciliador_Usuario")
+  reversasFinancierasComoUsuario ReversaFinanciera[] @relation("ReversaFinanciera_usuario_Usuario")
 }
 
 model SesionUsuario {
@@ -1886,8 +1891,24 @@ model CuentaFinanciera {
   // Relaciones inversas (navegación Prisma)
   pagoProveedoresComoCuentaFinanciera          PagoProveedor[]           @relation("PagoProveedor_cuentaFinanciera_CuentaFinanciera")
   movimientoFinancierosComoCuenta              MovimientoFinanciero[]    @relation("MovimientoFinanciero_cuenta_CuentaFinanciera")
+  rutasFinancierasComoCuenta                  RutaFinanciera[]          @relation("RutaFinanciera_cuenta_CuentaFinanciera")
   gastoOperativosComoCuentaFinanciera          GastoOperativo[]          @relation("GastoOperativo_cuentaFinanciera_CuentaFinanciera")
+  lineasExtractoComoCuentaFinanciera LineaExtractoBancario[] @relation("LineaExtractoBancario_cuenta_CuentaFinanciera")
   liquidacionCanalExternosComoCuentaFinanciera LiquidacionCanalExterno[] @relation("LiquidacionCanalExterno_cuentaFinanciera_CuentaFinanciera")
+}
+
+model RutaFinanciera {
+  id                String          @id @default(cuid())
+  sucursalId        String
+  sucursal          Sucursal        @relation("RutaFinanciera_sucursal_Sucursal", fields: [sucursalId], references: [id], onDelete: Restrict)
+  metodo            MetodoPago
+  cuentaFinancieraId String
+  cuentaFinanciera  CuentaFinanciera @relation("RutaFinanciera_cuenta_CuentaFinanciera", fields: [cuentaFinancieraId], references: [id], onDelete: Restrict)
+  activa            Boolean         @default(true)
+  actualizadoEn     DateTime        @updatedAt @db.Timestamptz(3)
+
+  @@unique([sucursalId, metodo])
+  @@index([cuentaFinancieraId])
 }
 
 model MovimientoFinanciero {
@@ -1900,8 +1921,50 @@ model MovimientoFinanciero {
   descripcion    String?
   creadoEn       DateTime         @default(now()) @db.Timestamptz(3)
 
+  lineasExtractoComoMovimiento LineaExtractoBancario[] @relation("LineaExtractoBancario_movimiento_MovimientoFinanciero")
+  reversasComoOriginal ReversaFinanciera[] @relation("ReversaFinanciera_original_MovimientoFinanciero")
+  reversasComoAjuste ReversaFinanciera[] @relation("ReversaFinanciera_ajuste_MovimientoFinanciero")
   @@index([cuentaId, creadoEn])
   @@index([referenciaTipo, referenciaId])
+}
+
+
+model LineaExtractoBancario {
+ id String @id @default(cuid())
+ cuentaFinancieraId String
+ cuentaFinanciera CuentaFinanciera @relation("LineaExtractoBancario_cuenta_CuentaFinanciera",fields:[cuentaFinancieraId],references:[id],onDelete:Restrict)
+ claveExterna String @db.VarChar(160)
+ fecha DateTime @db.Date
+ monto Decimal @db.Decimal(18,2)
+ referencia String? @db.VarChar(160)
+ descripcion String? @db.VarChar(500)
+ movimientoFinancieroId String? @unique
+ movimientoFinanciero MovimientoFinanciero? @relation("LineaExtractoBancario_movimiento_MovimientoFinanciero",fields:[movimientoFinancieroId],references:[id],onDelete:Restrict)
+ importadoPorId String
+ importadoPor Usuario @relation("LineaExtracto_importador_Usuario",fields:[importadoPorId],references:[id],onDelete:Restrict)
+ conciliadoPorId String?
+ conciliadoPor Usuario? @relation("LineaExtracto_conciliador_Usuario",fields:[conciliadoPorId],references:[id],onDelete:Restrict)
+ conciliadoEn DateTime? @db.Timestamptz(3)
+ validacionReferencia String? @db.VarChar(40)
+ justificacionConciliacion String? @db.VarChar(500)
+ creadoEn DateTime @default(now()) @db.Timestamptz(3)
+ @@unique([cuentaFinancieraId,claveExterna])
+ @@index([cuentaFinancieraId,fecha])
+}
+
+model ReversaFinanciera {
+ id String @id @default(cuid())
+ sucursalId String
+ sucursal Sucursal @relation("ReversaFinanciera_sucursal_Sucursal",fields:[sucursalId],references:[id],onDelete:Restrict)
+ movimientoOriginalId String @unique
+ movimientoOriginal MovimientoFinanciero @relation("ReversaFinanciera_original_MovimientoFinanciero",fields:[movimientoOriginalId],references:[id],onDelete:Restrict)
+ movimientoReversaId String @unique
+ movimientoReversa MovimientoFinanciero @relation("ReversaFinanciera_ajuste_MovimientoFinanciero",fields:[movimientoReversaId],references:[id],onDelete:Restrict)
+ usuarioId String
+ usuario Usuario @relation("ReversaFinanciera_usuario_Usuario",fields:[usuarioId],references:[id],onDelete:Restrict)
+ motivo String @db.VarChar(500)
+ creadaEn DateTime @default(now()) @db.Timestamptz(3)
+ @@index([sucursalId,creadaEn])
 }
 
 model GastoOperativo {

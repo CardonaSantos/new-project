@@ -282,3 +282,9 @@ de lotes y las financieras de capas son independientes.
   monetario y la recepción lo reusa; nunca se revaloriza el tránsito a partir
   de un costo unitario redondeado. Documentos históricos de un solo tramo usan
   el total en tránsito persistido.
+
+
+## Arquitectura hexagonal — operaciones INV-B
+- `inventory-operations.controller.ts` delega ahora a `InventoryOperationsService` / `InventoryInternalConsumptionService`.
+- Las interfaces `InventoryOperationsPort` y `InventoryInternalConsumptionPort` se enlazan mediante `useExisting` a los stores originales.
+- Se conserva `InventoryPostingEngine`, la conciliación Kardex, conteos, transferencias y autorizaciones; no hay cambios de rutas, inventario o SQL.

@@ -5,7 +5,7 @@ import request from 'supertest';
 import type {App} from 'supertest/types';
 import type {NextFunction,Request,Response} from 'express';
 import type {Principal} from '../src/modules/auth/application/auth.service.js';
-import {InventoryOperationsStore} from '../src/modules/inventory/infrastructure/prisma/inventory-operations.store.js';
+import {InventoryOperationsService} from '../src/modules/inventory/application/inventory-operations.service.js';
 import {InventoryStockController,InventoryLotsController,InventoryManualController,InventoryMovementsController,
  InventoryCountsController,InventoryTransfersController,InventoryOperationalReportsController
 } from '../src/modules/inventory/presentation/http/inventory-operations.controller.js';
@@ -34,7 +34,7 @@ describe('INV-B HTTP validation and route contracts',()=>{
    InventoryStockController,InventoryLotsController,InventoryMovementsController,
    InventoryManualController,InventoryCountsController,InventoryTransfersController,
    InventoryOperationalReportsController
-  ],providers:[{provide:InventoryOperationsStore,useValue:store}]}).compile();
+  ],providers:[{provide:InventoryOperationsService,useValue:store}]}).compile();
   app=mod.createNestApplication<App>();app.setGlobalPrefix('api');
   app.use((req:Request&{auth?:Principal},_res:Response,next:NextFunction)=>{req.auth=actor;next();});
   app.useGlobalPipes(new ValidationPipe({transform:true,whitelist:true,forbidNonWhitelisted:true,

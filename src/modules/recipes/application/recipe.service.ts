@@ -1,12 +1,12 @@
 import {Injectable} from '@nestjs/common';
 import type {Principal} from '../../auth/application/auth.service.js';
-import {RecipeStore} from '../infrastructure/prisma/recipe.store.js';
-import {ProductionStore} from '../infrastructure/prisma/production.store.js';
+import {RecipeStorePort} from './ports/recipe.port.js';
+import {ProductionStorePort} from './ports/production.port.js';
 import type {CreateRecipeDto,UpdateRecipeDto,VersionDto,ListRecipesDto,PreviewDto,
  ModifierCompositionDto,PackagingRuleDto,PackagingQueryDto,QuoteDto,ExecuteProductionDto,ListProductionsDto} from '../presentation/http/dto/recipe.dto.js';
 @Injectable()
 export class RecipeService{
- constructor(private readonly recipes:RecipeStore,private readonly productionStore:ProductionStore){}
+ constructor(private readonly recipes:RecipeStorePort,private readonly productionStore:ProductionStorePort){}
  list(u:Principal,d:ListRecipesDto){return this.recipes.list(u,d);}
  options(u:Principal,d:ListRecipesDto){return this.recipes.options(u,d);}
  detail(u:Principal,id:string){return this.recipes.detail(u,id);}

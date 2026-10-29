@@ -6,8 +6,8 @@ import request from 'supertest';
 import type {App} from 'supertest/types';
 import type {NextFunction,Request,Response} from 'express';
 import type {Principal} from '../src/modules/auth/application/auth.service.js';
-import {CashStore} from '../src/modules/payments/infrastructure/prisma/cash.store.js';
-import {PaymentsStore} from '../src/modules/payments/infrastructure/prisma/payments.store.js';
+import {CashService} from '../src/modules/payments/application/cash.service.js';
+import {PaymentsService} from '../src/modules/payments/application/payments.service.js';
 import {CashController,AccountsController,AttemptsController,PaymentsController,SalesController}
  from '../src/modules/payments/presentation/http/payments.controller.js';
 const principal:Principal={id:'u1',email:'cashier@test.local',nombre:'Caja',
@@ -26,7 +26,7 @@ describe('PAY-A HTTP DTO contract',()=>{
   vi.clearAllMocks();
   const mod=await Test.createTestingModule({controllers:[
    CashController,AccountsController,AttemptsController,PaymentsController,SalesController],
-   providers:[{provide:CashStore,useValue:cash},{provide:PaymentsStore,useValue:pay}]}).compile();
+   providers:[{provide:CashService,useValue:cash},{provide:PaymentsService,useValue:pay}]}).compile();
   app=mod.createNestApplication<App>();app.setGlobalPrefix('api');
   app.use((req:Request&{auth?:Principal},_res:Response,next:NextFunction)=>{req.auth=principal;next();});
   app.useGlobalPipes(new ValidationPipe({transform:true,whitelist:true,forbidNonWhitelisted:true,

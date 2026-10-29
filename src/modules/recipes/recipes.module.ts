@@ -6,10 +6,14 @@ import {RecipeService} from './application/recipe.service.js';
 import {RecipeStore} from './infrastructure/prisma/recipe.store.js';
 import {ProductionStore} from './infrastructure/prisma/production.store.js';
 import {RecipesController,ProductionController} from './presentation/http/recipes.controller.js';
+import {RecipeStorePort} from './application/ports/recipe.port.js';
+import {ProductionStorePort} from './application/ports/production.port.js';
 @Module({
  imports:[AuthModule,PrismaModule,InventoryModule],
  controllers:[RecipesController,ProductionController],
- providers:[RecipeService,RecipeStore,ProductionStore],
- exports:[RecipeService,ProductionStore]
+ providers:[RecipeService,RecipeStore,ProductionStore,
+  {provide:RecipeStorePort,useExisting:RecipeStore},
+  {provide:ProductionStorePort,useExisting:ProductionStore}],
+ exports:[RecipeService,ProductionStore,RecipeStorePort,ProductionStorePort]
 })
 export class RecipesModule{}

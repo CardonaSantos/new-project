@@ -1,10 +1,10 @@
 import {describe,expect,it,vi} from 'vitest';
 import {ForbiddenException} from '@nestjs/common';
-import {Prisma} from '../../generated/prisma/client.js';
+import {Prisma} from '../../../../generated/prisma/client.js';
 import {SupplyStore} from './supply.store.js';
-import type {Principal} from '../auth/application/auth.service.js';
-import {PrismaService} from '../../infrastructure/database/prisma/prisma.service.js';
-import {InventoryPostingEngine} from '../inventory/infrastructure/prisma/inventory-posting.engine.js';
+import type {Principal} from '../../../auth/application/auth.service.js';
+import {PrismaService} from '../../../../infrastructure/database/prisma/prisma.service.js';
+import {InventoryPostingEngine} from '../../../inventory/infrastructure/prisma/inventory-posting.engine.js';
 
 const dec=(v:string)=>new Prisma.Decimal(v);
 const user={id:'admin'} as Principal;

@@ -17,6 +17,10 @@ import {InventoryOperationsStore} from './infrastructure/prisma/inventory-operat
 import {InventoryStockController,InventoryLotsController,InventoryMovementsController,InventoryManualController,
  InventoryCountsController,InventoryTransfersController,InventoryOperationalReportsController,InventoryInternalConsumptionController
 } from './presentation/http/inventory-operations.controller.js';
+import {InventoryOperationsPort} from './application/ports/inventory-operations.port.js';
+import {InventoryOperationsService} from './application/inventory-operations.service.js';
+import {InventoryInternalConsumptionPort} from './application/ports/inventory-internal-consumption.port.js';
+import {InventoryInternalConsumptionService} from './application/inventory-internal-consumption.service.js';
 @Module({
  imports:[PrismaModule,AuthModule,MediaModule],
  controllers:[InventoryUnitsController,InventoryConversionsController,InventoryArticlesController,
@@ -24,7 +28,11 @@ import {InventoryStockController,InventoryLotsController,InventoryMovementsContr
  InventoryStockController,InventoryLotsController,InventoryMovementsController,InventoryManualController,
  InventoryCountsController,InventoryTransfersController,InventoryOperationalReportsController,InventoryInternalConsumptionController],
  providers:[InventoryService,InventoryMediaService,InventoryPostingEngine,InventoryInternalConsumptionStore,InventoryDocumentsStore,InventoryOperationsStore,
+  InventoryOperationsService,
+  {provide:InventoryOperationsPort,useExisting:InventoryOperationsStore},
+  InventoryInternalConsumptionService,
+  {provide:InventoryInternalConsumptionPort,useExisting:InventoryInternalConsumptionStore},
   {provide:InventoryRepositoryPort,useClass:PrismaInventoryRepository}],
- exports:[InventoryService,InventoryRepositoryPort,InventoryPostingEngine]
+ exports:[InventoryService,InventoryRepositoryPort,InventoryPostingEngine,InventoryOperationsService,InventoryInternalConsumptionService]
 })
 export class InventoryModule{}

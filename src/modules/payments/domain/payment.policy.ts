@@ -24,6 +24,11 @@ export function operationalDate(now:Date,timeZone:string,cut:string):Date{
  if(minutes<h*60+min)date.setUTCDate(date.getUTCDate()-1);
  return date;
 }
+export function assertShiftOperationalDate(fechaTurno:Date,now:Date,timeZone:string,cut:string){
+ const current=operationalDate(now,timeZone,cut);
+ if(fechaTurno.getTime()!==current.getTime())
+  throw new ConflictException('Turno de otro día operativo; cierre el turno anterior y abra uno nuevo');
+}
 export function activeShift(actor:string,shift:{cajeroId:string;cerradaEn:Date|null;fondoInicial:Prisma.Decimal},
  allowOther=false){
  if(shift.cerradaEn)throw new ConflictException('Turno cerrado');

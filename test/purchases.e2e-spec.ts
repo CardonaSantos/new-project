@@ -10,30 +10,30 @@ import {SuppliersController,PresentationsController,PurchaseOrdersController,
  PurchaseReceiptsController,PurchaseInvoicesController,PurchasePaymentsController,
  PurchaseReturnsController,PurchaseCreditsController,PurchaseSupplierRefundsController}
  from '../src/modules/purchases/presentation/http/purchases.controller.js';
-import {PurchaseMastersStore} from '../src/modules/purchases/infrastructure/prisma/purchase-masters.store.js';
-import {PurchaseOrdersStore} from '../src/modules/purchases/infrastructure/prisma/purchase-orders.store.js';
-import {PurchaseReceiptsStore} from '../src/modules/purchases/infrastructure/prisma/purchase-receipts.store.js';
-import {PurchaseInvoicesStore} from '../src/modules/purchases/infrastructure/prisma/purchase-invoices.store.js';
-import {PurchasePaymentsStore} from '../src/modules/purchases/infrastructure/prisma/purchase-payments.store.js';
-import {PurchaseReturnsStore} from '../src/modules/purchases/infrastructure/prisma/purchase-returns.store.js';
+import {PurchaseMastersService} from '../src/modules/purchases/application/purchase-masters.service.js';
+import {PurchaseOrdersService} from '../src/modules/purchases/application/purchase-orders.service.js';
+import {PurchaseReceiptsService} from '../src/modules/purchases/application/purchase-receipts.service.js';
+import {PurchaseInvoicesService} from '../src/modules/purchases/application/purchase-invoices.service.js';
+import {PurchasePaymentsService} from '../src/modules/purchases/application/purchase-payments.service.js';
+import {PurchaseReturnsService} from '../src/modules/purchases/application/purchase-returns.service.js';
 const user:Principal={id:'u1',email:'buyer@example.test',nombre:'Comprador',sessionId:'s1',
  debeCambiarContrasena:false,versionAutorizacion:1};
 const success=vi.fn().mockResolvedValue({id:'record'});
 describe('PUR-A HTTP DTO validation and route boundaries',()=>{
  let app:INestApplication<App>;
  const mocks=[
-  {provide:PurchaseMastersStore,useValue:{createSupplier:success,suppliers:success,
+  {provide:PurchaseMastersService,useValue:{createSupplier:success,suppliers:success,
    supplier:success,updateSupplier:success,status:success,presentations:success,
    createPresentation:success,presentationStatus:success}},
-  {provide:PurchaseOrdersStore,useValue:{create:success,edit:success,confirm:success,
+  {provide:PurchaseOrdersService,useValue:{create:success,edit:success,confirm:success,
    cancel:success,close:success,list:success,detail:success}},
-  {provide:PurchaseReceiptsStore,useValue:{create:success,edit:success,confirm:success,
+  {provide:PurchaseReceiptsService,useValue:{create:success,edit:success,confirm:success,
    cancel:success,movements:success,list:success,detail:success}},
-  {provide:PurchaseInvoicesStore,useValue:{create:success,confirm:success,
+  {provide:PurchaseInvoicesService,useValue:{create:success,confirm:success,
    cancel:success,list:success,detail:success}},
-  {provide:PurchasePaymentsStore,useValue:{create:success,confirm:success,apply:success,
+  {provide:PurchasePaymentsService,useValue:{create:success,confirm:success,apply:success,
    reject:success,list:success,detail:success}},
-  {provide:PurchaseReturnsStore,useValue:{createReturn:success,confirmReturn:success,
+  {provide:PurchaseReturnsService,useValue:{createReturn:success,confirmReturn:success,
    cancelReturn:success,returns:success,returnDetail:success,credits:success,creditDetail:success,
    createCredit:success,confirmCredit:success,cancelCredit:success,applyCredit:success,
    createSupplierRefund:success,confirmSupplierRefund:success,rejectSupplierRefund:success}}

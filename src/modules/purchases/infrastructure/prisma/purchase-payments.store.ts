@@ -3,6 +3,8 @@ import {BadRequestException,ConflictException,Injectable,NotFoundException} from
 import {Prisma} from '../../../../generated/prisma/client.js';
 import {PrismaService} from '../../../../infrastructure/database/prisma/prisma.service.js';
 import {CashStore} from '../../../payments/infrastructure/prisma/cash.store.js';
+import {postVerifiedExternalMovement} from '../../../finance/infrastructure/prisma/finance-posting.js';
+import {assertFinancialPeriodOpen} from '../../../finance/infrastructure/prisma/finance-period.guard.js';
 import {cash,covered} from '../../domain/purchase.policy.js';
 import type {Actor,Tx} from './purchase-shared.js';
 import {atomic,scope,audit,once,page,metadata} from './purchase-shared.js';
@@ -64,6 +66,12 @@ export class PurchasePaymentsStore{
   if(!p)throw new NotFoundException('Pago inexistente');
   if(!p.sucursalId)throw new ConflictException('Pago sin sucursal');
   await scope(tx,u,p.sucursalId,'purchases.payments.confirm');
+  // Even an external supplier payment awaiting a bank account changes the
+  // operational close total once confirmed. Check before any settlement write.
+  const branch=await tx.sucursal.findUnique({where:{id:p.sucursalId},
+   include:{configuracionSucursalesComoSucursal:true}});
+  if(!branch?.activa)throw new ConflictException('Sucursal no disponible');
+  await assertFinancialPeriodOpen(tx,branch);
   if(p.estado!=='PENDIENTE')throw new ConflictException('Pago no pendiente');
   // Revalidate at settlement time: two independently drafted payments cannot
   // settle the same outstanding invoice twice.
@@ -91,7 +99,16 @@ export class PurchasePaymentsStore{
    if(p.monto.gt(available))throw new ConflictException('Caja sin efectivo suficiente');
    await tx.movimientoCaja.create({data:{turnoId:shift.id,tipo:'EGRESO',monto:p.monto,
     motivo:'Pago a proveedor',pagoProveedorId:p.id,usuarioId:u.id}});
-  }else if(!p.referencia?.trim())throw new ConflictException('Método externo requiere referencia verificada');
+  }else{
+   if(!p.referencia?.trim())throw new ConflictException('Método externo requiere referencia verificada');
+   if(p.cuentaFinancieraId){
+    await postVerifiedExternalMovement(tx,{
+     sucursalId:p.sucursalId,cuentaId:p.cuentaFinancieraId,
+     referenciaTipo:'PAGO_PROVEEDOR',referenciaId:p.id,
+     monto:p.monto.neg(),descripcion:'Pago confirmado a proveedor'
+    });
+   }
+  }
   await tx.pagoProveedor.update({where:{id},data:{estado:'CONFIRMADO',
    confirmadoEn:new Date(),verificadoPorId:u.id}});
   await audit(tx,u,p.sucursalId,'PUR_PAYMENT_CONFIRMED','PagoProveedor',id);
@@ -107,9 +124,24 @@ export class PurchasePaymentsStore{
     const shift=await this.cashStore.shiftTx(tx,u,d.turnoCajaId,'purchases.payments.create',false);
     if(shift.caja.sucursalId!==d.sucursalId)throw new ConflictException('Turno de otra sucursal');
    }else if(!d.referencia?.trim())throw new BadRequestException('Referencia externa obligatoria');
+   if(d.metodo==='EFECTIVO'&&d.cuentaFinancieraId)
+    throw new BadRequestException('El pago en efectivo no usa cuenta financiera externa');
+   if(d.metodo!=='EFECTIVO'&&d.turnoCajaId)
+    throw new BadRequestException('Pago externo no requiere turno de caja');
+   if(d.cuentaFinancieraId){
+    const [bank,branch]=await Promise.all([
+     tx.cuentaFinanciera.findUnique({where:{id:d.cuentaFinancieraId}}),
+     tx.sucursal.findUnique({where:{id:d.sucursalId},
+      include:{configuracionSucursalesComoSucursal:true}})
+    ]);
+    if(!bank?.activa||bank.sucursalId!==d.sucursalId||!branch?.activa||
+     bank.moneda!==(branch.configuracionSucursalesComoSucursal?.moneda??'GTQ'))
+     throw new ConflictException('Cuenta financiera no disponible para este proveedor/sucursal');
+   }
    const row=await tx.pagoProveedor.create({data:{proveedorId:d.proveedorId,sucursalId:d.sucursalId,
     monto:cash(d.monto),metodo:d.metodo,referencia:d.referencia?.trim(),
-    turnoCajaId:d.turnoCajaId??null,usuarioId:u.id}});
+    turnoCajaId:d.turnoCajaId??null,
+    cuentaFinancieraId:d.cuentaFinancieraId??null,usuarioId:u.id}});
    const lines=await this.applications(tx,row,d.aplicaciones);
    if(lines.length)await tx.aplicacionPagoProveedor.createMany({data:lines.map(x=>({...x,pagoId:row.id}))});
    await audit(tx,u,d.sucursalId,'PUR_PAYMENT_CREATED','PagoProveedor',row.id,

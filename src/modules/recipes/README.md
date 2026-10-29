@@ -124,3 +124,7 @@ El servidor valida que el modificador esté asociado a la variante, aplica
 SUMAR/RESTAR/SUSTITUIR, selecciona la regla de empaque activa más específica
 por alcance (ARTICULO/ORDEN), calcula materiales y stock FEFO y retorna
 costos estimados solo si existe inventory.costs.read. Cotizar no reserva stock.
+
+
+## Adaptadores hexagonales — refactor de mantenimiento
+`RecipeService` recibe ahora `RecipeStorePort` y `ProductionStorePort` desde `application/ports/`, enlazados con `useExisting` en NestJS. Se preservan el plan de insumos, producción, recetas, endpoints y acceso interno de ORD-A a `ProductionStore` para las transacciones actuales.

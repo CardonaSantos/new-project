@@ -4,7 +4,7 @@ import type {Principal} from '../../../auth/application/auth.service.js';
 import {CashStore} from '../../../payments/infrastructure/prisma/cash.store.js';
 import {DeliveryPaymentsPort} from '../../../payments/application/ports/delivery-payments.port.js';
 import {SettlementCommon,fmt,dec,zero} from './settlement-common.js';
-import type {CourierCashInput,CourierPending,CourierSettlementCreate,CourierSettlementClose}
+import type {CourierCashInput,CourierPending,CourierSettlementCreate,CourierSettlementClose,CourierDiscrepancy}
  from '../../application/ports/delivery-settlements.port.js';
 import {ensureExactCash} from '../../domain/settlement.policy.js';
 @Injectable()
@@ -88,6 +88,28 @@ export class CourierSettlementsStore{
     await this.ctx.audit(tx,u,d.sucursalId,'COURIER_SETTLEMENT_CREATED','LiquidacionRepartidor',row.id,
      {repartidorId:d.repartidorId,totalEsperado:fmt(sum),pagos:lines.length});
     return {id:row.id,estado:'ABIERTA',totalEsperado:fmt(sum)};
+   });
+  });
+ }
+ async discrepancy(u:Principal,id:string,d:CourierDiscrepancy){
+  return this.ctx.atomic(async tx=>{
+   const row=await tx.liquidacionRepartidor.findUnique({where:{id}});
+   if(!row)throw new NotFoundException('Liquidación inexistente');
+   await this.ctx.require(tx,u,row.sucursalId,'delivery.settlements.manage');
+   return this.ctx.once(tx,u,'D3_COURIER_DISCREPANCY',d.claveOperacion,{id,...d},async()=>{
+    const current=await tx.liquidacionRepartidor.findUnique({where:{id}});
+    if(!current||current.estado!=='ABIERTA')
+     throw new ConflictException('La liquidación debe seguir abierta');
+    const declared=dec(d.montoDeclarado);
+    const difference=current.totalEsperado.minus(declared);
+    if(difference.eq(0))throw new BadRequestException('No existe una diferencia por documentar');
+    await this.ctx.audit(tx,u,current.sucursalId,'COURIER_CASH_DISCREPANCY',
+     'LiquidacionRepartidor',id,{
+      totalEsperado:fmt(current.totalEsperado),totalDeclarado:fmt(declared),
+      diferencia:fmt(difference),motivo:d.motivo.trim()
+     });
+    return {id,estado:'ABIERTA',totalEsperado:fmt(current.totalEsperado),
+     totalDeclarado:fmt(declared),diferencia:fmt(difference)};
    });
   });
  }

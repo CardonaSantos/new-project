@@ -1,7 +1,7 @@
 -- Run only against the ephemeral PostgreSQL CI service. Everything is rolled back.
 BEGIN;
-INSERT INTO "Sucursal"("id","codigo","nombre")
- VALUES ('del-a-ci-branch','DEL-A-CI','DEL-A migration smoke');
+INSERT INTO "Sucursal"("id","codigo","nombre","actualizadoEn")
+ VALUES ('del-a-ci-branch','DEL-A-CI','DEL-A migration smoke',CURRENT_TIMESTAMP);
 INSERT INTO "Cliente"("id","nombre") VALUES ('del-a-ci-client','Smoke client');
 INSERT INTO "ClienteSucursal"("clienteId","sucursalId")
  VALUES ('del-a-ci-client','del-a-ci-branch');

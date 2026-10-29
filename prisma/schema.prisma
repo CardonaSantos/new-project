@@ -396,6 +396,7 @@ model Usuario {
   gastoOperativosComoUsuario            GastoOperativo[]          @relation("GastoOperativo_usuario_Usuario")
   cierreOperativosComoUsuario           CierreOperativo[]         @relation("CierreOperativo_usuario_Usuario")
   entregasComoRepartidor                Entrega[]                 @relation("Entrega_repartidor_Usuario")
+  eventosEntregaComoActor EntregaEvento[] @relation("EntregaEvento_actor_Usuario")
   liquidacionRepartidoresComoRepartidor LiquidacionRepartidor[]   @relation("LiquidacionRepartidor_repartidor_Usuario")
   reservasComoCreadaPor                 Reserva[]                 @relation("Reserva_creadaPor_Usuario")
   eventoReservasComoUsuario             EventoReserva[]           @relation("EventoReserva_usuario_Usuario")
@@ -2047,6 +2048,7 @@ model Entrega {
   // Relaciones inversas (navegación Prisma)
   liquidacionCanalExternoLineasComoEntrega LiquidacionCanalExternoLinea? @relation("LiquidacionCanalExternoLinea_entrega_Entrega")
   liquidacionRepartidorLineasComoEntrega   LiquidacionRepartidorLinea[]  @relation("LiquidacionRepartidorLinea_entrega_Entrega")
+  eventosComoEntrega EntregaEvento[] @relation("EntregaEvento_entrega_Entrega")
 
   @@index([repartidorId, estado])
   @@index([canalExternoId, referenciaExterna])
@@ -2616,4 +2618,22 @@ model ClienteSucursal {
 
   @@id([clienteId, sucursalId])
   @@index([sucursalId, clienteId])
+}
+
+\n// DEL-A D2: audit trail for delivery assignments and state transitions.
+model EntregaEvento {
+  id          String        @id @default(cuid())
+  entregaId   String
+  entrega     Entrega       @relation("EntregaEvento_entrega_Entrega", fields: [entregaId], references: [id], onDelete: Restrict)
+  usuarioId   String?
+  usuario     Usuario?      @relation("EntregaEvento_actor_Usuario", fields: [usuarioId], references: [id], onDelete: SetNull)
+  accion      String        @db.VarChar(64)
+  estadoAntes EstadoEntrega?
+  estadoDespues EstadoEntrega?
+  repartidorAntesId String?
+  repartidorDespuesId String?
+  motivo      String?       @db.VarChar(500)
+  creadoEn    DateTime      @default(now()) @db.Timestamptz(3)
+
+  @@index([entregaId, creadoEn])
 }

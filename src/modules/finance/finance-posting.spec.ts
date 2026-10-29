@@ -31,7 +31,7 @@ describe('FIN-A unique external journal posting',()=>{
  });
  it('does not allow a source to migrate to another bank or amount',async()=>{
   const f=setup();await f.post();
-  await expect(f.post({cuentaId:'different'})).rejects.toThrow('no disponible');
+  await expect(f.post({cuentaId:'different'})).rejects.toThrow('cuenta o importe distinto');
   await expect(f.post({monto:dec('86.00')})).rejects.toThrow('importe distinto');
  });
  it('does not post to another branch or inactive financial account',async()=>{

@@ -54,7 +54,7 @@ export class SettlementCommon{
    return prior.resultado as Record<string,unknown>;
   }
   const value=await action();
-  await tx.operacionIdempotente.create({data:{clave:token,operacion,
+  await tx.operacionIdempotente.create({data:{clave:token,operacion:operation,
    hashSolicitud:digest,resultado:value as Prisma.InputJsonValue,
    finalizada:true,expiraEn:new Date(Date.now()+90*86400000)}});
   return value;

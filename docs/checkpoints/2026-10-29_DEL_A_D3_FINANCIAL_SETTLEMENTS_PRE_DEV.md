@@ -29,7 +29,7 @@
 
 ## Estado verificado y siguiente paso
 - D1 Customers + ORD-A, D2 Delivery: usuario ejecutó suites DEV previamente. Fix D2 teléfono tras editar destino está en rama; reporte de los últimos commits en PR.
-- **D3 implementado en rama y CI en progreso/por verificar en HEAD final**. No afirmar probado DEV hasta recibir Postman. `main` permanece intacto.
+- **D3 implementado en rama, CI de código `ece58554` SUCCESS**: https://github.com/CardonaSantos/new-project/actions/runs/40970755356 — 199 unitarias, 75 HTTP, PostgreSQL migration-smoke incluido SQL de unicidad bancaria. La compilación y Prisma validate también aprobaron. No afirmar probado DEV hasta recibir las 28 respuestas Postman. `main` permanece intacto.
 - D4 después: hardening de reversas de plataforma/reembolsos extraordinarios, cierres PAY-A/FIN-A, rol restringido y multisucursal, y autorización expresa del merge PR #14. No iniciar RSV/QR/REP/FEL/hardware/Angular dentro de DEL-A.
 - No inventar monetización: el operador confirma bancarización manual con referencia, conciliación posterior aún de FIN-A.
 
@@ -45,3 +45,10 @@ npm run prisma:deploy
 npm run prisma:seed
 npm run start:dev
 ```
+
+## Nota final de endurecimiento antes de DEV
+- Índices PostgreSQL D3 para pagos de courier y liquidaciones por sucursal/repartidor.
+- CI ejecuta `prisma/ci/del-a-d3-ledger-integrity.sql` con rollback; confirma referencia bancaria única y asiento `LIQUIDACION_CANAL` único.
+- Reintento del cierre de courier devuelve el mismo resultado aunque el turno original ya se haya cerrado (permisos vigentes revalidados, sin segundo ingreso de caja).
+- Faltantes: `POST /api/deliveries/settlements/couriers/:id/discrepancy` registra motivo auditado, mantiene ABIERTA y no crea dinero. Motivos libres se excluyen del outbox.
+- Reembolsos de plataforma con asiento neto previamente registrado requieren diseño de reversa controlada FIN-A, a validar en D4; por ahora bloqueados, no burlar por SQL.

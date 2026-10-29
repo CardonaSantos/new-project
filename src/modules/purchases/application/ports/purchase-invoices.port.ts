@@ -1,4 +1,4 @@
-import {Principal} from '../../../auth/application/auth.service.js';
+import type {Principal} from '../../../auth/application/auth.service.js';
 
 /** Public application contract: Prisma remains owned by the infrastructure adapter. */
 export abstract class PurchaseInvoicesPort {

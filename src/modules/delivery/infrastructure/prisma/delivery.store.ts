@@ -157,7 +157,7 @@ export class DeliveryStore extends DeliveryPort{
    const data=await tx.entregaEvento.findMany({where:{entregaId:id},
     orderBy:[{creadoEn:'asc'},{id:'asc'}],
     select:{id:true,accion:true,estadoAntes:true,estadoDespues:true,
-     usuarioId:true,repartidorAntesId:true,repartidorDespuesId:true,creadoEn:true}});
+     usuarioId:true,repartidorAntesId:true,repartidorDespuesId:true,motivo:true,creadoEn:true}});
    return {data};
   });
  }

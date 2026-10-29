@@ -19,7 +19,7 @@ function rig(){
   orden:{findUnique:vi.fn().mockResolvedValue(order)},
   entrega:{findUnique:vi.fn(async({where}:any)=>where.ordenId?null:row),
    create:vi.fn().mockResolvedValue({id:'delivery-1'}),
-   update:vi.fn().mockResolvedValue({})},
+   update:vi.fn(async({data}:any)=>{Object.assign(row,data);return row;})},
   entregaEvento:{create:vi.fn().mockResolvedValue({}),findMany:vi.fn().mockResolvedValue([])},
   eventoAuditoria:{create:vi.fn().mockResolvedValue({})},
   eventoOutbox:{create:vi.fn().mockResolvedValue({})},
@@ -54,6 +54,19 @@ describe('DEL-A D2 transactional delivery',()=>{
    .rejects.toThrow('Solo se acepta orden DELIVERY');
   expect(tx.entrega.create).not.toHaveBeenCalled();
   expect(tx.operacionIdempotente.create).not.toHaveBeenCalled();
+ });
+ it('assigns the courier immediately in one committed operation without a second approver',async()=>{
+  const {store,tx,row}=rig();
+  const result=await store.assign(user,'delivery-1',{
+   repartidorId:'courier-1',claveOperacion:'D2:DIRECT:001'
+  });
+  expect(result).toMatchObject({id:'delivery-1',repartidorId:'courier-1'});
+  expect(row.repartidorId).toBe('courier-1');
+  expect(tx.entrega.update).toHaveBeenCalledOnce();
+  expect(tx.entregaEvento.create).toHaveBeenCalledWith({data:expect.objectContaining({
+   accion:'DELIVERY_ASSIGNED',repartidorDespuesId:'courier-1'
+  })});
+  expect(tx.operacionIdempotente.create).toHaveBeenCalledOnce();
  });
  it('checks manager before immediately assigning a courier',async()=>{
   const {store,tx}=rig();

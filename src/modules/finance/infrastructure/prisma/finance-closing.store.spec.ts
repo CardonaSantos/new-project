@@ -63,7 +63,7 @@ describe('FIN-A operational closing transaction',()=>{
   expect(f.closes).toHaveLength(1);
   expect(f.audits).toHaveLength(1);
   const saved=await f.store.detail(actor,'b',day) as any;
-  expect(saved.id).toBe(first.id);
+  expect(saved.id).toBe(f.closes[0].id);
   const after=await f.store.preview(actor,{sucursalId:'b',fechaOperativa:day}) as any;
   expect(after.cerrado).toBe(true);
   await expect(f.store.confirm(actor,{...input,operationId:f.issue()}))

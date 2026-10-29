@@ -4,7 +4,7 @@ import {INestApplication,ValidationPipe} from '@nestjs/common';
 import request from 'supertest';
 import type {App} from 'supertest/types';
 import type {NextFunction,Request,Response} from 'express';
-import {FinanceAccountsController,FinanceExpensesController,FinanceIntentsController}
+import {FinanceAccountsController,FinanceExpensesController,FinanceIntentsController,FinanceReconciliationController}
  from '../src/modules/finance/finance.controller.js';
 import {FinanceStore} from '../src/modules/finance/finance.store.js';
 import type {Principal} from '../src/modules/auth/application/auth.service.js';
@@ -21,12 +21,14 @@ describe('FIN-A HTTP DTO contracts',()=>{
   movements:vi.fn().mockResolvedValue({data:[],meta:{page:1,limit:20,total:0,totalPages:0}}),
   expenses:vi.fn().mockResolvedValue({data:[],meta:{page:1,limit:20,total:0,totalPages:0}}),
   createExpense:vi.fn().mockResolvedValue({id:'expense-1',estado:'REGISTRADO'}),
-  expense:vi.fn().mockResolvedValue({id:'expense-1'})
+  expense:vi.fn().mockResolvedValue({id:'expense-1'}),
+  pendingExternal:vi.fn().mockResolvedValue({data:[],meta:{page:1,limit:20,total:0,totalPages:0}}),
+  postExternal:vi.fn().mockResolvedValue({movimientoId:'movement-1',registrado:true})
  };
  beforeEach(async()=>{
   vi.clearAllMocks();
   const testing=await Test.createTestingModule({
-   controllers:[FinanceIntentsController,FinanceAccountsController,FinanceExpensesController],
+   controllers:[FinanceIntentsController,FinanceAccountsController,FinanceExpensesController,FinanceReconciliationController],
    providers:[{provide:FinanceStore,useValue:methods}]
   }).compile();
   app=testing.createNestApplication<App>();app.setGlobalPrefix('api');
@@ -49,7 +51,9 @@ describe('FIN-A HTTP DTO contracts',()=>{
    .send({sucursalId:'branch',accion:'FIN_EXPENSE_CREATE'}).expect(201);
   await request(app.getHttpServer()).post('/api/finance/operation-intents')
    .send({sucursalId:'branch',accion:'ANOTHER_ACTION'}).expect(400);
-  expect(methods.issueIntent).toHaveBeenCalledOnce();
+  await request(app.getHttpServer()).post('/api/finance/operation-intents')
+   .send({sucursalId:'branch',accion:'FIN_EXTERNAL_POST'}).expect(201);
+  expect(methods.issueIntent).toHaveBeenCalledTimes(2);
  });
  it('requires a server-issued identifier in typed account registration',async()=>{
   const d={operationId,sucursalId:'branch',nombre:'Banco empresa',tipo:'BANCO'};
@@ -81,4 +85,20 @@ describe('FIN-A HTTP DTO contracts',()=>{
   expect(methods.movements).toHaveBeenCalledOnce();
   expect(methods.expense).toHaveBeenCalledOnce();
  });
+ it('validates external financial source posting and source-scoped pending listing',async()=>{
+  await request(app.getHttpServer()).get('/api/finance/reconciliation/pending?sucursalId=branch')
+   .expect(400);
+  await request(app.getHttpServer()).get('/api/finance/reconciliation/pending?sucursalId=branch&sourceType=PAGO')
+   .expect(200);
+  const d={operationId,sucursalId:'branch',sourceType:'PAGO',
+   sourceId:'payment-1',cuentaFinancieraId:'financial-account-1'};
+  await request(app.getHttpServer()).post('/api/finance/reconciliation/post').send(d)
+   .expect(201);
+  await request(app.getHttpServer()).post('/api/finance/reconciliation/post')
+   .send({...d,sourceType:'EFECTIVO'}).expect(400);
+  await request(app.getHttpServer()).post('/api/finance/reconciliation/post')
+   .send({...d,operationId:'inventado'}).expect(400);
+  expect(methods.postExternal).toHaveBeenCalledOnce();
+ });
+
 });

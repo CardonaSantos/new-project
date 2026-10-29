@@ -71,7 +71,7 @@ describe('FIN-A operational closing transaction',()=>{
   await expect(f.store.confirm(actor,{...input,operationId:f.issue()}))
    .rejects.toThrow('ya está cerrado');
  });
- it('denies a revoked user's closing request before any persisted snapshot',async()=>{
+ it('denies a revoked user request before any persisted closing snapshot',async()=>{
   const f=setup();
   f.tx.usuarioRol.findFirst.mockResolvedValue(null);
   await expect(f.store.confirm(actor,{sucursalId:'b',fechaOperativa:'2026-10-10',

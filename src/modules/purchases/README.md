@@ -126,3 +126,14 @@ CI comprueba contrato compilado y HTTP simulado. **Pendientes de certificación 
 - Las notas de crédito mantienen el campo `total` y admiten opcionalmente `impuestos`. Se calcula `subtotal=total-impuestos`, ambos persistidos. Si se omite `impuestos`, se interpreta **crédito comercial sin ajuste de impuesto**, para conservar compatibilidad con Postman previo. Un impuesto declarado jamás puede igualar o superar el total.
 - La migración `20261028181500_pur_a_invoice_receipt_coverage_credit_tax` completa como `subtotal=total` e `impuestos=0` las notas históricas existentes, sin eliminarlas ni modificar pagos/reintegros, y añade la identidad contable `total = subtotal + impuestos`.
 - Una nota de crédito es un documento comercial distinto de la factura original; el IVA rectificado se informa por separado. **FIN-A** será responsable de los asientos fiscales consolidados.
+
+
+## Arquitectura hexagonal — refactor del PR #12
+- `domain/`: políticas de compras, impuestos, liquidaciones y validaciones puras existentes.
+- `application/ports/`: contratos por subcontexto (proveedores, OC, recepciones, facturas, pagos y devoluciones).
+- `application/*.service.ts`: servicios de aplicación expuestos al controlador y a SUP-A.
+- `infrastructure/prisma/`: **mismos** stores transaccionales y motores INV-B/PAY-A/FIN-A, sin modificación funcional.
+- `presentation/http/`: DTOs y controladores sin imports de Prisma.
+- `purchases.module.ts`: puertos `useExisting` y servicios exportados para integraciones.
+
+Se preservan las rutas, datos, idempotencia y orden de operaciones; este fix no agrega migraciones.

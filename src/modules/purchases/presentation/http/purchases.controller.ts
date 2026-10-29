@@ -2,18 +2,18 @@
 import {Body,Controller,Get,Param,Patch,Post,Put,Query} from '@nestjs/common';
 import {CurrentUser} from '../../../auth/presentation/http/decorators/auth.decorators.js';
 import type {Principal} from '../../../auth/application/auth.service.js';
-import {PurchaseMastersStore} from '../../infrastructure/prisma/purchase-masters.store.js';
-import {PurchaseOrdersStore} from '../../infrastructure/prisma/purchase-orders.store.js';
-import {PurchaseReceiptsStore} from '../../infrastructure/prisma/purchase-receipts.store.js';
-import {PurchaseInvoicesStore} from '../../infrastructure/prisma/purchase-invoices.store.js';
-import {PurchasePaymentsStore} from '../../infrastructure/prisma/purchase-payments.store.js';
-import {PurchaseReturnsStore} from '../../infrastructure/prisma/purchase-returns.store.js';
+import {PurchaseMastersService} from '../../application/purchase-masters.service.js';
+import {PurchaseOrdersService} from '../../application/purchase-orders.service.js';
+import {PurchaseReceiptsService} from '../../application/purchase-receipts.service.js';
+import {PurchaseInvoicesService} from '../../application/purchase-invoices.service.js';
+import {PurchasePaymentsService} from '../../application/purchase-payments.service.js';
+import {PurchaseReturnsService} from '../../application/purchase-returns.service.js';
 import {Paging,SupplierDto,SupplierPatchDto,StatusDto,PresentationDto,PurchaseOrderDto,
  ReceiptDto,InvoiceDto,SupplierPaymentDto,ApplyDto,ReturnDto,CreditDto,CreditApplyDto,
  RefundSupplierDto,KeyDto,ReasonKeyDto} from './dto/purchases.dto.js';
 @Controller('purchases/suppliers')
 export class SuppliersController{
- constructor(private readonly s:PurchaseMastersStore){}
+ constructor(private readonly s:PurchaseMastersService){}
  @Get() list(@CurrentUser() u:Principal,@Query() q:Paging){return this.s.suppliers(u,q);}
  @Get(':id') detail(@CurrentUser() u:Principal,@Param('id') id:string,@Query() q:Paging){
   return this.s.supplier(u,id,q.sucursalId);}
@@ -25,7 +25,7 @@ export class SuppliersController{
 }
 @Controller('purchases/presentations')
 export class PresentationsController{
- constructor(private readonly s:PurchaseMastersStore){}
+ constructor(private readonly s:PurchaseMastersService){}
  @Get() list(@CurrentUser() u:Principal,@Query() q:Paging){return this.s.presentations(u,q);}
  @Post() create(@CurrentUser() u:Principal,@Body() d:PresentationDto){return this.s.createPresentation(u,d);}
  @Patch(':id/status') status(@CurrentUser() u:Principal,@Param('id') id:string,@Body() d:StatusDto){
@@ -33,7 +33,7 @@ export class PresentationsController{
 }
 @Controller('purchases/orders')
 export class PurchaseOrdersController{
- constructor(private readonly s:PurchaseOrdersStore){}
+ constructor(private readonly s:PurchaseOrdersService){}
  @Get() list(@CurrentUser() u:Principal,@Query() q:Paging){return this.s.list(u,q);}
  @Get(':id') detail(@CurrentUser() u:Principal,@Param('id') id:string){return this.s.detail(u,id);}
  @Post() create(@CurrentUser() u:Principal,@Body() d:PurchaseOrderDto){return this.s.create(u,d);}
@@ -48,7 +48,7 @@ export class PurchaseOrdersController{
 }
 @Controller('purchases/receipts')
 export class PurchaseReceiptsController{
- constructor(private readonly s:PurchaseReceiptsStore){}
+ constructor(private readonly s:PurchaseReceiptsService){}
  @Get() list(@CurrentUser() u:Principal,@Query() q:Paging){return this.s.list(u,q);}
  @Get(':id') detail(@CurrentUser() u:Principal,@Param('id') id:string){return this.s.detail(u,id);}
  @Get(':id/movements') movements(@CurrentUser() u:Principal,@Param('id') id:string){
@@ -63,7 +63,7 @@ export class PurchaseReceiptsController{
 }
 @Controller('purchases/invoices')
 export class PurchaseInvoicesController{
- constructor(private readonly s:PurchaseInvoicesStore){}
+ constructor(private readonly s:PurchaseInvoicesService){}
  @Get() list(@CurrentUser() u:Principal,@Query() q:Paging){return this.s.list(u,q);}
  @Get(':id') detail(@CurrentUser() u:Principal,@Param('id') id:string){return this.s.detail(u,id);}
  @Post() create(@CurrentUser() u:Principal,@Body() d:InvoiceDto){return this.s.create(u,d);}
@@ -74,7 +74,7 @@ export class PurchaseInvoicesController{
 }
 @Controller('purchases/payments')
 export class PurchasePaymentsController{
- constructor(private readonly s:PurchasePaymentsStore){}
+ constructor(private readonly s:PurchasePaymentsService){}
  @Get() list(@CurrentUser() u:Principal,@Query() q:Paging){return this.s.list(u,q);}
  @Get(':id') detail(@CurrentUser() u:Principal,@Param('id') id:string){return this.s.detail(u,id);}
  @Post() create(@CurrentUser() u:Principal,@Body() d:SupplierPaymentDto){return this.s.create(u,d);}
@@ -87,7 +87,7 @@ export class PurchasePaymentsController{
 }
 @Controller('purchases/returns')
 export class PurchaseReturnsController{
- constructor(private readonly s:PurchaseReturnsStore){}
+ constructor(private readonly s:PurchaseReturnsService){}
  @Get() list(@CurrentUser() u:Principal,@Query() q:Paging){return this.s.returns(u,q);}
  @Get(':id') detail(@CurrentUser() u:Principal,@Param('id') id:string){return this.s.returnDetail(u,id);}
  @Post() create(@CurrentUser() u:Principal,@Body() d:ReturnDto){return this.s.createReturn(u,d);}
@@ -98,7 +98,7 @@ export class PurchaseReturnsController{
 }
 @Controller('purchases/credits')
 export class PurchaseCreditsController{
- constructor(private readonly s:PurchaseReturnsStore){}
+ constructor(private readonly s:PurchaseReturnsService){}
  @Get() list(@CurrentUser() u:Principal,@Query() q:Paging){return this.s.credits(u,q);}
  @Get(':id') detail(@CurrentUser() u:Principal,@Param('id') id:string){return this.s.creditDetail(u,id);}
  @Post() create(@CurrentUser() u:Principal,@Body() d:CreditDto){return this.s.createCredit(u,d);}
@@ -111,7 +111,7 @@ export class PurchaseCreditsController{
 }
 @Controller('purchases/refunds')
 export class PurchaseSupplierRefundsController{
- constructor(private readonly s:PurchaseReturnsStore){}
+ constructor(private readonly s:PurchaseReturnsService){}
  @Post() create(@CurrentUser() u:Principal,@Body() d:RefundSupplierDto){return this.s.createSupplierRefund(u,d);}
  @Post(':id/confirm') confirm(@CurrentUser() u:Principal,@Param('id') id:string,@Body() d:KeyDto){
   return this.s.confirmSupplierRefund(u,id,d);}

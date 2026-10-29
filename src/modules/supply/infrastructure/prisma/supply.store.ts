@@ -3,7 +3,7 @@ import {BadRequestException,ConflictException,Injectable,NotFoundException} from
 import {Prisma} from '../../../../generated/prisma/client.js';
 import {PrismaService} from '../../../../infrastructure/database/prisma/prisma.service.js';
 import {InventoryPostingEngine,type CostSlice} from '../../../inventory/infrastructure/prisma/inventory-posting.engine.js';
-import {PurchaseOrdersStore} from '../../../purchases/infrastructure/prisma/purchase-orders.store.js';
+import {PurchaseOrdersService} from '../../../purchases/application/purchase-orders.service.js';
 import {amount,price,qty} from '../../../inventory/domain/stock.policy.js';
 import {supplyVisibleStatus} from '../../domain/supply.policy.js';
 import type {Principal} from '../../../auth/application/auth.service.js';
@@ -22,7 +22,7 @@ const transferInclude={almacenOrigen:true,almacenDestino:true,
 @Injectable()
 export class SupplyStore{
  constructor(private readonly db:PrismaService,private readonly engine:InventoryPostingEngine,
-  private readonly purchases:PurchaseOrdersStore){}
+  private readonly purchases:PurchaseOrdersService){}
 
  private async permission(tx:Tx,u:Principal,branchId:string,code:string){
   await this.engine.allowed(tx,u.id,code,branchId);

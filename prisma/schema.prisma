@@ -1945,6 +1945,8 @@ model LineaExtractoBancario {
  conciliadoPorId String?
  conciliadoPor Usuario? @relation("LineaExtracto_conciliador_Usuario",fields:[conciliadoPorId],references:[id],onDelete:Restrict)
  conciliadoEn DateTime? @db.Timestamptz(3)
+ validacionReferencia String? @db.VarChar(40)
+ justificacionConciliacion String? @db.VarChar(500)
  creadoEn DateTime @default(now()) @db.Timestamptz(3)
  @@unique([cuentaFinancieraId,claveExterna])
  @@index([cuentaFinancieraId,fecha])

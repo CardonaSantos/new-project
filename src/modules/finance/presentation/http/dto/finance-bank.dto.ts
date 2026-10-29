@@ -1,5 +1,5 @@
 import {Type} from 'class-transformer';
-import {ArrayMaxSize,ArrayMinSize,IsArray,IsIn,IsInt,IsOptional,IsString,Matches,Max,MaxLength,Min,MinLength,ValidateNested} from 'class-validator';
+import {ArrayMaxSize,ArrayMinSize,IsBoolean,IsArray,IsIn,IsInt,IsOptional,IsString,Matches,Max,MaxLength,Min,MinLength,ValidateNested} from 'class-validator';
 import {bankAmount} from '../../../domain/bank-reconciliation.policy.js';
 export class BankQueryDto{
  @IsString() @MinLength(1) sucursalId!:string;
@@ -27,6 +27,8 @@ export class BankImportDto extends FinanceOperation{
 export class BankMatchDto extends FinanceOperation{
  @IsString() @MinLength(1) lineaId!:string;
  @IsString() @MinLength(1) movimientoId!:string;
+ @IsOptional() @IsBoolean() forzarConciliacion?:boolean;
+ @IsOptional() @IsString() @MinLength(20) @MaxLength(500) justificacion?:string;
 }
 export class BankUnmatchDto extends FinanceOperation{
  @IsString() @MinLength(1) lineaId!:string;

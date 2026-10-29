@@ -5,6 +5,7 @@ import {PrismaService} from '../../../../infrastructure/database/prisma/prisma.s
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {operationalDate} from '../../../payments/domain/payment.policy.js';
 import {FinancePolicyError} from '../../domain/finance-policy.error.js';
+import {compareBankMatchEvidence,localBankDay} from '../../domain/bank-match.policy.js';
 import {assertBankDate,assertStatementAmount,assertReversibleSource,bankExternalKey,financeReason} from '../../domain/bank-reconciliation.policy.js';
 import type {BankQuery,BankImportInput,BankMatchInput,BankUnmatchInput,BankReverseInput} from '../../application/contracts/finance-bank.types.js';
 type Tx=Prisma.TransactionClient;
@@ -139,6 +140,49 @@ export class FinanceBankStore{
    });
   });
  }
+ private async sourceEvidence(tx:Tx,movement:{
+  id:string;referenciaTipo:string;referenciaId:string;creadoEn:Date
+ },sucursalId:string){
+  let refs:(string|null|undefined)[]=[];
+  let recorded=movement.creadoEn;
+  switch(movement.referenciaTipo){
+   case 'PAGO':{
+    const payment=await tx.pago.findUnique({where:{id:movement.referenciaId},
+     include:{cuenta:{include:{orden:true}}}});
+    if(!payment||payment.cuenta.orden.sucursalId!==sucursalId)
+     throw new ConflictException('Pago de origen inexistente o de otra sucursal');
+    refs=[payment.referencia,payment.codigoAutorizacion,payment.terminalReferencia];
+    recorded=payment.cobradoEn;break;
+   }
+   case 'REEMBOLSO_PAGO':{
+    const refund=await tx.reembolsoPago.findUnique({where:{id:movement.referenciaId},
+     include:{pago:{include:{cuenta:{include:{orden:true}}}}}});
+    if(!refund||refund.pago.cuenta.orden.sucursalId!==sucursalId)
+     throw new ConflictException('Reembolso de origen inexistente o de otra sucursal');
+    refs=[refund.referenciaExterna];recorded=refund.creadoEn;break;
+   }
+   case 'PAGO_PROVEEDOR':{
+    const payment=await tx.pagoProveedor.findUnique({where:{id:movement.referenciaId}});
+    if(!payment||payment.sucursalId!==sucursalId||payment.estado!=='CONFIRMADO')
+     throw new ConflictException('Pago proveedor no confirmado o de otra sucursal');
+    refs=[payment.referencia];recorded=payment.confirmadoEn??payment.pagadoEn;break;
+   }
+   case 'GASTO_OPERATIVO':{
+    const expense=await tx.gastoOperativo.findUnique({where:{id:movement.referenciaId}});
+    if(!expense||expense.sucursalId!==sucursalId)
+     throw new ConflictException('Gasto original inexistente o de otra sucursal');
+    refs=[expense.documentoReferencia];recorded=expense.registradoEn;break;
+   }
+   case 'REVERSA_FINANCIERA':{
+    const reversal=await tx.reversaFinanciera.findUnique({where:{movimientoReversaId:movement.id}});
+    if(!reversal||reversal.sucursalId!==sucursalId)
+     throw new ConflictException('Reversa sin respaldo o de otra sucursal');
+    refs=[reversal.movimientoOriginalId];recorded=reversal.creadaEn;break;
+   }
+   default:throw new ConflictException('Tipo de asiento sin soporte de verificación bancaria');
+  }
+  return {refs,recorded};
+ }
  async match(u:Principal,d:BankMatchInput){
   return this.atomic(async tx=>{
    await this.permission(tx,u,d.sucursalId,'finance.statements.match');
@@ -155,12 +199,31 @@ export class FinanceBankStore{
     if(!row.monto.eq(movement.monto))throw new ConflictException('Importes del extracto y asiento no coinciden');
     if(await tx.lineaExtractoBancario.count({where:{movimientoFinancieroId:movement.id}}))
      throw new ConflictException('Asiento ya conciliado con otra línea');
+    const {sucursal}=await this.account(tx,d.sucursalId,row.cuentaFinancieraId);
+    const source=await this.sourceEvidence(tx,movement,d.sucursalId);
+    const issues=compareBankMatchEvidence({
+     bankReference:row.referencia,originReferences:source.refs,
+     bankDay:row.fecha.toISOString().slice(0,10),
+     originDay:localBankDay(source.recorded,sucursal.zonaHoraria)
+    });
+    if(issues.length&&!d.forzarConciliacion)
+     throw new ConflictException('Referencia o fecha bancaria no verificada; requiere revisión autorizada: '+issues.join('; '));
+    if(d.forzarConciliacion){
+     await this.permission(tx,u,d.sucursalId,'finance.statements.override');
+     if(!d.justificacion||d.justificacion.trim().length<20)
+      throw new BadRequestException('Justificación de conciliación excepcional: mínimo 20 caracteres');
+    }else if(d.justificacion){
+     throw new BadRequestException('La justificación solo se admite con forzarConciliacion');
+    }
+    const validacionReferencia=d.forzarConciliacion?'EXCEPCION_AUTORIZADA':'VERIFICADA';
     const saved=await tx.lineaExtractoBancario.update({where:{id:row.id},data:{
-     movimientoFinancieroId:movement.id,conciliadoPorId:u.id,conciliadoEn:new Date()
+     movimientoFinancieroId:movement.id,conciliadoPorId:u.id,conciliadoEn:new Date(),
+     validacionReferencia,justificacionConciliacion:d.forzarConciliacion?d.justificacion!.trim():null
     }});
     await this.event(tx,u,d.sucursalId,'FIN_STATEMENT_MATCHED','LineaExtractoBancario',saved.id,
-     {movimientoId:movement.id,cuentaId:row.cuentaFinancieraId,monto:row.monto.toFixed(2)});
-    return {lineaId:saved.id,movimientoId:movement.id,estado:'CONCILIADO'};
+     {movimientoId:movement.id,cuentaId:row.cuentaFinancieraId,monto:row.monto.toFixed(2),
+      validacionReferencia,issues,justificacion:d.forzarConciliacion?d.justificacion!.trim():null});
+    return {lineaId:saved.id,movimientoId:movement.id,estado:'CONCILIADO',validacionReferencia};
    });
   });
  }
@@ -175,7 +238,8 @@ export class FinanceBankStore{
     if(!row.movimientoFinancieroId)throw new ConflictException('Línea no conciliada');
     const previous=row.movimientoFinancieroId;
     await tx.lineaExtractoBancario.update({where:{id:row.id},data:{
-     movimientoFinancieroId:null,conciliadoPorId:null,conciliadoEn:null
+     movimientoFinancieroId:null,conciliadoPorId:null,conciliadoEn:null,
+     validacionReferencia:null,justificacionConciliacion:null
     }});
     await this.event(tx,u,d.sucursalId,'FIN_STATEMENT_UNMATCHED','LineaExtractoBancario',row.id,
      {anteriorMovimientoId:previous,motivo});

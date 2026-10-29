@@ -7,6 +7,7 @@ import type {Principal} from '../../../auth/application/auth.service.js';
 import {money,formatted,ensureCoverage} from '../../domain/payment.policy.js';
 import {allowed,audit,orderForAccount,runOnce,txSerializable,type Tx} from './payment-shared.js';
 import {CashStore} from './cash.store.js';
+import {postVerifiedExternalMovement} from '../../../finance/finance-posting.js';
 import type {CollectDto,ConfirmAttemptDto,RefundDto,SplitDto,EqualSplitDto,PageDto} from '../../presentation/http/dto/payments.dto.js';
 
 @Injectable()
@@ -41,7 +42,7 @@ export class PaymentsStore{
     orderBy:{abiertaEn:'asc'}});
   });
  }
- private async record(tx:Tx,u:Principal,accountId:string,turnoId:string,
+ private async record(tx:Tx,u:Principal,accountId:string,turnoId:string,branchId:string,
   entry:{metodo:'EFECTIVO'|'TARJETA'|'TRANSFERENCIA'|'OTRO';monto:string;efectivoRecibido?:string;referencia?:string;
    codigoAutorizacion?:string;terminalReferencia?:string},attemptId?:string){
   const amount=money(entry.monto);
@@ -57,6 +58,29 @@ export class PaymentsStore{
    ...(attemptId?{intentoId:attemptId}:{})}});
   if(entry.metodo==='EFECTIVO')await tx.movimientoCaja.create({data:{
    turnoId,tipo:'INGRESO',monto:amount,motivo:'Cobro de cuenta',pagoId:pay.id,usuarioId:u.id}});
+  else{
+   // Configured once by finance; never prompt cashiers or guess a destination bank.
+   const route=await tx.rutaFinanciera.findUnique({
+    where:{sucursalId_metodo:{sucursalId:branchId,metodo:entry.metodo}},
+    include:{cuentaFinanciera:true}});
+   const verified=(entry.metodo==='TARJETA'&&!!entry.codigoAutorizacion?.trim())||
+    (entry.metodo==='TRANSFERENCIA'&&!!attemptId&&!!entry.referencia?.trim())||
+    (entry.metodo==='OTRO'&&!!entry.referencia?.trim());
+   if(route?.activa&&route.cuentaFinanciera.activa&&
+    route.cuentaFinanciera.sucursalId===branchId&&
+    route.cuentaFinanciera.tipo!=='TARJETA_EMPRESA'&&verified){
+    const config=await tx.configuracionSucursal.findUnique({where:{sucursalId:branchId}});
+    if(route.cuentaFinanciera.moneda===(config?.moneda??'GTQ')){
+     const posting=await postVerifiedExternalMovement(tx,{
+      sucursalId:branchId,cuentaId:route.cuentaFinancieraId,
+      referenciaTipo:'PAGO',referenciaId:pay.id,monto:amount,
+      descripcion:'Cobro externo PAY-A: '+entry.metodo
+     });
+     await audit(tx,u,branchId,'FIN_AUTO_RECEIPT_POSTED','MovimientoFinanciero',posting.id,
+      {pagoId:pay.id,metodo:entry.metodo});
+    }
+   }
+  }
   await tx.cuenta.update({where:{id:accountId},data:{pagado:{increment:amount}}});
   return pay;
  }
@@ -164,7 +188,7 @@ export class PaymentsStore{
       throw new BadRequestException('Tarjeta externa exige código de autorización confirmado');
      if(p.metodo==='OTRO'&&!p.referencia?.trim())
       throw new BadRequestException('Otro método exige referencia');
-     const paid=await this.record(tx,u,accountId,d.turnoId,p);
+     const paid=await this.record(tx,u,accountId,d.turnoId,branch,p);
      pagos.push(paid.id);
     }
    }
@@ -190,7 +214,7 @@ export class PaymentsStore{
    if(shift.caja.sucursalId!==attempt.cuenta.orden.sucursalId)throw new ConflictException('Turno de otra sucursal');
    ensureCoverage(attempt.cuenta.total,attempt.cuenta.pagado.plus(attempt.monto));
    await tx.intentoPago.update({where:{id:attemptId},data:{estado:'CONFIRMADO'}});
-   const payment=await this.record(tx,u,attempt.cuentaId,d.turnoId,{
+   const payment=await this.record(tx,u,attempt.cuentaId,d.turnoId,attempt.cuenta.orden.sucursalId,{
     metodo:attempt.metodo,monto:formatted(attempt.monto),
     referencia:attempt.referenciaExterna??undefined,
     codigoAutorizacion:attempt.codigoAutorizacion??undefined,
@@ -249,6 +273,20 @@ export class PaymentsStore{
    if(payment.metodo==='EFECTIVO')await tx.movimientoCaja.create({data:{
     turnoId:d.turnoId!,tipo:'EGRESO',monto:amount,motivo:'Reembolso: '+d.motivo.trim(),
     reembolsoId:refund.id,usuarioId:u.id}});
+   else{
+    // Refund to the same financial account as the original confirmed receipt.
+    const original=await tx.movimientoFinanciero.findFirst({
+     where:{referenciaTipo:'PAGO',referenciaId:pagoId}});
+    if(original){
+     const posting=await postVerifiedExternalMovement(tx,{
+      sucursalId:branch,cuentaId:original.cuentaId,
+      referenciaTipo:'REEMBOLSO_PAGO',referenciaId:refund.id,
+      monto:amount.neg(),descripcion:'Reembolso externo PAY-A'
+     });
+     await audit(tx,u,branch,'FIN_AUTO_REFUND_POSTED','MovimientoFinanciero',posting.id,
+      {reembolsoId:refund.id,pagoId});
+    }
+   }
    await audit(tx,u,branch,'PAYMENT_REFUNDED','ReembolsoPago',refund.id,
     {pagoId,monto:formatted(amount),motivo:d.motivo.trim()});
    return {refundId:refund.id,pagoId,cuentaId:payment.cuentaId};

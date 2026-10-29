@@ -21,7 +21,10 @@ export abstract class CustomersPort{
  abstract setPrimary(actor:Principal,id:string,addressId:string,command:BranchCommand):Promise<unknown>;
  abstract deactivateAddress(actor:Principal,id:string,addressId:string,command:BranchCommand):Promise<unknown>;
 }
-// Public integration boundary: ORD-A checks customer visibility without accessing customer tables.
+// Public integration boundary. The transaction token is intentionally opaque:
+// application code never imports Prisma, and infrastructure adapters share the
+// ORD-A transaction to avoid detached read/write checks and TOCTOU races.
 export abstract class CustomerSelectionPort{
- abstract assertSelectable(actorId:string,sucursalId:string,clienteId:string):Promise<void>;
+ abstract assertSelectableInTx(transaction:unknown,actorId:string,
+  sucursalId:string,clienteId:string):Promise<void>;
 }

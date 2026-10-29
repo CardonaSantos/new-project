@@ -127,13 +127,18 @@ export class CustomersStore extends CustomersPort implements CustomerSelectionPo
    });
   });
  }
- async assertSelectable(actorId:string,branchId:string,clienteId:string):Promise<void>{
-  await this.atomic(async tx=>{
-   await this.require(tx,actorId,branchId,'customers.read');
-   await this.branch(tx,branchId);
-   const customer=await this.visibleCustomer(tx,actorId,clienteId,branchId);
-   if(!customer.activo)throw new ConflictException('Cliente inactivo');
-  });
+ async assertSelectableInTx(transaction:unknown,actorId:string,branchId:string,
+  clienteId:string):Promise<void>{
+  // The enclosing Orders transaction is the owner. Never open a second
+  // transaction here: a detached validation may race with deactivation.
+  const tx=transaction as Tx;
+  await this.require(tx,actorId,branchId,'customers.read');
+  await this.branch(tx,branchId);
+  // Serialize selection against customer deactivation (FOR UPDATE).
+  // Under SERIALIZABLE a conflicting concurrent change is retried by ORD-A.
+  await tx.$queryRaw`SELECT "id" FROM "Cliente" WHERE "id"=${clienteId} FOR SHARE`;
+  const customer=await this.visibleCustomer(tx,actorId,clienteId,branchId);
+  if(!customer.activo)throw new ConflictException('Cliente inactivo');
  }
  async list(actor:Principal,q:CustomerQuery){
   return this.atomic(async tx=>{

@@ -173,7 +173,7 @@ export class OrderStore{
    if(!branch?.activa)throw new ConflictException('Sucursal inexistente o inactiva');
    if(d.modalidad==='MESA'&&!d.mesaId)throw new BadRequestException('Servicio MESA requiere mesaId');
    if(d.modalidad!=='MESA'&&d.mesaId)throw new BadRequestException('mesaId solo en modalidad MESA');
-   if(d.clienteId)await this.customerSelection.assertSelectable(u.id,d.sucursalId,d.clienteId);
+   if(d.clienteId)await this.customerSelection.assertSelectableInTx(tx,u.id,d.sucursalId,d.clienteId);
    const occupant=d.mesaId?await this.tables.findOrOpen(tx,u,d.mesaId,d.sucursalId):null;
    const order=await tx.orden.create({data:{
     sucursalId:d.sucursalId,numero:'ORD-'+randomUUID().slice(0,12),
@@ -198,7 +198,7 @@ export class OrderStore{
    const order=await this.order(tx,id);
    await this.engine.allowed(tx,u.id,'orders.manage',order.sucursalId);
    if(order.estado!=='ABIERTA')throw new ConflictException('Orden no editable');
-   if(d.clienteId)await this.customerSelection.assertSelectable(u.id,order.sucursalId,d.clienteId);
+   if(d.clienteId)await this.customerSelection.assertSelectableInTx(tx,u.id,order.sucursalId,d.clienteId);
    const updated=await tx.orden.updateMany({where:{id,version:d.version,estado:'ABIERTA'},
     data:{version:{increment:1},
      ...(d.observaciones!==undefined?{observaciones:d.observaciones}:{}),

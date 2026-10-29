@@ -22,8 +22,44 @@ describe('Customer privacy enforcement',()=>{
  });
  it('rejects cross-branch customer selection without revealing client identity',async()=>{
   const tx={usuarioRol:{findFirst:vi.fn().mockResolvedValue(null)}};
-  const store=new CustomersStore({$transaction:vi.fn(async fn=>fn(tx))} as unknown as PrismaService);
-  await expect(store.assertSelectable('employee','branch-b','customer-from-other-branch'))
+  const db={$transaction:vi.fn()} as unknown as PrismaService;
+  const store=new CustomersStore(db);
+  await expect(store.assertSelectableInTx(tx,'employee','branch-b','customer-from-other-branch'))
    .rejects.toThrow('Permiso insuficiente');
+  expect(db.$transaction).not.toHaveBeenCalled();
+ });
+ it('denies an inactive customer inside the caller transaction',async()=>{
+  const tx={
+   usuarioRol:{findFirst:vi.fn(async({where}:any)=>
+    where.OR?.[0]?.rol?.rolPermisosComoRol?.some?.permiso?.codigo==='customers.global.manage'
+     ?null:{id:'grant'})},
+   sucursal:{findUnique:vi.fn().mockResolvedValue({id:'branch-a',activa:true})},
+   $queryRaw:vi.fn().mockResolvedValue([{id:'c1'}]),
+   cliente:{findFirst:vi.fn().mockResolvedValue({id:'c1',activo:false})}
+  };
+  const db={$transaction:vi.fn()} as unknown as PrismaService;
+  const store=new CustomersStore(db);
+  await expect(store.assertSelectableInTx(tx,'employee','branch-a','c1'))
+   .rejects.toThrow('Cliente inactivo');
+  expect(tx.$queryRaw).toHaveBeenCalledOnce();
+  expect(tx.cliente.findFirst).toHaveBeenCalledWith({where:{
+   id:'c1',OR:expect.any(Array)
+  }});
+  expect(db.$transaction).not.toHaveBeenCalled();
+ });
+ it('accepts a visible active customer on the same transaction',async()=>{
+  const tx={
+   usuarioRol:{findFirst:vi.fn(async({where}:any)=>
+    where.OR?.[0]?.rol?.rolPermisosComoRol?.some?.permiso?.codigo==='customers.global.manage'
+    ?null:{id:'grant'})},
+   sucursal:{findUnique:vi.fn().mockResolvedValue({id:'branch-a',activa:true})},
+   $queryRaw:vi.fn().mockResolvedValue([{id:'c1'}]),
+   cliente:{findFirst:vi.fn().mockResolvedValue({id:'c1',activo:true})}
+  };
+  const db={$transaction:vi.fn()} as unknown as PrismaService;
+  const store=new CustomersStore(db);
+  await expect(store.assertSelectableInTx(tx,'employee','branch-a','c1'))
+   .resolves.toBeUndefined();
+  expect(db.$transaction).not.toHaveBeenCalled();
  });
 });

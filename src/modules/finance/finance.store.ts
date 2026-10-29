@@ -5,8 +5,10 @@ import {PrismaService} from '../../infrastructure/database/prisma/prisma.service
 import type {Principal} from '../auth/application/auth.service.js';
 import {CashStore} from '../payments/infrastructure/prisma/cash.store.js';
 import {money,operationalDate} from '../payments/domain/payment.policy.js';
+import {postVerifiedExternalMovement} from './finance-posting.js';
 import type {FinanceAccountCreateDto,FinanceAccountQueryDto,FinanceMovementQueryDto,
- FinanceOperationIntentDto,FinanceExpenseCreateDto,FinanceExpenseQueryDto} from './finance.dto.js';
+ FinanceOperationIntentDto,FinanceExpenseCreateDto,FinanceExpenseQueryDto,
+ FinanceExternalPendingQueryDto,FinanceExternalPostDto} from './finance.dto.js';
 
 type Tx=Prisma.TransactionClient;
 @Injectable()
@@ -124,8 +126,9 @@ export class FinanceStore{
  }
  async issueIntent(u:Principal,d:FinanceOperationIntentDto){
   return this.atomic(async tx=>{
-   await this.permission(tx,u,d.sucursalId,d.accion==='FIN_ACCOUNT_CREATE'
-    ?'finance.accounts.manage':'finance.expenses.create');
+   const code=d.accion==='FIN_ACCOUNT_CREATE'?'finance.accounts.manage':
+    d.accion==='FIN_EXPENSE_CREATE'?'finance.expenses.create':'finance.movements.post';
+   await this.permission(tx,u,d.sucursalId,code);
    await this.activeBranch(tx,d.sucursalId);
    const operationId='FIN:'+randomUUID();
    const expiresAt=new Date(Date.now()+24*60*60*1000);
@@ -244,6 +247,130 @@ export class FinanceStore{
    });
   });
  }
+
+ async pendingExternal(u:Principal,q:FinanceExternalPendingQueryDto){
+  return this.atomic(async tx=>{
+   await this.permission(tx,u,q.sucursalId,'finance.reconciliation.read');
+   const skip=(q.page-1)*q.limit,take=q.limit;
+   let sources:{id:string;monto:Prisma.Decimal;metodo:string;referencia:string|null;fecha:Date}[]=[];
+   let total=0;
+   if(q.sourceType==='PAGO'){
+    const where:Prisma.PagoWhereInput={metodo:{not:'EFECTIVO'},
+     cuenta:{orden:{sucursalId:q.sucursalId}}};
+    const [rows,count]=await Promise.all([
+     tx.pago.findMany({where,skip,take,orderBy:[{cobradoEn:'desc'},{id:'desc'}]}),
+     tx.pago.count({where})
+    ]);
+    sources=rows.map(r=>({id:r.id,monto:r.monto,metodo:r.metodo,
+     referencia:r.referencia??r.codigoAutorizacion,fecha:r.cobradoEn}));
+    total=count;
+   }else if(q.sourceType==='PAGO_PROVEEDOR'){
+    const where:Prisma.PagoProveedorWhereInput={sucursalId:q.sucursalId,
+     estado:'CONFIRMADO',metodo:{not:'EFECTIVO'}};
+    const [rows,count]=await Promise.all([
+     tx.pagoProveedor.findMany({where,skip,take,orderBy:[{confirmadoEn:'desc'},{id:'desc'}]}),
+     tx.pagoProveedor.count({where})
+    ]);
+    sources=rows.map(r=>({id:r.id,monto:r.monto,metodo:r.metodo,
+     referencia:r.referencia,fecha:r.confirmadoEn??r.pagadoEn}));
+    total=count;
+   }else{
+    const where:Prisma.ReembolsoPagoWhereInput={pago:{
+     metodo:{not:'EFECTIVO'},cuenta:{orden:{sucursalId:q.sucursalId}}}};
+    const [rows,count]=await Promise.all([
+     tx.reembolsoPago.findMany({where,skip,take,
+      orderBy:[{creadoEn:'desc'},{id:'desc'}],include:{pago:true}}),
+     tx.reembolsoPago.count({where})
+    ]);
+    sources=rows.map(r=>({id:r.id,monto:r.monto,metodo:r.pago.metodo,
+     referencia:r.referenciaExterna,fecha:r.creadoEn}));
+    total=count;
+   }
+   const posted=sources.length?await tx.movimientoFinanciero.findMany({where:{
+    referenciaTipo:q.sourceType,referenciaId:{in:sources.map(x=>x.id)}
+   },select:{referenciaId:true,cuentaId:true,id:true,monto:true}}):[];
+   const indexed=new Map(posted.map(x=>[x.referenciaId,x]));
+   return {data:sources.map(r=>({
+    sourceType:q.sourceType,sourceId:r.id,metodo:r.metodo,
+    monto:r.monto.toFixed(2),referencia:r.referencia,fecha:r.fecha,
+    estado:indexed.has(r.id)?'REGISTRADO':'PENDIENTE_CUENTA',
+    cuentaFinancieraId:indexed.get(r.id)?.cuentaId??null,
+    movimientoId:indexed.get(r.id)?.id??null
+   })),meta:{page:q.page,limit:q.limit,total,totalPages:Math.ceil(total/q.limit)},
+   nota:'Página de operaciones externas confirmadas; PENDIENTE_CUENTA indica falta de imputación, no falta de pago ni conciliación bancaria'};
+  });
+ }
+ async postExternal(u:Principal,d:FinanceExternalPostDto){
+  return this.atomic(async tx=>{
+   await this.permission(tx,u,d.sucursalId,'finance.movements.post');
+   return this.completeIntent(tx,u,d,'FIN_EXTERNAL_POST',async()=>{
+    await this.activeBranch(tx,d.sucursalId);
+    let value:Prisma.Decimal;
+    let description:string;
+    if(d.sourceType==='PAGO'){
+     const p=await tx.pago.findUnique({where:{id:d.sourceId},
+      include:{cuenta:{include:{orden:true}}}});
+     if(!p||p.cuenta.orden.sucursalId!==d.sucursalId)
+      throw new NotFoundException('Cobro externo inexistente en sucursal');
+     if(p.metodo==='EFECTIVO'||p.recibidoPorRepartidor)
+      throw new ConflictException('No imputar efectivo o recaudo de repartidor a banco');
+     if(p.metodo==='TARJETA'&&!p.codigoAutorizacion?.trim()||
+      p.metodo==='TRANSFERENCIA'&&!p.referencia?.trim()||
+      p.metodo==='OTRO'&&!p.referencia?.trim())
+      throw new ConflictException('Cobro sin evidencia externa confirmada');
+     if(p.metodo==='TRANSFERENCIA'){
+      const attempt=p.intentoId?await tx.intentoPago.findUnique({where:{id:p.intentoId}}):null;
+      if(!attempt||attempt.estado!=='CONFIRMADO')
+       throw new ConflictException('Transferencia aún no verificada');
+     }
+     value=p.monto;description='Cobro externo confirmado';
+    }else if(d.sourceType==='PAGO_PROVEEDOR'){
+     const p=await tx.pagoProveedor.findUnique({where:{id:d.sourceId}});
+     if(!p||p.sucursalId!==d.sucursalId)
+      throw new NotFoundException('Pago a proveedor inexistente en sucursal');
+     if(p.estado!=='CONFIRMADO'||p.metodo==='EFECTIVO'||!p.referencia?.trim())
+      throw new ConflictException('Solo pagos externos confirmados con referencia');
+     if(p.cuentaFinancieraId&&p.cuentaFinancieraId!==d.cuentaFinancieraId)
+      throw new ConflictException('Pago proveedor ya vinculado a otra cuenta');
+     value=p.monto.neg();description='Pago confirmado a proveedor';
+    }else{
+     const r=await tx.reembolsoPago.findUnique({where:{id:d.sourceId},
+      include:{pago:{include:{cuenta:{include:{orden:true}}}}}});
+     if(!r||r.pago.cuenta.orden.sucursalId!==d.sucursalId)
+      throw new NotFoundException('Reembolso inexistente en sucursal');
+     if(r.pago.metodo==='EFECTIVO'||!r.referenciaExterna?.trim())
+      throw new ConflictException('Solo reembolso externo con referencia verificada');
+     const original=await tx.movimientoFinanciero.findFirst({
+      where:{referenciaTipo:'PAGO',referenciaId:r.pagoId}});
+     if(!original||original.cuentaId!==d.cuentaFinancieraId)
+      throw new ConflictException('Vincule primero el cobro original con la misma cuenta');
+     value=r.monto.neg();description='Reembolso externo de cobro';
+    }
+    const result=await postVerifiedExternalMovement(tx,{
+     sucursalId:d.sucursalId,cuentaId:d.cuentaFinancieraId,
+     referenciaTipo:d.sourceType,referenciaId:d.sourceId,
+     monto:value,descripcion:description
+    });
+    if(d.sourceType==='PAGO_PROVEEDOR')
+     await tx.pagoProveedor.update({where:{id:d.sourceId},
+      data:{cuentaFinancieraId:d.cuentaFinancieraId}});
+    if(result.created){
+     await tx.eventoAuditoria.create({data:{usuarioId:u.id,sucursalId:d.sucursalId,
+      accion:'FIN_EXTERNAL_POSTED',entidad:'MovimientoFinanciero',entidadId:result.id,
+      despues:{sourceType:d.sourceType,sourceId:d.sourceId,monto:result.monto,
+       cuentaId:d.cuentaFinancieraId}}});
+     await tx.eventoOutbox.create({data:{tipo:'FIN_EXTERNAL_POSTED',
+      agregado:'MovimientoFinanciero',agregadoId:result.id,
+      payload:{sucursalId:d.sucursalId,sourceType:d.sourceType,sourceId:d.sourceId}}});
+    }
+    return {sourceType:d.sourceType,sourceId:d.sourceId,
+     movimientoId:result.id,cuentaFinancieraId:result.cuentaId,
+     monto:result.monto,registrado:true,nuevo:result.created,
+     conciliadoBanco:false};
+   });
+  });
+ }
+
  async expenses(u:Principal,q:FinanceExpenseQueryDto){
   return this.atomic(async tx=>{
    await this.permission(tx,u,q.sucursalId,'finance.expenses.read');

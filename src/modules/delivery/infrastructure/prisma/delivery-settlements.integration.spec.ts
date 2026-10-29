@@ -61,6 +61,22 @@ describe('DEL-A D3 settlements — no double-money accounting',()=>{
   expect(ctx.audit).toHaveBeenCalledOnce();
   expect((tx as any).pago).toBeUndefined();
  });
+ it('replays a closed settlement without reopening a closed cash shift',async()=>{
+  const tx={liquidacionRepartidor:{findUnique:vi.fn().mockResolvedValue({
+   id:'l1',sucursalId:'s1',estado:'CERRADA',totalEsperado:money('22.00')})}};
+  const ctx=common(tx);
+  ctx.once.mockResolvedValue({id:'l1',estado:'CERRADA',movimientoCajaId:'original',
+   totalEntregado:'22.00'});
+  const shift={shiftTx:vi.fn().mockRejectedValue(new ConflictException('Turno cerrado'))};
+  const store=new CourierSettlementsStore(ctx as unknown as SettlementCommon,
+   {} as DeliveryPaymentsPort,shift as unknown as CashStore);
+  vi.spyOn(store,'detail').mockResolvedValue({id:'l1'} as never);
+  const response=await store.close(u,'l1',{turnoCajaId:'shift-closed',
+   totalEntregado:'22.00',claveOperacion:'D3:CLOSE:REPLAY'});
+  expect(response.movimientoCajaId).toBe('original');
+  expect(shift.shiftTx).not.toHaveBeenCalled();
+  expect(ctx.require).toHaveBeenCalledTimes(2);
+ });
  it('rejects shortage before posting cash or closing settlement',async()=>{
   const tx={liquidacionRepartidor:{findUnique:vi.fn().mockResolvedValue({
    id:'l1',sucursalId:'s1',estado:'ABIERTA',totalEsperado:money('22.00')}),

@@ -3,7 +3,7 @@ import {BadRequestException,ConflictException,Injectable,NotFoundException} from
 import {Prisma} from '../../../../generated/prisma/client.js';
 import {PrismaService} from '../../../../infrastructure/database/prisma/prisma.service.js';
 import type {Principal} from '../../../auth/application/auth.service.js';
-import {money,formatted,operationalDate} from '../../domain/payment.policy.js';
+import {money,formatted,operationalDate,assertShiftOperationalDate} from '../../domain/payment.policy.js';
 import {allowed,audit,runOnce,txSerializable,type Tx} from './payment-shared.js';
 import type {RegisterDto,RegisterPatchDto,ShiftOpenDto,ShiftCloseDto,ShiftMovementDto,PageDto} from '../../presentation/http/dto/payments.dto.js';
 @Injectable()
@@ -63,13 +63,20 @@ export class CashStore{
    return {shiftId:shift.id};
   }));
  }
- async shiftTx(tx:Tx,u:Principal,id:string,permission:string,requireOwner=true){
-  const shift=await tx.turnoCaja.findUnique({where:{id},include:{caja:true}});
+ async shiftTx(tx:Tx,u:Principal,id:string,permission:string,requireOwner=true,
+  allowPreviousDayForClosing=false){
+  const shift=await tx.turnoCaja.findUnique({where:{id},include:{caja:{include:{
+   sucursal:{include:{configuracionSucursalesComoSucursal:true}}
+  }}}});
   if(!shift)throw new NotFoundException('Turno inexistente');
   await allowed(tx,u,shift.caja.sucursalId,permission);
   if(shift.cerradaEn)throw new ConflictException('Turno cerrado');
   if(requireOwner&&shift.cajeroId!==u.id)throw new ConflictException('Turno de otro cajero');
   if(!shift.caja.activa)throw new ConflictException('Caja inactiva');
+  if(!allowPreviousDayForClosing){
+   assertShiftOperationalDate(shift.fechaOperativa,new Date(),shift.caja.sucursal.zonaHoraria,
+    shift.caja.sucursal.configuracionSucursalesComoSucursal?.horaCorteOperativo??'04:00');
+  }
   return shift;
  }
  async detail(u:Principal,id:string){
@@ -112,7 +119,7 @@ export class CashStore{
  async close(u:Principal,id:string,d:ShiftCloseDto){
   const counted=money(d.efectivoContado,true);
   return txSerializable(this.db,tx=>runOnce(tx,u,d.claveOperacion,'CASH_SHIFT_CLOSE',{id,...d},async()=>{
-   const shift=await this.shiftTx(tx,u,id,'cash.close',false);
+   const shift=await this.shiftTx(tx,u,id,'cash.close',false,true);
    const moves=await tx.movimientoCaja.findMany({where:{turnoId:id}});
    const expected=moves.reduce((v,m)=>v.plus(m.tipo==='INGRESO'?m.monto:m.monto.neg()),shift.fondoInicial);
    const difference=counted.minus(expected);

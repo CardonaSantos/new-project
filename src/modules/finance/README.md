@@ -72,3 +72,5 @@ El usuario del POS no atraviesa pantallas financieras adicionales. La imputació
 - `finance.module.ts`: DI del puerto con `useExisting`.
 
 Se conserva el prefijo `/api/finance`, contratos, permisos, migraciones y respuestas. Reejecutar CI y pruebas Postman antes de merge.
+
+## Fecha operativa de caja (fix de control del corte)\n- PAY-A valida el día operativo de `TurnoCaja.fechaOperativa` antes de registrar cobros, devoluciones con turno y movimientos manuales, considerando `Sucursal.zonaHoraria` y `ConfiguracionSucursal.horaCorteOperativo` (04:00 por defecto). Por debajo de la hora de corte, la fecha anterior sigue vigente.\n- Un turno del día anterior que cruza el corte no puede recibir nuevos movimientos: devuelve conflicto para que el cajero cierre y abra otro turno.\n- **Cerrar/arquear el turno antiguo sigue permitido**: `POST /api/cash/shifts/:id/close` no exige día operativo vigente. No se reasignan fechas ni cambian asientos históricos.\n- Esta verificación de fecha era previa en los gastos FIN-A desde CAJA y ahora es consistente con PAY-A. Comprobar en DEV cierre del turno anterior, apertura nueva y rechazo de cobro con turno desfasado.\n

@@ -1503,6 +1503,7 @@ model Orden {
   entregasComoOrden            Entrega?             @relation("Entrega_orden_Orden")
   sesionAutoserviciosComoOrden SesionAutoservicio[] @relation("SesionAutoservicio_orden_Orden")
 
+  @@index([clienteId, sucursalId])
   @@unique([sucursalId, numero])
   @@index([sucursalId, estado, abiertaEn])
   @@index([sucursalId, clasificacionCancelacion, canceladaEn])
@@ -1863,6 +1864,7 @@ model Venta {
   // Relaciones inversas (navegación Prisma)
   ventaLineasComoVenta VentaLinea[] @relation("VentaLinea_venta_Venta")
 
+  @@index([clienteId, sucursalId])
   @@unique([sucursalId, numero])
   @@index([sucursalId, cerradaEn])
 }
@@ -2143,6 +2145,7 @@ model Reserva {
   eventoReservasComoReserva       EventoReserva[]       @relation("EventoReserva_reserva_Reserva")
   recordatorioReservasComoReserva RecordatorioReserva[] @relation("RecordatorioReserva_reserva_Reserva")
 
+  @@index([clienteId, sucursalId])
   @@index([sucursalId, inicio, estado])
 }
 

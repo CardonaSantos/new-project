@@ -28,3 +28,8 @@ BEGIN
 END $$;
 CREATE UNIQUE INDEX "DireccionCliente_clienteId_principal_activa_key"
  ON "DireccionCliente" ("clienteId") WHERE "principal" = true AND "activa" = true;
+
+-- Customer history lookup is intentionally branch-scoped, not a table scan.
+CREATE INDEX "Orden_clienteId_sucursalId_idx" ON "Orden"("clienteId","sucursalId");
+CREATE INDEX "Venta_clienteId_sucursalId_idx" ON "Venta"("clienteId","sucursalId");
+CREATE INDEX "Reserva_clienteId_sucursalId_idx" ON "Reserva"("clienteId","sucursalId");

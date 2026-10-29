@@ -309,6 +309,7 @@ model Sucursal {
   configuracionProveedorPagosComoSucursal ConfiguracionProveedorPago[] @relation("ConfiguracionProveedorPago_sucursal_Sucursal")
   ventasComoSucursal                      Venta[]                      @relation("Venta_sucursal_Sucursal")
   cuentaFinancierasComoSucursal           CuentaFinanciera[]           @relation("CuentaFinanciera_sucursal_Sucursal")
+  rutasFinancierasComoSucursal           RutaFinanciera[]             @relation("RutaFinanciera_sucursal_Sucursal")
   gastoOperativosComoSucursal             GastoOperativo[]             @relation("GastoOperativo_sucursal_Sucursal")
   cierreOperativosComoSucursal            CierreOperativo[]            @relation("CierreOperativo_sucursal_Sucursal")
   liquidacionRepartidoresComoSucursal     LiquidacionRepartidor[]      @relation("LiquidacionRepartidor_sucursal_Sucursal")
@@ -1886,8 +1887,23 @@ model CuentaFinanciera {
   // Relaciones inversas (navegación Prisma)
   pagoProveedoresComoCuentaFinanciera          PagoProveedor[]           @relation("PagoProveedor_cuentaFinanciera_CuentaFinanciera")
   movimientoFinancierosComoCuenta              MovimientoFinanciero[]    @relation("MovimientoFinanciero_cuenta_CuentaFinanciera")
+  rutasFinancierasComoCuenta                  RutaFinanciera[]          @relation("RutaFinanciera_cuenta_CuentaFinanciera")
   gastoOperativosComoCuentaFinanciera          GastoOperativo[]          @relation("GastoOperativo_cuentaFinanciera_CuentaFinanciera")
   liquidacionCanalExternosComoCuentaFinanciera LiquidacionCanalExterno[] @relation("LiquidacionCanalExterno_cuentaFinanciera_CuentaFinanciera")
+}
+
+model RutaFinanciera {
+  id                String          @id @default(cuid())
+  sucursalId        String
+  sucursal          Sucursal        @relation("RutaFinanciera_sucursal_Sucursal", fields: [sucursalId], references: [id], onDelete: Restrict)
+  metodo            MetodoPago
+  cuentaFinancieraId String
+  cuentaFinanciera  CuentaFinanciera @relation("RutaFinanciera_cuenta_CuentaFinanciera", fields: [cuentaFinancieraId], references: [id], onDelete: Restrict)
+  activa            Boolean         @default(true)
+  actualizadoEn     DateTime        @updatedAt @db.Timestamptz(3)
+
+  @@unique([sucursalId, metodo])
+  @@index([cuentaFinancieraId])
 }
 
 model MovimientoFinanciero {

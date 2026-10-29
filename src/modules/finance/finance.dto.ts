@@ -8,8 +8,8 @@ export class FinanceAccountQueryDto{
 }
 export class FinanceOperationIntentDto{
  @IsString() @MinLength(1) sucursalId!:string;
- @IsIn(['FIN_ACCOUNT_CREATE','FIN_EXPENSE_CREATE'])
- accion!:'FIN_ACCOUNT_CREATE'|'FIN_EXPENSE_CREATE';
+ @IsIn(['FIN_ACCOUNT_CREATE','FIN_EXPENSE_CREATE','FIN_EXTERNAL_POST'])
+ accion!:'FIN_ACCOUNT_CREATE'|'FIN_EXPENSE_CREATE'|'FIN_EXTERNAL_POST';
 }
 export class FinanceOperationDto{
  @Matches(/^FIN:[0-9a-f-]{36}$/) operationId!:string;
@@ -35,4 +35,16 @@ export class FinanceExpenseCreateDto extends FinanceOperationDto{
  @IsOptional() @IsString() @MinLength(1) turnoId?:string;
  @IsOptional() @IsString() @MinLength(1) cuentaFinancieraId?:string;
  @IsOptional() @IsString() @MinLength(2) @MaxLength(160) documentoReferencia?:string;
+}
+
+export class FinanceExternalPendingQueryDto extends FinanceAccountQueryDto{
+ @IsIn(['PAGO','REEMBOLSO_PAGO','PAGO_PROVEEDOR'])
+ sourceType!:'PAGO'|'REEMBOLSO_PAGO'|'PAGO_PROVEEDOR';
+}
+export class FinanceExternalPostDto extends FinanceOperationDto{
+ @IsString() @MinLength(1) sucursalId!:string;
+ @IsIn(['PAGO','REEMBOLSO_PAGO','PAGO_PROVEEDOR'])
+ sourceType!:'PAGO'|'REEMBOLSO_PAGO'|'PAGO_PROVEEDOR';
+ @IsString() @MinLength(1) sourceId!:string;
+ @IsString() @MinLength(1) cuentaFinancieraId!:string;
 }

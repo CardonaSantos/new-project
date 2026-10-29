@@ -1,0 +1,667 @@
+{
+  "info": {
+    "name": "Gastro Core DEL-A D1 - PostgreSQL DEV",
+    "description": "Ejecutar únicamente en DEV. Borrar runKey para nueva tanda, conservar para reintentos idempotentes. No almacenar JWT de producción.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 List customers",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/customers?sucursalId={{sucursalId}}&page=1&limit=20",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if(!pm.collectionVariables.get('runKey'))pm.collectionVariables.set('runKey',Date.now().toString(36));"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);pm.expect(pm.response.json().meta).to.exist;"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 Create customer",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/customers",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"claveOperacion\": \"D1:{{runKey}}:create\",\n  \"nombre\": \"Cliente DEV {{runKey}}\",\n  \"telefono\": \"55550001\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);pm.collectionVariables.set('clienteId',pm.response.json().id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Idempotent replay",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/customers",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"claveOperacion\": \"D1:{{runKey}}:create\",\n  \"nombre\": \"Cliente DEV {{runKey}}\",\n  \"telefono\": \"55550001\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('clienteId'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 Changed body same key",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/customers",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"claveOperacion\": \"D1:{{runKey}}:create\",\n  \"nombre\": \"Distinto\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(409);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Detail",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/customers/{{clienteId}}?sucursalId={{sucursalId}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);pm.expect(pm.response.headers.get('Cache-Control')).to.contain('no-store');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 Create primary address",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/customers/{{clienteId}}/addresses",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"claveOperacion\": \"D1:{{runKey}}:address1\",\n  \"direccion\": \"Zona 1, dirección DEV\",\n  \"alias\": \"Casa\",\n  \"latitud\": \"15.6589123\",\n  \"longitud\": \"-91.4765432\",\n  \"principal\": true\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);pm.collectionVariables.set('direccionId',pm.response.json().id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 Add second primary",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/customers/{{clienteId}}/addresses",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"claveOperacion\": \"D1:{{runKey}}:address2\",\n  \"direccion\": \"Calle 2, dirección DEV\",\n  \"alias\": \"Trabajo\",\n  \"principal\": true\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);pm.collectionVariables.set('direccion2Id',pm.response.json().id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 Check one primary",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/customers/{{clienteId}}/addresses?sucursalId={{sucursalId}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);const rows=pm.response.json().data;pm.expect(rows.filter(x=>x.principal).length).to.eql(1);pm.expect(rows.find(x=>x.principal).id).to.eql(pm.collectionVariables.get('direccion2Id'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 Reject malformed GPS",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/customers/{{clienteId}}/addresses",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"claveOperacion\": \"D1:{{runKey}}:badgps\",\n  \"direccion\": \"Calle 4, dirección DEV\",\n  \"latitud\": \"90.12345678\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(400);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 Update customer",
+      "request": {
+        "method": "PATCH",
+        "url": "{{baseUrl}}/api/customers/{{clienteId}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"claveOperacion\": \"D1:{{runKey}}:update\",\n  \"nombre\": \"Cliente editado DEV {{runKey}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);pm.expect(pm.response.json().nombre).to.include('editado');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 Restore original primary",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/customers/{{clienteId}}/addresses/{{direccionId}}/primary",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"claveOperacion\": \"D1:{{runKey}}:primary\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "11 Deactivate other address",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/customers/{{clienteId}}/addresses/{{direccion2Id}}/deactivate",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"claveOperacion\": \"D1:{{runKey}}:inactiveaddress\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);pm.expect(pm.response.json().activa).to.eql(false);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "12 Cross-branch privacy (optional)",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/customers/{{clienteId}}?sucursalId={{otherSucursalId}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{otherToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{otherSucursalId}}"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if(!pm.collectionVariables.get('otherToken')||!pm.collectionVariables.get('otherSucursalId'))pm.execution.skipRequest();"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.expect([403,404]).to.include(pm.response.code);pm.expect(pm.response.text()).to.not.include('55550001');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "13 Deactivate customer",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/customers/{{clienteId}}/deactivate",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"claveOperacion\": \"D1:{{runKey}}:deactivate\",\n  \"motivo\": \"Cierre de prueba DEV\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);pm.expect(pm.response.json().activo).to.eql(false);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "14 Historical detail after deactivation",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/customers/{{clienteId}}?sucursalId={{sucursalId}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);pm.expect(pm.response.json().activo).to.eql(false);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "15 Missing branch",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/customers",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(400);"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "otherToken",
+      "value": ""
+    },
+    {
+      "key": "sucursalId",
+      "value": ""
+    },
+    {
+      "key": "otherSucursalId",
+      "value": ""
+    },
+    {
+      "key": "clienteId",
+      "value": ""
+    },
+    {
+      "key": "direccionId",
+      "value": ""
+    },
+    {
+      "key": "direccion2Id",
+      "value": ""
+    },
+    {
+      "key": "runKey",
+      "value": ""
+    }
+  ]
+}

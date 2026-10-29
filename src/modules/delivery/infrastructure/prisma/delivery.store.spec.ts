@@ -68,6 +68,29 @@ describe('DEL-A D2 transactional delivery',()=>{
   })});
   expect(tx.operacionIdempotente.create).toHaveBeenCalledOnce();
  });
+ it('preserves phone and reference if only the destination text is changed',async()=>{
+  const {store,tx,row}=rig();
+  row.telefonoContacto='55550001';
+  row.referenciaDireccion='Portón negro';
+  const out=await store.destination(user,'delivery-1',{
+   claveOperacion:'D2:DESTINATION:001',direccionTexto:'Zona 2, Avenida 5'
+  });
+  expect(out).toMatchObject({direccionTexto:'Zona 2, Avenida 5',
+   telefonoContacto:'55550001',referenciaDireccion:'Portón negro'});
+  expect(tx.entrega.update).toHaveBeenCalledWith({where:{id:'delivery-1'},data:
+   expect.objectContaining({telefonoContacto:'55550001',referenciaDireccion:'Portón negro'})});
+ });
+ it('allows explicit null to clear contact fields',async()=>{
+  const {store,tx,row}=rig();
+  row.telefonoContacto='55550001';
+  row.referenciaDireccion='Portón negro';
+  await store.destination(user,'delivery-1',{
+   claveOperacion:'D2:DESTINATION:CLEAR',direccionTexto:'Zona 2, Avenida 5',
+   telefonoContacto:null,referenciaDireccion:null
+  });
+  expect(tx.entrega.update).toHaveBeenCalledWith({where:{id:'delivery-1'},data:
+   expect.objectContaining({telefonoContacto:null,referenciaDireccion:null})});
+ });
  it('checks manager before immediately assigning a courier',async()=>{
   const {store,tx}=rig();
   tx.usuarioRol.findFirst.mockResolvedValueOnce(null);

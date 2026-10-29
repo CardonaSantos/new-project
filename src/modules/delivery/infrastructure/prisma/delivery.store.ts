@@ -205,7 +205,15 @@ export class DeliveryStore extends DeliveryPort{
     const row=await this.lock(tx,id);
     if(row.estado!=='PENDIENTE')throw new ConflictException('Destino editable solo antes de salir');
     const address=await this.address(tx,row.orden.clienteId,d);
-    await tx.entrega.update({where:{id},data:address});
+    // PATCH semantics: omitted contact fields must not clear historic contact data.
+    // Explicit null can intentionally clear a value.
+    const changes={
+     ...address,
+     ...(d.telefonoContacto===undefined?{telefonoContacto:row.telefonoContacto}:{}),
+     ...(d.referenciaDireccion===undefined&&!d.direccionId?
+       {referenciaDireccion:row.referenciaDireccion}:{})
+    };
+    await tx.entrega.update({where:{id},data:changes});
     await this.event(tx,u,await this.get(tx,id),'DELIVERY_DESTINATION_CHANGED',row.estado,row.repartidorId);
     return {id};
    });

@@ -231,6 +231,9 @@ export class DeliveryStore extends DeliveryPort{
     if(row.orden.estado==='CANCELADA')throw new ConflictException('Orden cancelada');
     await this.courier(tx,d.repartidorId,row.orden.sucursalId);
     if(row.repartidorId!==d.repartidorId){
+     if(await tx.pago.count({where:{recibidoPorRepartidor:true,
+      cuenta:{ordenId:row.ordenId}}}))
+      throw new ConflictException('La entrega tiene efectivo cobrado; no se puede reasignar');
      await tx.entrega.update({where:{id},data:{repartidorId:d.repartidorId}});
      await this.event(tx,u,await this.get(tx,id),'DELIVERY_ASSIGNED',row.estado,row.repartidorId);
     }
@@ -268,6 +271,8 @@ export class DeliveryStore extends DeliveryPort{
    return this.once(tx,u,'DELIVERY_CANCEL',d.claveOperacion,{id,...d},async()=>{
     const row=await this.lock(tx,id);
     transition(row.estado,'CANCELADA');
+    if(await tx.pago.count({where:{cuenta:{ordenId:row.ordenId}}}))
+     throw new ConflictException('La orden tiene pagos; revise el cobro antes de cancelar');
     await tx.entrega.update({where:{id},data:{estado:'CANCELADA'}});
     await this.event(tx,u,await this.get(tx,id),'DELIVERY_CANCELLED',row.estado,row.repartidorId,d.motivo.trim());
     return {id};

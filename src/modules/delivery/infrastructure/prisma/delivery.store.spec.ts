@@ -17,6 +17,7 @@ function rig(){
   usuarioRol:{findFirst:vi.fn().mockResolvedValue({id:'rol-1'})},
   sucursal:{findUnique:vi.fn().mockResolvedValue({activa:true})},
   orden:{findUnique:vi.fn().mockResolvedValue(order)},
+  pago:{count:vi.fn().mockResolvedValue(0)},
   entrega:{findUnique:vi.fn(async({where}:any)=>where.ordenId?null:row),
    create:vi.fn().mockResolvedValue({id:'delivery-1'}),
    update:vi.fn(async({data}:any)=>{Object.assign(row,data);return row;})},
@@ -90,6 +91,15 @@ describe('DEL-A D2 transactional delivery',()=>{
   });
   expect(tx.entrega.update).toHaveBeenCalledWith({where:{id:'delivery-1'},data:
    expect.objectContaining({telefonoContacto:null,referenciaDireccion:null})});
+ });
+ it('prevents reassignment while the courier carries customer cash',async()=>{
+  const {store,tx,row}=rig();
+  row.repartidorId='courier-original';
+  tx.pago.count.mockResolvedValueOnce(1);
+  await expect(store.assign(user,'delivery-1',{
+   repartidorId:'courier-new',claveOperacion:'D2:REASSIGN:CASH'
+  })).rejects.toThrow('efectivo cobrado');
+  expect(tx.entrega.update).not.toHaveBeenCalled();
  });
  it('checks manager before immediately assigning a courier',async()=>{
   const {store,tx}=rig();

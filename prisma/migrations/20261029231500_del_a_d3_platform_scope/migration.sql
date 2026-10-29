@@ -24,4 +24,9 @@ CREATE UNIQUE INDEX "MovimientoFinanciero_liquidacionCanal_unico_idx"
  ON "MovimientoFinanciero"("referenciaTipo","referenciaId")
  WHERE "referenciaTipo" = 'LIQUIDACION_CANAL';
 
+-- One external bank transfer reference per branch/channel, regardless of retry key.
+CREATE UNIQUE INDEX "LiquidacionCanalExterno_transferencia_unica_idx"
+ ON "LiquidacionCanalExterno"("sucursalId","canalId","referencia")
+ WHERE "sucursalId" IS NOT NULL AND "referencia" IS NOT NULL;
+
 COMMIT;

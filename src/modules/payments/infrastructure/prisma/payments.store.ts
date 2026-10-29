@@ -253,6 +253,8 @@ export class PaymentsStore{
    if(!payment)throw new NotFoundException('Pago inexistente');
    const branch=payment.cuenta.orden.sucursalId;
    await allowed(tx,u,branch,'payments.refund');
+   if(payment.referencia?.startsWith('PLATFORM_SETTLEMENT:'))
+    throw new ConflictException('Reembolso de plataforma requiere reversa financiera conciliada');
    if(payment.recibidoPorRepartidor){
     const courierLine=await tx.liquidacionRepartidorLinea.findUnique({
      where:{pagoId:payment.id},include:{liquidacion:true}});

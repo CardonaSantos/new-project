@@ -1139,6 +1139,68 @@
           }
         }
       ]
+    },
+    {
+      "name": "27 Verify PAY-A recognized only one platform gross payment",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/accounts/{{platformAccountId}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Platform account paid once',()=>pm.response.to.have.status(200));",
+              "const j=pm.response.json();pm.expect(j.pagado).to.equal('22.00');",
+              "const gross=j.pagos.filter(p=>String(p.referencia||'').startsWith('PLATFORM_SETTLEMENT:'));",
+              "pm.expect(gross).to.have.lengthOf(1);",
+              "pm.collectionVariables.set('platformPaymentId',gross[0].id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "28 FIN-A pending external payments excludes platform gross",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/finance/reconciliation/pending?sucursalId={{sucursalId}}&sourceType=PAGO&page=1&limit=100"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Finance pending list',()=>pm.response.to.have.status(200));",
+              "const rows=pm.response.json().data;",
+              "pm.expect(rows.some(p=>p.sourceId===pm.collectionVariables.get('platformPaymentId'))).to.eql(false);"
+            ]
+          }
+        }
+      ]
     }
   ],
   "variable": [
@@ -1228,6 +1290,10 @@
     },
     {
       "key": "bankMovementId",
+      "value": ""
+    },
+    {
+      "key": "platformPaymentId",
       "value": ""
     }
   ]

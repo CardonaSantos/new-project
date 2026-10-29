@@ -14,7 +14,7 @@
 - Endurecimiento: DeliveryStore impide reasignar cuando existe efectivo de courier cobrado y cancelar entrega con pagos asociados; PAY-A impide refund courier antes de cash handover y refund de plataforma sin reversa conciliada. Audit/outbox no exponen domicilio/contactos ni motivo libre en outbox.
 - Migración única D3: `prisma/migrations/20261029231500_del_a_d3_platform_scope/migration.sql`. Añade sucursalId **nullable** en liquidación de canal con backfill para legados no ambiguos, FK/índice, índice único parcial del asiento LIQUIDACION_CANAL y referencia bancaria. No borrar registros o reescribir saldos anteriores.
 - Seed D3: `delivery.payments.collect`, `delivery.settlements.read`, `delivery.settlements.manage`, `delivery.platform.manage`; SUPER_ADMIN recibe por seed. El resto de roles se configuran con Users RBAC.
-- DTO HTTP y Vitest unit+HTTP. Colección Postman DEV `docs/del-a/Gastro_Core_DEL_A_D3_Settlements.postman_collection.json`, 28 solicitudes con guía `D3_POSTMAN_DEV.md`.
+- DTO HTTP y Vitest unit+HTTP. Colección Postman DEV `docs/del-a/Gastro_Core_DEL_A_D3_Settlements.postman_collection.json`, 30 solicitudes con guía `D3_POSTMAN_DEV.md`.
 
 ## Contratos nuevos
 - POST `/api/deliveries/:id/collect-cash`
@@ -29,7 +29,7 @@
 
 ## Estado verificado y siguiente paso
 - D1 Customers + ORD-A, D2 Delivery: usuario ejecutó suites DEV previamente. Fix D2 teléfono tras editar destino está en rama; reporte de los últimos commits en PR.
-- **D3 implementado en rama, CI de código `ece58554` SUCCESS**: https://github.com/CardonaSantos/new-project/actions/runs/40970755356 — 199 unitarias, 75 HTTP, PostgreSQL migration-smoke incluido SQL de unicidad bancaria. La compilación y Prisma validate también aprobaron. No afirmar probado DEV hasta recibir las 28 respuestas Postman. `main` permanece intacto.
+- **D3 implementado en rama, CI de código `ece58554` SUCCESS**: https://github.com/CardonaSantos/new-project/actions/runs/40970755356 — 199 unitarias, 75 HTTP, PostgreSQL migration-smoke incluido SQL de unicidad bancaria. La compilación y Prisma validate también aprobaron. No afirmar probado DEV hasta recibir las 30 respuestas Postman. `main` permanece intacto.
 - D4 después: hardening de reversas de plataforma/reembolsos extraordinarios, cierres PAY-A/FIN-A, rol restringido y multisucursal, y autorización expresa del merge PR #14. No iniciar RSV/QR/REP/FEL/hardware/Angular dentro de DEL-A.
 - No inventar monetización: el operador confirma bancarización manual con referencia, conciliación posterior aún de FIN-A.
 

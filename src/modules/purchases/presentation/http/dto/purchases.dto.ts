@@ -107,6 +107,7 @@ export class SupplierPaymentDto extends KeyDto{
  @Matches(amount) monto!:string;
  @IsOptional() @IsString() @MaxLength(160) referencia?:string;
  @IsOptional() @IsString() turnoCajaId?:string;
+ @IsOptional() @IsString() cuentaFinancieraId?:string;
  @IsArray() @ArrayMaxSize(100) @ValidateNested({each:true}) @Type(()=>PaymentApplicationDto)
  aplicaciones!:PaymentApplicationDto[];
 }

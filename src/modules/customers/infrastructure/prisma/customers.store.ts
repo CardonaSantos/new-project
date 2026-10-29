@@ -261,7 +261,7 @@ export class CustomersStore extends CustomersPort implements CustomerSelectionPo
     const primary=d.principal===true||(!exists&&d.principal!==false);
     if(primary)await tx.direccionCliente.updateMany({where:{clienteId:id,activa:true,principal:true},
       data:{principal:false}});
-    const address=await tx.direccionCliente.create({data:{clienteId:id,...data,principal:primary}});
+    const address=await tx.direccionCliente.create({data:{clienteId:id,...data,direccion:d.direccion.trim(),principal:primary}});
     await this.event(tx,actor,d.sucursalId,'CUSTOMER_ADDRESS_CREATED','DireccionCliente',address.id);
     return {id:address.id};
    });

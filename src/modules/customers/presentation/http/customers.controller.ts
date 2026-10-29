@@ -1,7 +1,7 @@
 import {Body,Controller,Get,Header,Param,Patch,Post,Query} from '@nestjs/common';
-import {CurrentUser} from '../../auth/presentation/http/decorators/auth.decorators.js';
-import type {Principal} from '../../auth/application/auth.service.js';
-import {CustomersService} from '../application/customers.service.js';
+import {CurrentUser} from '../../../auth/presentation/http/decorators/auth.decorators.js';
+import type {Principal} from '../../../auth/application/auth.service.js';
+import {CustomersService} from '../../application/customers.service.js';
 import {CustomerBranchQueryDto,CustomerListDto,CustomerMutationDto,CreateCustomerDto,
  UpdateCustomerDto,DeactivateCustomerDto,CreateAddressDto,UpdateAddressDto} from './dto/customers.dto.js';
 

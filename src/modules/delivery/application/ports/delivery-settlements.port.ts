@@ -11,11 +11,13 @@ export type PlatformSettlementCreate={
  referencia:string;lineas:PlatformLineInput[];claveOperacion:string;
 };
 export type PlatformChannelCreate={sucursalId:string;codigo:string;nombre:string;claveOperacion:string};
+export type CourierDiscrepancy={montoDeclarado:string;motivo:string;claveOperacion:string};
 export abstract class DeliverySettlementsPort{
  abstract cash(actor:Principal,entregaId:string,input:CourierCashInput):Promise<unknown>;
  abstract pending(actor:Principal,q:CourierPending):Promise<unknown>;
  abstract createCourier(actor:Principal,d:CourierSettlementCreate):Promise<unknown>;
  abstract closeCourier(actor:Principal,id:string,d:CourierSettlementClose):Promise<unknown>;
+ abstract discrepancy(actor:Principal,id:string,d:CourierDiscrepancy):Promise<unknown>;
  abstract courierDetail(actor:Principal,id:string):Promise<unknown>;
  abstract platformChannels(actor:Principal,sucursalId:string):Promise<unknown>;
  abstract registerChannel(actor:Principal,d:PlatformChannelCreate):Promise<unknown>;

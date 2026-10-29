@@ -2,7 +2,7 @@ import {Body,Controller,Get,Header,Param,Post,Query} from '@nestjs/common';
 import {CurrentUser} from '../../../auth/presentation/http/decorators/auth.decorators.js';
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {DeliverySettlementsService} from '../../application/delivery-settlements.service.js';
-import {CloseCourierSettlementDto,CreateCourierSettlementDto,CreatePlatformSettlementDto,
+import {CloseCourierSettlementDto,CourierDiscrepancyDto,CreateCourierSettlementDto,CreatePlatformSettlementDto,
  CourierCashDto,PlatformChannelDto,SettlementBranchDto,SettlementPageDto} from './dto/delivery-settlements.dto.js';
 
 @Controller('deliveries')
@@ -21,6 +21,9 @@ export class DeliverySettlementsController{
  @Post('settlements/couriers/:id/close')
  closeCourier(@CurrentUser() u:Principal,@Param('id') id:string,
   @Body() d:CloseCourierSettlementDto){return this.svc.closeCourier(u,id,d);}
+ @Post('settlements/couriers/:id/discrepancy')
+ discrepancy(@CurrentUser() u:Principal,@Param('id') id:string,
+  @Body() d:CourierDiscrepancyDto){return this.svc.discrepancy(u,id,d);}
  @Get('settlements/couriers/:id') @Header('Cache-Control','no-store')
  courier(@CurrentUser() u:Principal,@Param('id') id:string){return this.svc.courierDetail(u,id);}
  @Get('settlements/platforms/channels') @Header('Cache-Control','no-store')

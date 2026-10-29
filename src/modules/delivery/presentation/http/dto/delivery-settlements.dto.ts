@@ -28,6 +28,10 @@ export class CloseCourierSettlementDto extends SettlementKeyDto{
  @IsString() turnoCajaId!:string;
  @Matches(amountPattern) totalEntregado!:string;
 }
+export class CourierDiscrepancyDto extends SettlementKeyDto{
+ @Matches(amountPattern) montoDeclarado!:string;
+ @IsString() @MinLength(10) @MaxLength(500) motivo!:string;
+}
 export class PlatformSettlementLineDto{
  @IsString() entregaId!:string;
  @IsString() cuentaId!:string;

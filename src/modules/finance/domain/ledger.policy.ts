@@ -1,4 +1,4 @@
-export type FinancialSource='PAGO'|'REEMBOLSO_PAGO'|'PAGO_PROVEEDOR';
+export type FinancialSource='PAGO'|'REEMBOLSO_PAGO'|'PAGO_PROVEEDOR'|'LIQUIDACION_CANAL';
 export function customerCreditAllowed(source:FinancialSource,accountType:string){
- return source!=='PAGO'||accountType!=='TARJETA_EMPRESA';
+ return !['PAGO','LIQUIDACION_CANAL'].includes(source)||accountType!=='TARJETA_EMPRESA';
 }

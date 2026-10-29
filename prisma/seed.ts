@@ -47,7 +47,9 @@ const permissions=[
  ['cash.read','cash'],['cash.manage','cash'],['cash.open','cash'],['cash.close','cash'],
  ['payments.read','payments'],['payments.collect','payments'],['payments.verify','payments'],
  ['payments.split','payments'],['sales.read','payments'],
- ['payments.refund','payments'],['delivery.manage','delivery'],['delivery.read','delivery'],['delivery.courier','delivery'],['reservations.manage','reservations'],
+ ['payments.refund','payments'],['delivery.manage','delivery'],['delivery.read','delivery'],['delivery.courier','delivery'],
+ ['delivery.payments.collect','delivery'],['delivery.settlements.read','delivery'],
+ ['delivery.settlements.manage','delivery'],['delivery.platform.manage','delivery'],['reservations.manage','reservations'],
  ['customers.read','customers'],['customers.create','customers'],['customers.manage','customers'],
  ['customers.global.manage','customers'],
  ['reports.read','reports'],['settings.manage','settings']

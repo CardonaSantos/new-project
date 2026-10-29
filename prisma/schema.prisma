@@ -315,6 +315,7 @@ model Sucursal {
   cierreOperativosComoSucursal            CierreOperativo[]            @relation("CierreOperativo_sucursal_Sucursal")
   reversasFinancierasComoSucursal ReversaFinanciera[] @relation("ReversaFinanciera_sucursal_Sucursal")
   liquidacionRepartidoresComoSucursal     LiquidacionRepartidor[]      @relation("LiquidacionRepartidor_sucursal_Sucursal")
+  liquidacionCanalExternosComoSucursal LiquidacionCanalExterno[] @relation("LiquidacionCanalExterno_sucursal_Sucursal")
   reservasComoSucursal                    Reserva[]                    @relation("Reserva_sucursal_Sucursal")
   sesionAutoserviciosComoSucursal         SesionAutoservicio[]         @relation("SesionAutoservicio_sucursal_Sucursal")
   menusAsignados MenuSucursal[]
@@ -2056,6 +2057,8 @@ model Entrega {
 
 model LiquidacionCanalExterno {
   id                 String            @id @default(cuid())
+  sucursalId         String?
+  sucursal           Sucursal?         @relation("LiquidacionCanalExterno_sucursal_Sucursal", fields: [sucursalId], references: [id], onDelete: Restrict)
   canalId            String
   canal              CanalExterno      @relation("LiquidacionCanalExterno_canal_CanalExterno", fields: [canalId], references: [id], onDelete: Restrict)
   cuentaFinancieraId String?
@@ -2073,6 +2076,7 @@ model LiquidacionCanalExterno {
   liquidacionCanalExternoLineasComoLiquidacion LiquidacionCanalExternoLinea[] @relation("LiquidacionCanalExternoLinea_liquidacion_LiquidacionCanalExterno")
 
   @@index([canalId, periodoInicio])
+  @@index([sucursalId, periodoInicio])
 }
 
 model LiquidacionCanalExternoLinea {

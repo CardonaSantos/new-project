@@ -2620,7 +2620,7 @@ model ClienteSucursal {
   @@index([sucursalId, clienteId])
 }
 
-\n// DEL-A D2: audit trail for delivery assignments and state transitions.
+// DEL-A D2: audit trail for delivery assignments and state transitions.
 model EntregaEvento {
   id          String        @id @default(cuid())
   entregaId   String

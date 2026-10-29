@@ -136,10 +136,13 @@ export class CourierSettlementsStore{
    const row=await tx.liquidacionRepartidor.findUnique({where:{id}});
    if(!row)throw new NotFoundException('Liquidación inexistente');
    await this.ctx.require(tx,u,row.sucursalId,'delivery.settlements.manage');
-   // PAY-A/Cash module validates open shift and today's FIN-A operating period.
-   const shift=await this.cashStore.shiftTx(tx,u,d.turnoCajaId,'cash.manage',false);
-   if(shift.caja.sucursalId!==row.sucursalId)throw new ConflictException('Turno de otra sucursal');
+   await this.ctx.require(tx,u,row.sucursalId,'cash.manage');
+   // A replay remains idempotent even if its original shift has since closed.
    return this.ctx.once(tx,u,'D3_COURIER_CLOSE',d.claveOperacion,{id,...d},async()=>{
+    // PAY-A/Cash validates the active shift and FIN-A operating day on NEW deposits only.
+    const shift=await this.cashStore.shiftTx(tx,u,d.turnoCajaId,'cash.manage',false);
+    if(shift.caja.sucursalId!==row.sucursalId)
+     throw new ConflictException('Turno de otra sucursal');
     await tx.$queryRaw`SELECT "id" FROM "LiquidacionRepartidor" WHERE "id"=${id} FOR UPDATE`;
     const current=await tx.liquidacionRepartidor.findUnique({where:{id}});
     if(!current||current.estado!=='ABIERTA')throw new ConflictException('Liquidación ya cerrada');

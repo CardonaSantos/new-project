@@ -89,3 +89,5 @@ La fase 4 se ha separado en dos casos de uso hexagonales independientes de los e
 **Reversas:** `ReversaFinanciera` no borra ni modifica asientos originales: agrega asiento negativo del original + auditoría y registro único de reversa. Por seguridad la reversa directa se limita a `GASTO_OPERATIVO` bancario aún no conciliado; devoluciones de cobros y reversas de pagos a proveedores deben pasar por sus módulos de origen para no romper el estado comercial. No se revierten movimientos de caja por esta API.
 
 **Día cerrado vs. conciliación:** los ajustes financieros se registran en la fecha de la operación y se rechaza el período corriente cerrado. La conciliación posterior contra extractos puede hacerse tras el cierre operativo, pues no altera los importes originales. El cierre operativo no equivale a conciliación bancaria.
+
+**Reporte del cierre:** incluye el neto firmado de todos los asientos financieros registrados en el intervalo y el importe separado de ajustes por reversa; el total bruto de gastos operativos no se borra cuando se registra una reversa posterior. No conciliar el movimiento original si ya fue objeto de reversa.

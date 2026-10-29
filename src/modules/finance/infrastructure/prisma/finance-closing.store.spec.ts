@@ -34,6 +34,7 @@ function setup(openShifts=0,openOrders=0){
   gastoOperativo:{aggregate:vi.fn(async()=>zero)},
   venta:{aggregate:vi.fn(async()=>zero)},
   movimientoCaja:{groupBy:vi.fn(async()=>[])},
+  movimientoFinanciero:{aggregate:vi.fn(async()=>zero)},
   operacionIdempotente:{
    findUnique:vi.fn(async({where}:any)=>attempts.get(where.clave)??null),
    update:vi.fn(async({where,data}:any)=>{Object.assign(attempts.get(where.clave),data);return data;})
@@ -56,6 +57,7 @@ describe('FIN-A operational closing transaction',()=>{
   const preview=await f.store.preview(actor,{sucursalId:'b',fechaOperativa:day}) as any;
   expect(preview.cerrado).toBe(false);
   expect(preview.resumen.puedeCerrar).toBe(true);
+  expect(preview.resumen.libroFinanciero.netoFirmado).toBe('0.00');
   expect(preview.resumen.periodoUtc.desde).toBe('2026-10-10T10:00:00.000Z');
   const input={sucursalId:'b',fechaOperativa:day,operationId:f.issue()};
   const first=await f.store.confirm(actor,input),second=await f.store.confirm(actor,input);

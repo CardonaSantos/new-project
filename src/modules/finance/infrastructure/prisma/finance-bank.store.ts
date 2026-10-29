@@ -147,6 +147,8 @@ export class FinanceBankStore{
     if(!movement||movement.cuentaId!==row.cuentaFinancieraId)
      throw new ConflictException('Movimiento de otra cuenta o inexistente');
     if(row.movimientoFinancieroId)throw new ConflictException('Línea ya conciliada');
+    if(await tx.reversaFinanciera.findUnique({where:{movimientoOriginalId:movement.id}}))
+     throw new ConflictException('No se puede conciliar el asiento original anulado; revise el ajuste');
     if(!row.monto.eq(movement.monto))throw new ConflictException('Importes del extracto y asiento no coinciden');
     if(await tx.lineaExtractoBancario.count({where:{movimientoFinancieroId:movement.id}}))
      throw new ConflictException('Asiento ya conciliado con otra línea');

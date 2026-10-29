@@ -41,7 +41,7 @@ export class FinanceClosingStore{
   const cut=branch.configuracionSucursalesComoSucursal?.horaCorteOperativo??'04:00';
   const {date,from,to}=financialBusinessWindow(q.fechaOperativa,branch.zonaHoraria,cut);
   const span={gte:from,lt:to};
-  const [shifts,openOrders,paid,refunded,suppliers,expenses,sales]=await Promise.all([
+  const [shifts,openOrders,paid,refunded,suppliers,expenses,sales,ledger,adjustments]=await Promise.all([
    tx.turnoCaja.findMany({where:{fechaOperativa:date,caja:{sucursalId:q.sucursalId}},
     select:{id:true,cajaId:true,cerradaEn:true,fondoInicial:true,
      efectivoEsperado:true,efectivoContado:true,diferencia:true}}),
@@ -55,7 +55,11 @@ export class FinanceClosingStore{
    tx.gastoOperativo.aggregate({where:{registradoEn:span,sucursalId:q.sucursalId},
     _sum:{monto:true},_count:{id:true}}),
    tx.venta.aggregate({where:{cerradaEn:span,sucursalId:q.sucursalId},
-    _sum:{total:true},_count:{id:true}})
+    _sum:{total:true},_count:{id:true}}),
+   tx.movimientoFinanciero.aggregate({where:{creadoEn:span,cuenta:{sucursalId:q.sucursalId}},
+    _sum:{monto:true},_count:{id:true}}),
+   tx.movimientoFinanciero.aggregate({where:{creadoEn:span,cuenta:{sucursalId:q.sucursalId},
+    referenciaTipo:'REVERSA_FINANCIERA'},_sum:{monto:true},_count:{id:true}})
   ]);
   const cashMoves=shifts.length?await tx.movimientoCaja.groupBy({
    by:['tipo'],where:{turnoId:{in:shifts.map(s=>s.id)}},
@@ -74,6 +78,9 @@ export class FinanceClosingStore{
    reembolsos:{cantidad:refunded._count.id,total:sum(refunded._sum.monto)},
    pagosProveedor:{cantidad:suppliers._count.id,total:sum(suppliers._sum.monto)},
    gastosOperativos:{cantidad:expenses._count.id,total:sum(expenses._sum.monto)},
+   libroFinanciero:{cantidadMovimientos:ledger._count.id,netoFirmado:sum(ledger._sum.monto)},
+   ajustesPorReversa:{cantidad:adjustments._count.id,
+    totalFirmado:sum(adjustments._sum.monto)},
    caja:{turnos:shifts.length,turnosAbiertos:openShifts,
     ingresos:sum(incoming?._sum.monto),egresos:sum(outgoing?._sum.monto),
     diferenciaArqueo:diff.toFixed(2)},

@@ -98,7 +98,8 @@ export class FinanceBankStore{
    await this.permission(tx,u,q.sucursalId,'finance.statements.read');
    await this.account(tx,q.sucursalId,q.cuentaFinancieraId);
    const where:Prisma.MovimientoFinancieroWhereInput={
-    cuentaId:q.cuentaFinancieraId,lineasExtractoComoMovimiento:{none:{}}
+    cuentaId:q.cuentaFinancieraId,lineasExtractoComoMovimiento:{none:{}},
+    reversasComoOriginal:{none:{}}
    };
    const [rows,total]=await Promise.all([
     tx.movimientoFinanciero.findMany({where,skip:(q.page-1)*q.limit,take:q.limit,

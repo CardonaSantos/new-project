@@ -4,6 +4,7 @@ import {Prisma} from '../../../../generated/prisma/client.js';
 import {PrismaService} from '../../../../infrastructure/database/prisma/prisma.service.js';
 import {CashStore} from '../../../payments/infrastructure/prisma/cash.store.js';
 import {postVerifiedExternalMovement} from '../../../finance/infrastructure/prisma/finance-posting.js';
+import {assertFinancialPeriodOpen} from '../../../finance/infrastructure/prisma/finance-period.guard.js';
 import {cash,covered} from '../../domain/purchase.policy.js';
 import type {Actor,Tx} from './purchase-shared.js';
 import {atomic,scope,audit,once,page,metadata} from './purchase-shared.js';
@@ -65,6 +66,12 @@ export class PurchasePaymentsStore{
   if(!p)throw new NotFoundException('Pago inexistente');
   if(!p.sucursalId)throw new ConflictException('Pago sin sucursal');
   await scope(tx,u,p.sucursalId,'purchases.payments.confirm');
+  // Even an external supplier payment awaiting a bank account changes the
+  // operational close total once confirmed. Check before any settlement write.
+  const branch=await tx.sucursal.findUnique({where:{id:p.sucursalId},
+   include:{configuracionSucursalesComoSucursal:true}});
+  if(!branch?.activa)throw new ConflictException('Sucursal no disponible');
+  await assertFinancialPeriodOpen(tx,branch);
   if(p.estado!=='PENDIENTE')throw new ConflictException('Pago no pendiente');
   // Revalidate at settlement time: two independently drafted payments cannot
   // settle the same outstanding invoice twice.

@@ -8,6 +8,7 @@ import {money,formatted,ensureCoverage} from '../../domain/payment.policy.js';
 import {allowed,audit,orderForAccount,runOnce,txSerializable,type Tx} from './payment-shared.js';
 import {CashStore} from './cash.store.js';
 import {postVerifiedExternalMovement} from '../../../finance/infrastructure/prisma/finance-posting.js';
+import {assertFinancialPeriodOpen} from '../../../finance/infrastructure/prisma/finance-period.guard.js';
 import type {CollectDto,ConfirmAttemptDto,RefundDto,SplitDto,EqualSplitDto,PageDto} from '../../presentation/http/dto/payments.dto.js';
 
 @Injectable()
@@ -252,6 +253,12 @@ export class PaymentsStore{
    if(!payment)throw new NotFoundException('Pago inexistente');
    const branch=payment.cuenta.orden.sucursalId;
    await allowed(tx,u,branch,'payments.refund');
+   // Every refund changes financial totals, including an external refund for
+   // which the original bank route has not yet been configured.
+   const sucursal=await tx.sucursal.findUnique({where:{id:branch},
+    include:{configuracionSucursalesComoSucursal:true}});
+   if(!sucursal?.activa)throw new ConflictException('Sucursal no disponible');
+   await assertFinancialPeriodOpen(tx,sucursal);
    const prior=payment.reembolsoPagosComoPago.reduce((s,r)=>s.plus(r.monto),new Prisma.Decimal(0));
    if(amount.plus(prior).gt(payment.monto))throw new ConflictException('Reembolso excede pago disponible');
    if(payment.metodo==='EFECTIVO'&&!d.turnoId)

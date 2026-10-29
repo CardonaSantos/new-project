@@ -16,6 +16,9 @@ export class DeliverySettlementsStore extends DeliverySettlementsPort{
  closeCourier(u:Principal,id:string,d:CourierSettlementClose){return this.courier.close(u,id,d);}
  courierDetail(u:Principal,id:string){return this.courier.detail(u,id);}
  platformChannels(u:Principal,branch:string){return this.platform.channels(u,branch);}
+ registerChannel(u:Principal,d:import('../../application/ports/delivery-settlements.port.js').PlatformChannelCreate){
+  return this.platform.registerChannel(u,d);
+ }
  createPlatform(u:Principal,d:PlatformSettlementCreate){return this.platform.create(u,d);}
  platformDetail(u:Principal,id:string){return this.platform.detail(u,id);}
 }

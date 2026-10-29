@@ -3,7 +3,7 @@ import {CurrentUser} from '../../../auth/presentation/http/decorators/auth.decor
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {DeliverySettlementsService} from '../../application/delivery-settlements.service.js';
 import {CloseCourierSettlementDto,CreateCourierSettlementDto,CreatePlatformSettlementDto,
- CourierCashDto,SettlementBranchDto,SettlementPageDto} from './dto/delivery-settlements.dto.js';
+ CourierCashDto,PlatformChannelDto,SettlementBranchDto,SettlementPageDto} from './dto/delivery-settlements.dto.js';
 
 @Controller('deliveries')
 export class DeliverySettlementsController{
@@ -26,6 +26,10 @@ export class DeliverySettlementsController{
  @Get('settlements/platforms/channels') @Header('Cache-Control','no-store')
  channels(@CurrentUser() u:Principal,@Query() d:SettlementBranchDto){
   return this.svc.platformChannels(u,d.sucursalId);
+ }
+ @Post('settlements/platforms/channels')
+ registerChannel(@CurrentUser() u:Principal,@Body() d:PlatformChannelDto){
+  return this.svc.registerChannel(u,d);
  }
  @Post('settlements/platforms')
  createPlatform(@CurrentUser() u:Principal,@Body() d:CreatePlatformSettlementDto){

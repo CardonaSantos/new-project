@@ -3,7 +3,7 @@ import type {Principal} from '../../../auth/application/auth.service.js';
 import {DeliveryPaymentsPort} from '../../../payments/application/ports/delivery-payments.port.js';
 import {PlatformLedgerPort} from '../../../finance/application/ports/platform-ledger.port.js';
 import {SettlementCommon,fmt,dec,zero} from './settlement-common.js';
-import type {PlatformSettlementCreate} from '../../application/ports/delivery-settlements.port.js';
+import type {PlatformSettlementCreate,PlatformChannelCreate} from '../../application/ports/delivery-settlements.port.js';
 import {dateOnly} from '../../domain/settlement.policy.js';
 
 @Injectable()
@@ -16,6 +16,20 @@ export class PlatformSettlementsStore{
    await this.ctx.require(tx,u,branch,'delivery.platform.manage');
    return {data:await tx.canalExterno.findMany({where:{activo:true},
     select:{id:true,codigo:true,nombre:true},orderBy:{nombre:'asc'}})};
+  });
+ }
+ async registerChannel(u:Principal,d:PlatformChannelCreate){
+  return this.ctx.atomic(async tx=>{
+   await this.ctx.branch(tx,d.sucursalId);
+   await this.ctx.require(tx,u,d.sucursalId,'delivery.platform.manage');
+   return this.ctx.once(tx,u,'D3_CHANNEL_REGISTER',d.claveOperacion,d,async()=>{
+    const created=await tx.canalExterno.create({data:{
+     codigo:d.codigo.trim().toUpperCase(),nombre:d.nombre.trim()
+    }});
+    await this.ctx.audit(tx,u,d.sucursalId,'PLATFORM_CHANNEL_REGISTERED',
+     'CanalExterno',created.id,{codigo:created.codigo});
+    return {id:created.id,codigo:created.codigo,nombre:created.nombre};
+   });
   });
  }
  async detail(u:Principal,id:string){

@@ -34,6 +34,11 @@ export class PlatformSettlementLineDto{
  @Matches(amountPattern) importeBruto!:string;
  @Matches(amountPattern) comision!:string;
 }
+export class PlatformChannelDto extends SettlementKeyDto{
+ @IsString() sucursalId!:string;
+ @IsString() @MinLength(2) @MaxLength(40) @Matches(/^[A-Z0-9_-]+$/) codigo!:string;
+ @IsString() @MinLength(2) @MaxLength(100) nombre!:string;
+}
 export class CreatePlatformSettlementDto extends SettlementKeyDto{
  @IsString() sucursalId!:string;
  @IsString() canalId!:string;

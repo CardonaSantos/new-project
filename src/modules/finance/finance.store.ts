@@ -8,7 +8,7 @@ import {money,operationalDate} from '../payments/domain/payment.policy.js';
 import {postVerifiedExternalMovement} from './finance-posting.js';
 import type {FinanceAccountCreateDto,FinanceAccountQueryDto,FinanceMovementQueryDto,
  FinanceOperationIntentDto,FinanceExpenseCreateDto,FinanceExpenseQueryDto,
- FinanceExternalPendingQueryDto,FinanceExternalPostDto} from './finance.dto.js';
+ FinanceExternalPendingQueryDto,FinanceExternalPostDto,FinanceRouteUpsertDto} from './finance.dto.js';
 
 type Tx=Prisma.TransactionClient;
 @Injectable()
@@ -127,7 +127,8 @@ export class FinanceStore{
  async issueIntent(u:Principal,d:FinanceOperationIntentDto){
   return this.atomic(async tx=>{
    const code=d.accion==='FIN_ACCOUNT_CREATE'?'finance.accounts.manage':
-    d.accion==='FIN_EXPENSE_CREATE'?'finance.expenses.create':'finance.movements.post';
+    d.accion==='FIN_EXPENSE_CREATE'?'finance.expenses.create':
+    d.accion==='FIN_ROUTING_UPSERT'?'finance.routing.manage':'finance.movements.post';
    await this.permission(tx,u,d.sucursalId,code);
    await this.activeBranch(tx,d.sucursalId);
    const operationId='FIN:'+randomUUID();
@@ -248,6 +249,44 @@ export class FinanceStore{
   });
  }
 
+
+ async financialRoutes(u:Principal,sucursalId:string){
+  return this.atomic(async tx=>{
+   await this.permission(tx,u,sucursalId,'finance.routing.read');
+   const rows=await tx.rutaFinanciera.findMany({where:{sucursalId},
+    orderBy:{metodo:'asc'},include:{cuentaFinanciera:true}});
+   return {data:rows.map(r=>({id:r.id,sucursalId:r.sucursalId,metodo:r.metodo,
+    cuentaFinancieraId:r.cuentaFinancieraId,cuentaNombre:r.cuentaFinanciera.nombre,
+    activa:r.activa,actualizadoEn:r.actualizadoEn}))};
+  });
+ }
+ async upsertFinancialRoute(u:Principal,d:FinanceRouteUpsertDto){
+  return this.atomic(async tx=>{
+   await this.permission(tx,u,d.sucursalId,'finance.routing.manage');
+   return this.completeIntent(tx,u,d,'FIN_ROUTING_UPSERT',async()=>{
+    const branch=await this.activeBranch(tx,d.sucursalId);
+    const bank=await this.accountRow(tx,d.cuentaFinancieraId);
+    if(bank.sucursalId!==d.sucursalId||!bank.activa||
+     bank.moneda!==(branch.configuracionSucursalesComoSucursal?.moneda??'GTQ')||
+     bank.tipo==='TARJETA_EMPRESA')
+     throw new ConflictException('Cuenta incompatible con la ruta de cobros externos');
+    const row=await tx.rutaFinanciera.upsert({
+     where:{sucursalId_metodo:{sucursalId:d.sucursalId,metodo:d.metodo}},
+     update:{cuentaFinancieraId:d.cuentaFinancieraId,activa:d.activa??true},
+     create:{sucursalId:d.sucursalId,metodo:d.metodo,
+      cuentaFinancieraId:d.cuentaFinancieraId,activa:d.activa??true}
+    });
+    await tx.eventoAuditoria.create({data:{usuarioId:u.id,sucursalId:d.sucursalId,
+     accion:'FIN_ROUTE_CONFIGURED',entidad:'RutaFinanciera',entidadId:row.id,
+     despues:{metodo:d.metodo,cuentaFinancieraId:row.cuentaFinancieraId,activa:row.activa}}});
+    await tx.eventoOutbox.create({data:{tipo:'FIN_ROUTE_CONFIGURED',
+     agregado:'RutaFinanciera',agregadoId:row.id,
+     payload:{sucursalId:d.sucursalId,metodo:d.metodo}}});
+    return {id:row.id,sucursalId:row.sucursalId,metodo:row.metodo,
+     cuentaFinancieraId:row.cuentaFinancieraId,activa:row.activa};
+   });
+  });
+ }
  async pendingExternal(u:Principal,q:FinanceExternalPendingQueryDto){
   return this.atomic(async tx=>{
    await this.permission(tx,u,q.sucursalId,'finance.reconciliation.read');

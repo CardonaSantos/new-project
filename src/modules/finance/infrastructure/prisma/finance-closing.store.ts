@@ -41,7 +41,7 @@ export class FinanceClosingStore{
   const cut=branch.configuracionSucursalesComoSucursal?.horaCorteOperativo??'04:00';
   const {date,from,to}=financialBusinessWindow(q.fechaOperativa,branch.zonaHoraria,cut);
   const span={gte:from,lt:to};
-  const [shifts,openOrders,paid,refunded,suppliers,expenses,sales,cashMoves]=await Promise.all([
+  const [shifts,openOrders,paid,refunded,suppliers,expenses,sales]=await Promise.all([
    tx.turnoCaja.findMany({where:{fechaOperativa:date,caja:{sucursalId:q.sucursalId}},
     select:{id:true,cajaId:true,cerradaEn:true,fondoInicial:true,
      efectivoEsperado:true,efectivoContado:true,diferencia:true}}),
@@ -55,10 +55,12 @@ export class FinanceClosingStore{
    tx.gastoOperativo.aggregate({where:{registradoEn:span,sucursalId:q.sucursalId},
     _sum:{monto:true},_count:{id:true}}),
    tx.venta.aggregate({where:{cerradaEn:span,sucursalId:q.sucursalId},
-    _sum:{total:true},_count:{id:true}}),
-   tx.movimientoCaja.groupBy({by:['tipo'],where:{turnoId:{in:shifts.map(s=>s.id)}},
-    _sum:{monto:true},_count:{id:true}})
+    _sum:{total:true},_count:{id:true}})
   ]);
+  const cashMoves=shifts.length?await tx.movimientoCaja.groupBy({
+   by:['tipo'],where:{turnoId:{in:shifts.map(s=>s.id)}},
+   _sum:{monto:true},_count:{id:true}
+  }):[];
   const incoming=cashMoves.find(m=>m.tipo==='INGRESO'),outgoing=cashMoves.find(m=>m.tipo==='EGRESO');
   const dayNow=operationalDate(new Date(),branch.zonaHoraria,cut);
   const openShifts=shifts.filter(s=>!s.cerradaEn).length;

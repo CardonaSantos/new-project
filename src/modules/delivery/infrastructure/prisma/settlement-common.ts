@@ -63,7 +63,9 @@ export class SettlementCommon{
   meta:Record<string,unknown>={}){
   await tx.eventoAuditoria.create({data:{usuarioId:u.id,sucursalId:branch,
    accion:action,entidad:entity,entidadId:id,despues:meta as Prisma.InputJsonValue}});
+  const {motivo:_reason,...eventMeta}=meta;
+  void _reason;
   await tx.eventoOutbox.create({data:{tipo:action,agregado:entity,agregadoId:id,
-   payload:{sucursalId:branch,...meta} as Prisma.InputJsonValue}});
+   payload:{sucursalId:branch,...eventMeta} as Prisma.InputJsonValue}});
  }
 }

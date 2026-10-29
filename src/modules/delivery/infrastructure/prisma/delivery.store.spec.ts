@@ -7,7 +7,7 @@ const user:Principal={id:'admin',email:'admin@example.test',nombre:'Admin',sessi
 function rig(){
  const order={id:'order-1',numero:'ORD-1',sucursalId:'branch-1',clienteId:'client-1',
   modalidad:'DELIVERY',origen:'CAJA',estado:'ABIERTA',total:{toString:()=> '22'}};
- const row={id:'delivery-1',ordenId:'order-1',orden,estado:'PENDIENTE',repartidorId:null,
+ const row={id:'delivery-1',ordenId:'order-1',orden:order,estado:'PENDIENTE',repartidorId:null,
   repartidor:null,canalExternoId:null,canalExterno:null,referenciaExterna:null,
   direccionId:null,direccionTexto:'Zona 1, Calle 3',referenciaDireccion:null,
   telefonoContacto:null,costoEnvio:{toFixed:()=> '0.00'},

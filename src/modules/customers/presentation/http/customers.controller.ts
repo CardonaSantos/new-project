@@ -6,14 +6,13 @@ import {CustomerBranchQueryDto,CustomerListDto,CustomerMutationDto,CreateCustome
  UpdateCustomerDto,DeactivateCustomerDto,CreateAddressDto,UpdateAddressDto} from './dto/customers.dto.js';
 
 @Controller('customers')
-@Header('Cache-Control','no-store')
 export class CustomersController {
  constructor(private readonly customers:CustomersService){}
- @Get()
+ @Get() @Header('Cache-Control','no-store')
  list(@CurrentUser() actor:Principal,@Query() q:CustomerListDto){return this.customers.list(actor,q);}
  @Post()
  create(@CurrentUser() actor:Principal,@Body() d:CreateCustomerDto){return this.customers.create(actor,d);}
- @Get(':id')
+ @Get(':id') @Header('Cache-Control','no-store')
  detail(@CurrentUser() actor:Principal,@Param('id') id:string,@Query() q:CustomerBranchQueryDto){
   return this.customers.detail(actor,id,q.sucursalId);
  }
@@ -25,7 +24,7 @@ export class CustomersController {
  deactivate(@CurrentUser() actor:Principal,@Param('id') id:string,@Body() d:DeactivateCustomerDto){
   return this.customers.deactivate(actor,id,d);
  }
- @Get(':id/addresses')
+ @Get(':id/addresses') @Header('Cache-Control','no-store')
  addresses(@CurrentUser() actor:Principal,@Param('id') id:string,@Query() q:CustomerBranchQueryDto){
   return this.customers.addresses(actor,id,q.sucursalId);
  }

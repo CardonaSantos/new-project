@@ -420,7 +420,17 @@ export class FinanceStore{
      skip:(q.page-1)*q.limit,take:q.limit}),
     tx.gastoOperativo.count({where})
    ]);
-   return {data:rows.map(x=>({...x,monto:x.monto.toFixed(2)})),
+   const bankIds=rows.filter(x=>x.cuentaFinancieraId).map(x=>x.id);
+   const movements=bankIds.length?await tx.movimientoFinanciero.findMany({
+    where:{referenciaTipo:'GASTO_OPERATIVO',referenciaId:{in:bankIds}},
+    select:{id:true,referenciaId:true}}):[];
+   const reversalIds=movements.length?await tx.reversaFinanciera.findMany({
+    where:{movimientoOriginalId:{in:movements.map(m=>m.id)}},
+    select:{movimientoOriginalId:true,id:true}}):[];
+   const reversed=new Set(reversalIds.map(x=>x.movimientoOriginalId));
+   const sources=new Map(movements.map(m=>[m.referenciaId,m.id]));
+   return {data:rows.map(x=>({...x,monto:x.monto.toFixed(2),
+    estadoFinanciero:sources.has(x.id)&&reversed.has(sources.get(x.id)!)?'REVERSADO':'REGISTRADO'})),
     meta:{page:q.page,limit:q.limit,total,totalPages:Math.ceil(total/q.limit)}};
   });
  }
@@ -432,8 +442,12 @@ export class FinanceStore{
    await this.permission(tx,u,row.sucursalId,'finance.expenses.read');
    const movement=row.cuentaFinancieraId?await tx.movimientoFinanciero.findFirst({
     where:{referenciaTipo:'GASTO_OPERATIVO',referenciaId:id}}):null;
-   return {...row,monto:row.monto.toFixed(2),movimientoFinanciero:movement?
-    {...movement,monto:movement.monto.toFixed(2)}:null};
+   const reversal=movement?await tx.reversaFinanciera.findUnique({
+    where:{movimientoOriginalId:movement.id}}):null;
+   return {...row,monto:row.monto.toFixed(2),estadoFinanciero:reversal?'REVERSADO':'REGISTRADO',
+    reversa:reversal?{id:reversal.id,movimientoReversaId:reversal.movimientoReversaId,
+     motivo:reversal.motivo,creadaEn:reversal.creadaEn}:null,
+    movimientoFinanciero:movement?{...movement,monto:movement.monto.toFixed(2)}:null};
   });
  }
 }

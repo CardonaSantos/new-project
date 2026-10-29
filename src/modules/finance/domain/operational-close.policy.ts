@@ -27,6 +27,10 @@ function utcForLocal(day:Date,cut:string,zone:string){
   if(!offset)break;
   timestamp+=offset;
  }
+ const check=localParts(new Date(timestamp),zone);
+ if(check.year!==day.getUTCFullYear()||check.month!==day.getUTCMonth()+1||
+  check.day!==day.getUTCDate()||check.hour!==h||check.minute!==m)
+  throw new BadRequestException('Hora de corte inexistente o ambigua en zona horaria');
  return new Date(timestamp);
 }
 export function financialBusinessWindow(day:string,zone:string,cut:string){

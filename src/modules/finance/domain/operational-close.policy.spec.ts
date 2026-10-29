@@ -9,6 +9,7 @@ describe('financial operational closing rules',()=>{
  it('rejects invalid dates and malformed cutoffs',()=>{
   expect(()=>financialBusinessWindow('2026-02-30','America/Guatemala','04:00')).toThrow();
   expect(()=>financialBusinessWindow('2026-10-28','America/Guatemala','25:00')).toThrow();
+  expect(()=>financialBusinessWindow('2026-03-08','America/New_York','02:30')).toThrow();
  });
  it('requires closed earlier day without open shifts or unfinished orders',()=>{
   const old=new Date('2026-10-28T00:00:00Z'),today=new Date('2026-10-29T00:00:00Z');

@@ -13,3 +13,15 @@ export function assertReversibleSource(kind:string){
  if(kind!=='GASTO_OPERATIVO')
   throw new ConflictException('Los pagos y devoluciones deben corregirse en su módulo de origen; solo reversa bancaria de gastos operativos');
 }
+export function bankExternalKey(raw:string){
+ const value=raw.trim();
+ if(value.length<3||value.length>160)
+  throw new BadRequestException('Identificador de extracto inválido');
+ return value;
+}
+export function financeReason(raw:string){
+ const value=raw.trim();
+ if(value.length<10||value.length>500)
+  throw new BadRequestException('Motivo financiero debe tener 10 a 500 caracteres reales');
+ return value;
+}

@@ -4,7 +4,7 @@ import {Prisma} from '../../../../generated/prisma/client.js';
 import {PrismaService} from '../../../../infrastructure/database/prisma/prisma.service.js';
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {operationalDate} from '../../../payments/domain/payment.policy.js';
-import {assertBankDate,assertStatementAmount,assertReversibleSource} from '../../domain/bank-reconciliation.policy.js';
+import {assertBankDate,assertStatementAmount,assertReversibleSource,bankExternalKey,financeReason} from '../../domain/bank-reconciliation.policy.js';
 import type {BankQuery,BankImportInput,BankMatchInput,BankUnmatchInput,BankReverseInput} from '../../application/contracts/finance-bank.types.js';
 type Tx=Prisma.TransactionClient;
 const digest=(data:unknown)=>createHash('sha256').update(JSON.stringify(data)).digest('hex');
@@ -110,8 +110,9 @@ export class FinanceBankStore{
   const keys=new Set<string>();
   for(const item of d.lineas){
    assertStatementAmount(item.monto);assertBankDate(item.fecha);
-   if(keys.has(item.claveExterna))throw new ConflictException('Línea de extracto duplicada en el lote');
-   keys.add(item.claveExterna);
+   const key=bankExternalKey(item.claveExterna);
+   if(keys.has(key))throw new ConflictException('Línea de extracto duplicada en el lote');
+   keys.add(key);
   }
   return this.atomic(async tx=>{
    await this.permission(tx,u,d.sucursalId,'finance.statements.import');
@@ -123,7 +124,7 @@ export class FinanceBankStore{
     const rows=[];
     for(const l of d.lineas){
      const row=await tx.lineaExtractoBancario.create({data:{
-      cuentaFinancieraId:d.cuentaFinancieraId,claveExterna:l.claveExterna.trim(),
+      cuentaFinancieraId:d.cuentaFinancieraId,claveExterna:bankExternalKey(l.claveExterna),
       fecha:assertBankDate(l.fecha),monto:new Prisma.Decimal(l.monto),
       referencia:l.referencia?.trim(),descripcion:l.descripcion?.trim(),importadoPorId:u.id
      }});
@@ -159,6 +160,7 @@ export class FinanceBankStore{
   });
  }
  async unmatch(u:Principal,d:BankUnmatchInput){
+  const motivo=financeReason(d.motivo);
   return this.atomic(async tx=>{
    await this.permission(tx,u,d.sucursalId,'finance.statements.match');
    return this.once(tx,u,d,'FIN_STATEMENT_UNMATCH',async()=>{
@@ -171,12 +173,13 @@ export class FinanceBankStore{
      movimientoFinancieroId:null,conciliadoPorId:null,conciliadoEn:null
     }});
     await this.event(tx,u,d.sucursalId,'FIN_STATEMENT_UNMATCHED','LineaExtractoBancario',row.id,
-     {anteriorMovimientoId:previous,motivo:d.motivo});
+     {anteriorMovimientoId:previous,motivo});
     return {lineaId:row.id,estado:'PENDIENTE',movimientoAnteriorId:previous};
    });
   });
  }
  async reverse(u:Principal,d:BankReverseInput){
+  const motivo=financeReason(d.motivo);
   return this.atomic(async tx=>{
    await this.permission(tx,u,d.sucursalId,'finance.reversals.create');
    return this.once(tx,u,d,'FIN_LEDGER_REVERSE',async()=>{
@@ -195,14 +198,14 @@ export class FinanceBankStore{
      throw new ConflictException('El asiento ya tiene una reversa');
     const reversed=await tx.movimientoFinanciero.create({data:{
      cuentaId:orig.cuentaId,monto:orig.monto.neg(),referenciaTipo:'REVERSA_FINANCIERA',
-     referenciaId:orig.id,descripcion:'Corrección financiera: '+d.motivo.trim()
+     referenciaId:orig.id,descripcion:'Corrección financiera: '+motivo
     }});
     const reversal=await tx.reversaFinanciera.create({data:{
      sucursalId:d.sucursalId,movimientoOriginalId:orig.id,movimientoReversaId:reversed.id,
-     motivo:d.motivo.trim(),usuarioId:u.id
+     motivo,usuarioId:u.id
     }});
     await this.event(tx,u,d.sucursalId,'FIN_LEDGER_REVERSED','ReversaFinanciera',reversal.id,
-     {originalId:orig.id,reversaId:reversed.id,monto:reversed.monto.toFixed(2),motivo:d.motivo});
+     {originalId:orig.id,reversaId:reversed.id,monto:reversed.monto.toFixed(2),motivo});
     return {reversaId:reversal.id,movimientoOriginalId:orig.id,
      movimientoReversaId:reversed.id,monto:reversed.monto.toFixed(2)};
    });

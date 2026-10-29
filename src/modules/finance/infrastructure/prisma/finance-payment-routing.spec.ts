@@ -1,10 +1,10 @@
 import {describe,expect,it,vi} from 'vitest';
-import {Prisma} from '../../generated/prisma/client.js';
-import type {PrismaService} from '../../infrastructure/database/prisma/prisma.service.js';
-import type {CashStore} from '../payments/infrastructure/prisma/cash.store.js';
-import {PaymentsStore} from '../payments/infrastructure/prisma/payments.store.js';
+import {Prisma} from '../../../../generated/prisma/client.js';
+import type {PrismaService} from '../../../../infrastructure/database/prisma/prisma.service.js';
+import type {CashStore} from '../../../payments/infrastructure/prisma/cash.store.js';
+import {PaymentsStore} from '../../../payments/infrastructure/prisma/payments.store.js';
 import {FinanceStore} from './finance.store.js';
-import type {Principal} from '../auth/application/auth.service.js';
+import type {Principal} from '../../../auth/application/auth.service.js';
 
 const actor={id:'cashier-1'} as Principal;
 const dec=(s:string)=>new Prisma.Decimal(s);

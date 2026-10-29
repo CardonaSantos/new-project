@@ -1,11 +1,11 @@
 import {describe,expect,it,vi} from 'vitest';
 import {ForbiddenException} from '@nestjs/common';
-import {Prisma} from '../../generated/prisma/client.js';
+import {Prisma} from '../../../../generated/prisma/client.js';
 import {FinanceStore} from './finance.store.js';
-import {PrismaService} from '../../infrastructure/database/prisma/prisma.service.js';
-import {CashStore} from '../payments/infrastructure/prisma/cash.store.js';
-import {operationalDate} from '../payments/domain/payment.policy.js';
-import type {Principal} from '../auth/application/auth.service.js';
+import {PrismaService} from '../../../../infrastructure/database/prisma/prisma.service.js';
+import {CashStore} from '../../../payments/infrastructure/prisma/cash.store.js';
+import {operationalDate} from '../../../payments/domain/payment.policy.js';
+import type {Principal} from '../../../auth/application/auth.service.js';
 const actor={id:'finance-admin'} as Principal;
 const dec=(s:string)=>new Prisma.Decimal(s);
 const expense=(operationId:string,origen:'CAJA'|'CUENTA_FINANCIERA')=>({

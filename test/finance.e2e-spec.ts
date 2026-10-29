@@ -5,8 +5,8 @@ import request from 'supertest';
 import type {App} from 'supertest/types';
 import type {NextFunction,Request,Response} from 'express';
 import {FinanceAccountsController,FinanceExpensesController,FinanceIntentsController,FinanceReconciliationController,FinanceRoutingController}
- from '../src/modules/finance/finance.controller.js';
-import {FinanceStore} from '../src/modules/finance/finance.store.js';
+ from '../src/modules/finance/presentation/http/finance.controller.js';
+import {FinanceService} from '../src/modules/finance/application/finance.service.js';
 import type {Principal} from '../src/modules/auth/application/auth.service.js';
 const user:Principal={id:'u1',email:'admin@example.test',nombre:'Admin',sessionId:'session',
  debeCambiarContrasena:false,versionAutorizacion:1};
@@ -31,7 +31,7 @@ describe('FIN-A HTTP DTO contracts',()=>{
   vi.clearAllMocks();
   const testing=await Test.createTestingModule({
    controllers:[FinanceIntentsController,FinanceAccountsController,FinanceExpensesController,FinanceReconciliationController,FinanceRoutingController],
-   providers:[{provide:FinanceStore,useValue:methods}]
+   providers:[{provide:FinanceService,useValue:methods}]
   }).compile();
   app=testing.createNestApplication<App>();app.setGlobalPrefix('api');
   app.use((req:Request&{auth?:Principal},_res:Response,next:NextFunction)=>{req.auth=user;next();});

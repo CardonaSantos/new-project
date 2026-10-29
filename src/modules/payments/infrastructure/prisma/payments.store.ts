@@ -7,7 +7,7 @@ import type {Principal} from '../../../auth/application/auth.service.js';
 import {money,formatted,ensureCoverage} from '../../domain/payment.policy.js';
 import {allowed,audit,orderForAccount,runOnce,txSerializable,type Tx} from './payment-shared.js';
 import {CashStore} from './cash.store.js';
-import {postVerifiedExternalMovement} from '../../../finance/finance-posting.js';
+import {postVerifiedExternalMovement} from '../../../finance/infrastructure/prisma/finance-posting.js';
 import type {CollectDto,ConfirmAttemptDto,RefundDto,SplitDto,EqualSplitDto,PageDto} from '../../presentation/http/dto/payments.dto.js';
 
 @Injectable()

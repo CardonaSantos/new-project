@@ -1,5 +1,5 @@
 import {describe,expect,it,vi} from 'vitest';
-import {Prisma} from '../../generated/prisma/client.js';
+import {Prisma} from '../../../../generated/prisma/client.js';
 import {postVerifiedExternalMovement,type FinancialTx} from './finance-posting.js';
 const dec=(s:string)=>new Prisma.Decimal(s);
 function setup(){

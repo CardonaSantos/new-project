@@ -3,7 +3,7 @@ import {BadRequestException,ConflictException,Injectable,NotFoundException} from
 import {Prisma} from '../../../../generated/prisma/client.js';
 import {PrismaService} from '../../../../infrastructure/database/prisma/prisma.service.js';
 import {CashStore} from '../../../payments/infrastructure/prisma/cash.store.js';
-import {postVerifiedExternalMovement} from '../../../finance/finance-posting.js';
+import {postVerifiedExternalMovement} from '../../../finance/infrastructure/prisma/finance-posting.js';
 import {cash,covered} from '../../domain/purchase.policy.js';
 import type {Actor,Tx} from './purchase-shared.js';
 import {atomic,scope,audit,once,page,metadata} from './purchase-shared.js';

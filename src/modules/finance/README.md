@@ -61,3 +61,14 @@ El usuario del POS no atraviesa pantallas financieras adicionales. La imputació
 2. Confirmar `DATABASE_URL` y `DIRECT_URL` de DEV.
 3. `npm run prisma:deploy`, `npm run prisma:seed`, `npm run build`, `npm test`, `npm run test:e2e`.
 4. Ejecutar la nueva colección Postman FIN-A Fase 2. La colección antigua F00–F08 de Fase 1 usa `claveOperacion` y debe reemplazarse.
+
+
+## Arquitectura hexagonal — refactor sin cambio funcional (2026-10-28)
+- `domain/`: políticas puras de origen de fondos y crédito a cuenta externa.
+- `application/contracts/` y `application/ports/`: comandos tipados e interfaz de persistencia desacoplada de Prisma/HTTP.
+- `application/finance.service.ts`: entrada de casos de uso independiente de controladores Nest.
+- `infrastructure/prisma/`: implementación transaccional anterior, preservando idempotencia, caja PAY-A, asientos y auditoría.
+- `presentation/http/`: controllers y DTOs validados. Controllers no importan Prisma.
+- `finance.module.ts`: DI del puerto con `useExisting`.
+
+Se conserva el prefijo `/api/finance`, contratos, permisos, migraciones y respuestas. Reejecutar CI y pruebas Postman antes de merge.

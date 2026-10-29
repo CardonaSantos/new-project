@@ -1,21 +1,21 @@
 import {Body,Controller,Get,Param,Post,Put,Query} from '@nestjs/common';
-import {CurrentUser} from '../auth/presentation/http/decorators/auth.decorators.js';
-import type {Principal} from '../auth/application/auth.service.js';
-import {FinanceStore} from './finance.store.js';
+import {CurrentUser} from '../../../auth/presentation/http/decorators/auth.decorators.js';
+import type {Principal} from '../../../auth/application/auth.service.js';
+import {FinanceService} from '../../application/finance.service.js';
 import {FinanceAccountCreateDto,FinanceAccountQueryDto,FinanceMovementQueryDto,
  FinanceOperationIntentDto,FinanceExpenseCreateDto,FinanceExpenseQueryDto,
- FinanceExternalPendingQueryDto,FinanceExternalPostDto,FinanceRouteUpsertDto} from './finance.dto.js';
+ FinanceExternalPendingQueryDto,FinanceExternalPostDto,FinanceRouteUpsertDto} from './dto/finance.dto.js';
 
 @Controller('finance/operation-intents')
 export class FinanceIntentsController{
- constructor(private readonly store:FinanceStore){}
+ constructor(private readonly store:FinanceService){}
  @Post() issue(@CurrentUser() u:Principal,@Body() d:FinanceOperationIntentDto){
   return this.store.issueIntent(u,d);
  }
 }
 @Controller('finance/accounts')
 export class FinanceAccountsController{
- constructor(private readonly store:FinanceStore){}
+ constructor(private readonly store:FinanceService){}
  @Get() list(@CurrentUser() u:Principal,@Query() q:FinanceAccountQueryDto){
   return this.store.accounts(u,q);
  }
@@ -32,7 +32,7 @@ export class FinanceAccountsController{
 }
 @Controller('finance/expenses')
 export class FinanceExpensesController{
- constructor(private readonly store:FinanceStore){}
+ constructor(private readonly store:FinanceService){}
  @Get() list(@CurrentUser() u:Principal,@Query() q:FinanceExpenseQueryDto){
   return this.store.expenses(u,q);
  }
@@ -46,7 +46,7 @@ export class FinanceExpensesController{
 
 @Controller('finance/reconciliation')
 export class FinanceReconciliationController{
- constructor(private readonly store:FinanceStore){}
+ constructor(private readonly store:FinanceService){}
  @Get('pending') pending(@CurrentUser() u:Principal,@Query() q:FinanceExternalPendingQueryDto){
   return this.store.pendingExternal(u,q);
  }
@@ -57,7 +57,7 @@ export class FinanceReconciliationController{
 
 @Controller('finance/routing')
 export class FinanceRoutingController{
- constructor(private readonly store:FinanceStore){}
+ constructor(private readonly store:FinanceService){}
  @Get() list(@CurrentUser() u:Principal,@Query() q:FinanceAccountQueryDto){
   return this.store.financialRoutes(u,q.sucursalId);
  }

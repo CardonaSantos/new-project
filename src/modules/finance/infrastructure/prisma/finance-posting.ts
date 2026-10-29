@@ -1,8 +1,9 @@
 import {ConflictException} from '@nestjs/common';
-import {Prisma} from '../../generated/prisma/client.js';
+import {Prisma} from '../../../../generated/prisma/client.js';
+import {customerCreditAllowed,type FinancialSource} from '../../domain/ledger.policy.js';
 
 export type FinancialTx=Prisma.TransactionClient;
-export type FinancialSource='PAGO'|'REEMBOLSO_PAGO'|'PAGO_PROVEEDOR';
+export type {FinancialSource} from '../../domain/ledger.policy.js';
 export const SOURCE_KIND={
  PAYMENT:'PAGO',REFUND:'REEMBOLSO_PAGO',SUPPLIER_PAYMENT:'PAGO_PROVEEDOR'
 } as const;
@@ -23,7 +24,7 @@ export async function postVerifiedExternalMovement(tx:FinancialTx,input:{
   throw new ConflictException('Cuenta financiera no disponible en esta sucursal');
  if(account.moneda!==(branch.configuracionSucursalesComoSucursal?.moneda??'GTQ'))
   throw new ConflictException('Moneda financiera incompatible con la sucursal');
- if(input.referenciaTipo==='PAGO'&&account.tipo==='TARJETA_EMPRESA')
+ if(!customerCreditAllowed(input.referenciaTipo,account.tipo))
   throw new ConflictException('Cuenta de tarjeta empresarial no admite cobros de clientes');
  if(existing){
   if(existing.cuentaId!==input.cuentaId||!existing.monto.eq(input.monto))

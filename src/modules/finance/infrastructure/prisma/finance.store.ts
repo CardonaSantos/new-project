@@ -1,14 +1,15 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
-import {Prisma} from '../../generated/prisma/client.js';
-import {PrismaService} from '../../infrastructure/database/prisma/prisma.service.js';
-import type {Principal} from '../auth/application/auth.service.js';
-import {CashStore} from '../payments/infrastructure/prisma/cash.store.js';
-import {money,operationalDate} from '../payments/domain/payment.policy.js';
+import {Prisma} from '../../../../generated/prisma/client.js';
+import {PrismaService} from '../../../../infrastructure/database/prisma/prisma.service.js';
+import type {Principal} from '../../../auth/application/auth.service.js';
+import {CashStore} from '../../../payments/infrastructure/prisma/cash.store.js';
+import {money,operationalDate} from '../../../payments/domain/payment.policy.js';
 import {postVerifiedExternalMovement} from './finance-posting.js';
+import {expenseFundingIssue} from '../../domain/funding.policy.js';
 import type {FinanceAccountCreateDto,FinanceAccountQueryDto,FinanceMovementQueryDto,
  FinanceOperationIntentDto,FinanceExpenseCreateDto,FinanceExpenseQueryDto,
- FinanceExternalPendingQueryDto,FinanceExternalPostDto,FinanceRouteUpsertDto} from './finance.dto.js';
+ FinanceExternalPendingQueryDto,FinanceExternalPostDto,FinanceRouteUpsertDto} from '../../application/contracts/finance.types.js';
 
 type Tx=Prisma.TransactionClient;
 @Injectable()
@@ -173,12 +174,8 @@ export class FinanceStore{
   const monto=money(d.monto);
   if(!d.descripcion.trim()||d.descripcion.trim().length<3)
    throw new BadRequestException('Descripción de gasto requerida');
-  if(d.origen==='CAJA'&&(!d.turnoId||d.cuentaFinancieraId))
-   throw new BadRequestException('Gasto de caja requiere únicamente turnoId');
-  if(d.origen==='CUENTA_FINANCIERA'&&(!d.cuentaFinancieraId||d.turnoId))
-   throw new BadRequestException('Gasto bancario requiere únicamente cuentaFinancieraId');
-  if(d.origen==='CUENTA_FINANCIERA'&&!d.documentoReferencia?.trim())
-   throw new BadRequestException('Referencia de pago externo obligatoria');
+  const fundingIssue=expenseFundingIssue(d);
+  if(fundingIssue)throw new BadRequestException(fundingIssue);
   return this.atomic(async tx=>{
    await this.permission(tx,u,d.sucursalId,'finance.expenses.create');
    return this.completeIntent(tx,u,d,'FIN_EXPENSE_CREATE',async()=>{

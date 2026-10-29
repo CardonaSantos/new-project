@@ -103,7 +103,7 @@ export class DeliveryStore extends DeliveryPort{
    return prior.resultado as {id:string};
   }
   const result=await command();
-  await tx.operacionIdempotente.create({data:{clave:token,operacion,
+  await tx.operacionIdempotente.create({data:{clave:token,operacion:operation,
    hashSolicitud:fingerprint,resultado:result as Prisma.InputJsonValue,
    finalizada:true,expiraEn:new Date(Date.now()+90*86400000)}});
   return result;

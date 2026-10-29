@@ -583,6 +583,49 @@
       ]
     },
     {
+      "name": "13b Record shortage discrepancy without posting cash (audit only)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/deliveries/settlements/couriers/{{courierSettlementId}}/discrepancy",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D3:{{runId}}:shortage-note\",\n  \"montoDeclarado\": \"21.00\",\n  \"motivo\": \"Diferencia de prueba D3; liquidación permanece abierta\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Discrepancy recorded without closing',()=>pm.response.to.have.status(201));",
+              "pm.expect(pm.response.json().estado).to.eql('ABIERTA');",
+              "pm.expect(pm.response.json().diferencia).to.eql('1.00');"
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "14 Close courier settlement / exactly ONE MovimientoCaja",
       "request": {
         "method": "POST",

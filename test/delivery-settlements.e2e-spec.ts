@@ -16,6 +16,7 @@ describe('DEL-A D3 hexagonal HTTP contracts',()=>{
   pending:vi.fn().mockResolvedValue({data:[],meta:{total:0}}),
   createCourier:vi.fn().mockResolvedValue({id:'settlement',totalEsperado:'22.00'}),
   closeCourier:vi.fn().mockResolvedValue({id:'settlement',movimientoCajaId:'movement'}),
+  discrepancy:vi.fn().mockResolvedValue({id:'settlement',estado:'ABIERTA',diferencia:'1.00'}),
   courierDetail:vi.fn().mockResolvedValue({id:'settlement',estado:'CERRADA'}),
   platformChannels:vi.fn().mockResolvedValue({data:[]}),
   registerChannel:vi.fn().mockResolvedValue({id:'channel'}),
@@ -52,6 +53,9 @@ describe('DEL-A D3 hexagonal HTTP contracts',()=>{
    .send({...key,turnoCajaId:'shift',totalEntregado:'22.00'}).expect(201);
   await request(app.getHttpServer()).post('/api/deliveries/settlements/couriers/settlement/close')
    .send({...key,turnoCajaId:'shift',totalEntregado:'-1'}).expect(400);
+  await request(app.getHttpServer()).post('/api/deliveries/settlements/couriers/settlement/discrepancy')
+   .send({...key,montoDeclarado:'21.00',motivo:'Faltante de prueba documentado'}).expect(201);
+  expect(stub.discrepancy).toHaveBeenCalledOnce();
   expect(stub.closeCourier).toHaveBeenCalledOnce();
  });
  it('requires valid platform periods and commission decimals',async()=>{

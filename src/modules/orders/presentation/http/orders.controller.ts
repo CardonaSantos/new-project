@@ -1,9 +1,9 @@
 import {Body,Controller,Delete,Get,Param,Patch,Post,Query} from '@nestjs/common';
 import {CurrentUser} from '../../../auth/presentation/http/decorators/auth.decorators.js';
 import type {Principal} from '../../../auth/application/auth.service.js';
-import {OrderStore} from '../../infrastructure/prisma/order.store.js';
-import {KitchenStore} from '../../infrastructure/prisma/kitchen.store.js';
-import {TableStore} from '../../infrastructure/prisma/table.store.js';
+import {OrderService} from '../../application/order.service.js';
+import {KitchenService} from '../../application/kitchen.service.js';
+import {TableService} from '../../application/table.service.js';
 import {AddItemsDto,BranchQueryDto,CreateOrderDto,EditLineDto,EditOrderDto,
  OrderListDto,ReasonDto,RouteDto,RouteUpdateDto,RoomDto,RoomUpdateDto,TableUpdateDto,KitchenChangesDto,
  CancelOrderDto,SendDto,StartLineDto,StationDto,
@@ -11,7 +11,7 @@ import {AddItemsDto,BranchQueryDto,CreateOrderDto,EditLineDto,EditOrderDto,
 
 @Controller('orders')
 export class OrdersController{
- constructor(private readonly orders:OrderStore){}
+ constructor(private readonly orders:OrderService){}
  @Get() list(@CurrentUser() u:Principal,@Query() q:OrderListDto){return this.orders.list(u,q);}
  @Post() create(@CurrentUser() u:Principal,@Body() d:CreateOrderDto){return this.orders.create(u,d);}
  @Get(':id') detail(@CurrentUser() u:Principal,@Param('id') id:string){return this.orders.detail(u,id);}
@@ -34,7 +34,7 @@ export class OrdersController{
 }
 @Controller('tables')
 export class TablesController{
- constructor(private readonly tables:TableStore){}
+ constructor(private readonly tables:TableService){}
  @Get('rooms') rooms(@CurrentUser() u:Principal,@Query() q:BranchQueryDto){return this.tables.rooms(u,q.sucursalId);}
  @Post('rooms') createRoom(@CurrentUser() u:Principal,@Body() d:RoomDto){return this.tables.createRoom(u,d);}
  @Patch('rooms/:id') updateRoom(@CurrentUser() u:Principal,@Param('id') id:string,@Body() d:RoomUpdateDto){
@@ -49,7 +49,7 @@ export class TablesController{
 }
 @Controller('kitchen')
 export class KitchenController{
- constructor(private readonly kitchen:KitchenStore){}
+ constructor(private readonly kitchen:KitchenService){}
  @Get('stations') stations(@CurrentUser() u:Principal,@Query() q:BranchQueryDto){
   return this.kitchen.stations(u,q.sucursalId);}
  @Post('stations') station(@CurrentUser() u:Principal,@Body() d:StationDto){

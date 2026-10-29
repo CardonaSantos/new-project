@@ -113,3 +113,12 @@ La CI NO realiza pruebas de integración con la base PostgreSQL del usuario.
 Después del deploy validar en Postman: orden/cuentas, envío incremental,
 consumo de 150 ml de leche para un capuchino, reintentos, stock,
 Kardex, reconciliación, bloqueo por falta de stock y política de prepago.
+
+
+## Arquitectura hexagonal — refactor de mantenimiento
+- `domain/`: políticas puras de órdenes, cocina y mesas existentes.
+- `application/ports/`: contratos específicos `OrderPort`, `KitchenPort`, `TablePort`.
+- `application/`: casos de uso públicos para controladores NestJS.
+- `infrastructure/prisma/`: stores y lógica transaccional existente, sin cambios funcionales.
+- `presentation/http/`: rutas y DTOs existentes, sin acceso directo a Prisma.
+- Dependencias intermodulares anteriores permanecen exportadas hasta migrar los consumidores mediante PRs específicos.

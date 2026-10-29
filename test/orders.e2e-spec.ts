@@ -5,9 +5,9 @@ import request from 'supertest';
 import type {App} from 'supertest/types';
 import type {NextFunction,Request,Response} from 'express';
 import type {Principal} from '../src/modules/auth/application/auth.service.js';
-import {OrderStore} from '../src/modules/orders/infrastructure/prisma/order.store.js';
-import {KitchenStore} from '../src/modules/orders/infrastructure/prisma/kitchen.store.js';
-import {TableStore} from '../src/modules/orders/infrastructure/prisma/table.store.js';
+import {OrderService} from '../src/modules/orders/application/order.service.js';
+import {KitchenService} from '../src/modules/orders/application/kitchen.service.js';
+import {TableService} from '../src/modules/orders/application/table.service.js';
 import {OrdersController,KitchenController,TablesController}
  from '../src/modules/orders/presentation/http/orders.controller.js';
 const principal:Principal={id:'a1',email:'user@example.test',nombre:'Test',
@@ -28,8 +28,8 @@ describe('ORD-A HTTP contract',()=>{
   vi.clearAllMocks();
   const mod=await Test.createTestingModule({controllers:[
    OrdersController,KitchenController,TablesController
-  ],providers:[{provide:OrderStore,useValue:orders},{provide:KitchenStore,useValue:kitchen},
-   {provide:TableStore,useValue:tables}]}).compile();
+  ],providers:[{provide:OrderService,useValue:orders},{provide:KitchenService,useValue:kitchen},
+   {provide:TableService,useValue:tables}]}).compile();
   app=mod.createNestApplication<App>();app.setGlobalPrefix('api');
   app.use((req:Request&{auth?:Principal},_res:Response,next:NextFunction)=>{
    req.auth=principal;next();

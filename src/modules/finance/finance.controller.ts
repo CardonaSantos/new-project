@@ -1,10 +1,10 @@
-import {Body,Controller,Get,Param,Post,Query} from '@nestjs/common';
+import {Body,Controller,Get,Param,Post,Put,Query} from '@nestjs/common';
 import {CurrentUser} from '../auth/presentation/http/decorators/auth.decorators.js';
 import type {Principal} from '../auth/application/auth.service.js';
 import {FinanceStore} from './finance.store.js';
 import {FinanceAccountCreateDto,FinanceAccountQueryDto,FinanceMovementQueryDto,
  FinanceOperationIntentDto,FinanceExpenseCreateDto,FinanceExpenseQueryDto,
- FinanceExternalPendingQueryDto,FinanceExternalPostDto} from './finance.dto.js';
+ FinanceExternalPendingQueryDto,FinanceExternalPostDto,FinanceRouteUpsertDto} from './finance.dto.js';
 
 @Controller('finance/operation-intents')
 export class FinanceIntentsController{
@@ -52,5 +52,16 @@ export class FinanceReconciliationController{
  }
  @Post('post') post(@CurrentUser() u:Principal,@Body() d:FinanceExternalPostDto){
   return this.store.postExternal(u,d);
+ }
+}
+
+@Controller('finance/routing')
+export class FinanceRoutingController{
+ constructor(private readonly store:FinanceStore){}
+ @Get() list(@CurrentUser() u:Principal,@Query() q:FinanceAccountQueryDto){
+  return this.store.financialRoutes(u,q.sucursalId);
+ }
+ @Put() upsert(@CurrentUser() u:Principal,@Body() d:FinanceRouteUpsertDto){
+  return this.store.upsertFinancialRoute(u,d);
  }
 }

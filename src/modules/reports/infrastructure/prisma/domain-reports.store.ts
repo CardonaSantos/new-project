@@ -58,7 +58,7 @@ export class DomainReportsStore extends DomainReportsPort{
    switch(kind){
     case 'SALES_LINES':{
      const where:Prisma.VentaLineaWhereInput={venta:{sucursalId:b.id,cerradaEn:span}};
-     const [rows,total,totals]=await Promise.all([
+     const [rows,total,totals,porProducto,porCategoria]=await Promise.all([
       tx.ventaLinea.findMany({where,skip,take,
        orderBy:[{venta:{cerradaEn:'asc'}},{id:'asc'}],
        select:{id:true,ventaId:true,ordenLineaId:true,descripcion:true,
@@ -67,10 +67,42 @@ export class DomainReportsStore extends DomainReportsPort{
         ordenLinea:{select:{variante:{select:{id:true,nombre:true,
          producto:{select:{id:true,nombre:true,categoriaId:true}}}}}}}}),
       tx.ventaLinea.count({where}),
-      tx.ventaLinea.aggregate({where,_sum:{subtotal:true,descuento:true,cantidad:true}})
+      tx.ventaLinea.aggregate({where,_sum:{subtotal:true,descuento:true,cantidad:true}}),
+      tx.$queryRaw<Array<{productoId:string;nombre:string;categoriaId:string|null;
+       unidades:string;importe:string;descuentos:string}>>`
+       SELECT vp."productoId" AS "productoId", pr.nombre, pr."categoriaId" AS "categoriaId",
+        COALESCE(SUM(vl.cantidad),0)::text AS unidades,
+        COALESCE(SUM(vl.subtotal),0)::text AS importe,
+        COALESCE(SUM(vl.descuento),0)::text AS descuentos
+       FROM "VentaLinea" vl
+        JOIN "Venta" v ON v.id=vl."ventaId"
+        JOIN "OrdenLinea" ol ON ol.id=vl."ordenLineaId"
+        JOIN "VarianteProducto" vp ON vp.id=ol."varianteId"
+        JOIN "Producto" pr ON pr.id=vp."productoId"
+       WHERE v."sucursalId"=${b.id} AND v."cerradaEn">=${b.from}
+        AND v."cerradaEn"<${b.to}
+       GROUP BY vp."productoId",pr.nombre,pr."categoriaId"
+       ORDER BY SUM(vl.subtotal) DESC,vp."productoId"`,
+      tx.$queryRaw<Array<{categoriaId:string|null;categoria:string|null;
+       unidades:string;importe:string;descuentos:string}>>`
+       SELECT pr."categoriaId" AS "categoriaId",ca.nombre AS categoria,
+        COALESCE(SUM(vl.cantidad),0)::text AS unidades,
+        COALESCE(SUM(vl.subtotal),0)::text AS importe,
+        COALESCE(SUM(vl.descuento),0)::text AS descuentos
+       FROM "VentaLinea" vl
+        JOIN "Venta" v ON v.id=vl."ventaId"
+        JOIN "OrdenLinea" ol ON ol.id=vl."ordenLineaId"
+        JOIN "VarianteProducto" vp ON vp.id=ol."varianteId"
+        JOIN "Producto" pr ON pr.id=vp."productoId"
+        LEFT JOIN "Categoria" ca ON ca.id=pr."categoriaId"
+       WHERE v."sucursalId"=${b.id} AND v."cerradaEn">=${b.from}
+        AND v."cerradaEn"<${b.to}
+       GROUP BY pr."categoriaId",ca.nombre
+       ORDER BY SUM(vl.subtotal) DESC,pr."categoriaId"`
      ]);
      return {...header,totales:{registros:total,importeLineas:money(totals._sum.subtotal),
       descuentos:money(totals._sum.descuento),unidades:decimal(totals._sum.cantidad)},
+      porProducto,porCategoria,
       data:rows.map(x=>({id:x.id,ventaId:x.ventaId,numeroVenta:x.venta.numero,
        fecha:x.venta.cerradaEn,cuentaId:x.venta.cuenta.id,
        ordenId:x.venta.cuenta.orden.id,numeroOrden:x.venta.cuenta.orden.numero,

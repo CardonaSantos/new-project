@@ -123,7 +123,9 @@ const dailySources:Record<string,string>={
 };
 export function reportDaily(r:ExportPayload):{rows:Daily[];note:string}{
  if(Array.isArray(r.diario)&&r.diario.length)
-  return {rows:[...r.diario].sort((a,b)=>String(a.fecha).localeCompare(String(b.fecha))),
+  return {rows:r.diario.filter(item=>typeof item.fecha==='string')
+   .map(item=>({...item,fecha:String(item.fecha)}))
+   .sort((a,b)=>a.fecha.localeCompare(b.fecha)),
    note:r.diarioNota??'Fechas operativas de documentos originales.'};
  if(r.diarioNota&&!r.diario?.length&&
   ['PAYMENT_SALES_RECON','ORDER_COST_OUTCOMES','PREPARATION_COSTS'].includes(r.source))

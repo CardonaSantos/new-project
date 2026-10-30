@@ -10,6 +10,7 @@ import {salesCostAttribution} from './sales-cost-attribution.js';
 import {orderCostOutcomes} from './order-cost-outcomes.js';
 import {paymentSalesReconciliation,supplierBalances,platformSettlements,bankMatchStatus} from './financial-reconciliation.js';
 import {financialBranchRollup} from './branch-rollup.js';
+import {exportDaily} from './export-daily.js';
 import {DomainReportsPort,type ReportSource} from '../../application/ports/domain-reports.port.js';
 
 type Tx=Prisma.TransactionClient;
@@ -107,7 +108,9 @@ export class DomainReportsStore extends DomainReportsPort{
    }
    if(data.length!==total)
     throw new ConflictException('Datos incompletos; reintente exportación');
-   return {...first,data,meta:{page:1,limit:total,total,totalPages:total?1:0},
+   const context=await this.context(tx,u,kind,q);
+   const daily=await exportDaily(tx,context,kind);
+   return {...first,data,...daily,meta:{page:1,limit:total,total,totalPages:total?1:0},
     exportacion:{registros:total,limite:max,scope:'COMPLETO',snapshot:'REPEATABLE_READ'}};
   },{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead,timeout:60000});
  }

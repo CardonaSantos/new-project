@@ -61,6 +61,34 @@ describe('REP-A evidence provenance and branch authorization',()=>{
    where:{turnoId:'shift1'},skip:0,take:20
   }));
  });
+ it('links courier settlement cash entry to underlying delivery and original payment',async()=>{
+  const {store,tx}=rig();
+  tx.movimientoCaja.findMany.mockResolvedValue([{
+   ...pay('m1','22.00'),pagoId:null,pago:null,motivo:'Efectivo entregado por repartidor',
+   liquidacionRepartidorId:'settle-1',
+   liquidacionRepartidor:{id:'settle-1',repartidorId:'courier1',
+    estado:'CERRADA',totalEsperado:d('22.00'),totalEntregado:d('22.00'),
+    cerradaEn:new Date('2026-10-30T17:00:00.000Z'),
+    liquidacionRepartidorLineasComoLiquidacion:[{
+     id:'settle-line-1',pagoId:'pay1',entregaId:'delivery1',monto:d('22.00'),
+     pago:{id:'pay1',metodo:'EFECTIVO',cuentaId:'account1',
+      cobradoEn:new Date('2026-10-30T16:00:00.000Z')},
+     entrega:{orden:{id:'order1',numero:'ORD-200'}}
+    }]}
+  }]);
+  tx.movimientoCaja.count.mockResolvedValue(1);
+  tx.movimientoCaja.groupBy.mockResolvedValue([
+   {tipo:'INGRESO',_sum:{monto:d('22.00')},_count:{id:1}}
+  ]);
+  const response=await store.cashShift(u,'shift1',{sucursalId:'s1',page:1,limit:20}) as any;
+  expect(response.data[0].fuente).toMatchObject({
+   tipo:'LIQUIDACION_REPARTIDOR',id:'settle-1',totalEntregado:'22.00',
+   lineas:[{liquidacionLineaId:'settle-line-1',entregaId:'delivery1',
+    pagoId:'pay1',cuentaId:'account1',ordenId:'order1',numeroOrden:'ORD-200',monto:'22.00'}]
+  });
+  expect(response.totalesFiltro.ingresos).toBe('22.00');
+  expect(response).not.toHaveProperty('definicion');
+ });
  it('identifies manual movements as MANUAL, without pretending they are sale payments',async()=>{
   const {store,tx}=rig();
   tx.movimientoCaja.findMany.mockResolvedValue([{...pay('m3','7.00'),pagoId:null,pago:null,

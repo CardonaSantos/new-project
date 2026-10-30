@@ -40,7 +40,7 @@ const column=(index:number)=>{
 };
 const numeric=(s:string)=>/^-?(?:0|[1-9]\d{0,13})(?:\.\d{1,6})?$/.test(s);
 const excelCell=(text:string,ref:string,style=0)=>{
- if(numeric(text))return '<c r="'+ref+'" s="'+(text.includes('.')?2:1)+'"><v>'+text+'</v></c>';
+ if(numeric(text))return '<c r="'+ref+'" s="'+(text.includes('.')?(text.split('.')[1].length>2?4:2):1)+'"><v>'+text+'</v></c>';
  return '<c r="'+ref+'" s="'+style+'" t="inlineStr"><is><t>'+xml(text)+'</t></is></c>';
 };
 const sheet=(rows:string[][],formulas:Map<string,string>,frozen=1)=>{
@@ -143,10 +143,12 @@ export function renderXlsx(r:ExportPayload):Buffer{
   '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFDAE8F4"/><bgColor indexed="64"/></patternFill></fill></fills>'+
   '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'+
   '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'+
-  '<cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'+
+  '<numFmts count="1"><numFmt numFmtId="164" formatCode="0.000000"/></numFmts>'+
+  '<cellXfs count="5"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'+
   '<xf numFmtId="1" fontId="0" fillId="0" borderId="0" xfId="0"/>'+
   '<xf numFmtId="2" fontId="0" fillId="0" borderId="0" xfId="0"/>'+
-  '<xf numFmtId="0" fontId="1" fillId="1" borderId="0" xfId="0"/></cellXfs></styleSheet>';
+  '<xf numFmtId="0" fontId="1" fillId="1" borderId="0" xfId="0"/>'+ 
+  '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs></styleSheet>';
  return zip([
   {name:'[Content_Types].xml',body:types},{name:'_rels/.rels',body:rel},
   {name:'xl/workbook.xml',body:wb},{name:'xl/_rels/workbook.xml.rels',body:wbrel},
@@ -177,7 +179,6 @@ export function renderPdf(r:ExportPayload):Buffer{
    pages.push(lines);
   }
  }
- const content:string[]=[];
  const pageObjects:number[]=[];
  const objects:string[]=[];
  const add=(s:string)=>{objects.push(s);return objects.length;};

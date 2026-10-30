@@ -5,7 +5,7 @@ import {PrismaService} from '../../../../infrastructure/database/prisma/prisma.s
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {ReservationsPort} from '../../application/ports/reservations.port.js';
 import type {AvailabilityDto,ReservationCreateDto,ReservationListDto,ReservationUpdateDto,ReservationReasonDto} from '../../presentation/http/dto/reservations.dto.js';
-import {checkInWindow,noShowWindow,requireEditable,validateCapacity,validateWindow} from '../../domain/reservation.policy.js';
+import {checkInWindow,noShowWindow,requireEditable,servicePhase,validateCapacity,validateWindow} from '../../domain/reservation.policy.js';
 
 type Tx=Prisma.TransactionClient;
 const active=['PENDIENTE','CONFIRMADA'] as const;
@@ -148,7 +148,11 @@ export class ReservationsStore extends ReservationsPort{
   return {id:r.id,sucursalId:r.sucursalId,sucursal:r.sucursal,clienteId:r.clienteId,
    cliente:r.cliente,nombreContacto:r.nombreContacto,telefonoContacto:r.telefonoContacto,
    emailContacto:r.emailContacto,personas:r.personas,inicio:r.inicio,fin:r.fin,
-   estado:r.estado,notas:r.notas,creadaEn:r.creadaEn,creadaPor:r.creadaPor,
+   estado:r.estado,faseAtencion:servicePhase(r.estado,
+    r.ocupacionMesasComoReserva.some(o=>o.cerradaEn===null)),
+   llegadaRegistrada:r.estado==='COMPLETADA',
+   ocupacionActiva:r.ocupacionMesasComoReserva.some(o=>o.cerradaEn===null),
+   notas:r.notas,creadaEn:r.creadaEn,creadaPor:r.creadaPor,
    mesas:tables,capacidadAsignada:tables.reduce((s,t)=>s+t.capacidad,0),
    ocupaciones:r.ocupacionMesasComoReserva.map(o=>({
     id:o.id,mesaId:o.mesaId,mesa:{id:o.mesa.id,numero:o.mesa.numero,sala:o.mesa.sala},
@@ -265,7 +269,18 @@ export class ReservationsStore extends ReservationsPort{
     await tx.reservaMesa.deleteMany({where:{reservaId:id}});
     await tx.reservaMesa.createMany({data:tableIds.map(mesaId=>({reservaId:id,mesaId}))});
    }
-   await this.event(tx,u,id,r.sucursalId,'RESERVATION_UPDATED');
+   const fields=[
+    ...(d.nombreContacto!==undefined?['NOMBRE_CONTACTO']:[]),
+    ...(d.telefonoContacto!==undefined?['TELEFONO_CONTACTO']:[]),
+    ...(d.emailContacto!==undefined?['EMAIL_CONTACTO']:[]),
+    ...(d.personas!==undefined?['PERSONAS']:[]),
+    ...(d.inicio!==undefined||d.fin!==undefined?['HORARIO']:[]),
+    ...(d.clienteId!==undefined?['CLIENTE']:[]),
+    ...(d.notas!==undefined?['NOTAS']:[]),
+    ...(d.mesaIds!==undefined?['MESAS']:[]
+   ];
+   await this.event(tx,u,id,r.sucursalId,'RESERVATION_UPDATED',
+    fields.length?'Campos actualizados: '+fields.join(', '):'Sin cambios de contenido');
   });
   return this.detail(u,id);
  }

@@ -6,6 +6,7 @@ import {financialBusinessWindow} from '../../../finance/domain/operational-close
 import {resolvePeriod,ensurePage} from '../../domain/report-period.policy.js';
 import type {Principal} from '../../../auth/application/auth.service.js';
 import type {TicketQuery} from '../../application/contracts/reporting.types.js';
+import {salesCostAttribution} from './sales-cost-attribution.js';
 import {DomainReportsPort,type ReportSource} from '../../application/ports/domain-reports.port.js';
 
 type Tx=Prisma.TransactionClient;
@@ -17,7 +18,7 @@ const permissions:Record<ReportSource,string>={
  PURCHASE_INVOICES:'purchases.read',PURCHASE_RECEIPT_LINES:'purchases.read',
  DELIVERY_EVENTS:'delivery.read',RESERVATION_EVENTS:'reservations.read',
  SUPPLY_REQUESTS:'supply.read',SUPPLY_TRANSFERS:'supply.read',
- PREPARATION_COSTS:'inventory.costs.read'
+ PREPARATION_COSTS:'inventory.costs.read',SALES_COSTS:'sales.read'
 };
 @Injectable()
 export class DomainReportsStore extends DomainReportsPort{
@@ -28,7 +29,8 @@ export class DomainReportsStore extends DomainReportsPort{
  private async context(tx:Tx,u:Principal,kind:ReportSource,q:TicketQuery){
   const branch=await tx.sucursal.findUnique({where:{id:q.sucursalId},
    include:{configuracionSucursalesComoSucursal:true}});
-  for(const code of ['reports.read',permissions[kind]]){
+  for(const code of ['reports.read',permissions[kind],
+   ...(kind==='SALES_COSTS'?['inventory.costs.read']:[])]){
    const allowed=await tx.usuarioRol.findFirst({where:{
     usuarioId:u.id,usuario:{activo:true},OR:[
      {sucursalId:null,rol:{activo:true,alcance:'GLOBAL',
@@ -142,6 +144,9 @@ export class DomainReportsStore extends DomainReportsPort{
        precioUnitario:money(x.precioUnitario),descuento:money(x.descuento),
        subtotal:money(x.subtotal)})),
       meta:meta(q.page,q.limit,total)};
+    }
+    case 'SALES_COSTS':{
+     return {...header,...await salesCostAttribution(tx,b,q.page,q.limit)};
     }
     case 'PREPARATION_COSTS':{
      // A consumption-date ledger; not a sale-date margin or a double-counted expense.

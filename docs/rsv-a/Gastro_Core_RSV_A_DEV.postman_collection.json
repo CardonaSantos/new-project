@@ -1,0 +1,468 @@
+{
+  "info": {
+    "name": "Gastro Core RSV-A R1-R4 DEV — sin notificaciones externas",
+    "description": "Crear reserva confirmada, validar disponibilidad, conflicto, actualización, check-in, reutilización de ocupación por ORD-A, detalle enriquecido. No envía SMS/correo. Solo DEV.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 Availability with room and tables enriched",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/reservations/availability?sucursalId={{sucursalId}}&inicio={{reservationStart}}&fin={{reservationEnd}}&personas=2",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "for(const key of ['token','sucursalId','varianteId'])if(!pm.collectionVariables.get(key))throw new Error('Configura '+key);",
+              "if(!pm.collectionVariables.get('runId'))pm.collectionVariables.set('runId',Date.now().toString());",
+              "if(!pm.collectionVariables.get('reservationStart')){",
+              " const start=new Date(Date.now()+15*60000);",
+              " pm.collectionVariables.set('reservationStart',start.toISOString());",
+              " pm.collectionVariables.set('reservationEnd',new Date(start.getTime()+90*60000).toISOString());",
+              "}"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);const j=pm.response.json();",
+              "pm.expect(j.mesas).to.be.an('array');",
+              "const table=j.mesas.find(t=>t.disponible&&t.capacidad>=2);",
+              "if(!table)throw new Error('Sin mesa libre para QA: configure sala/mesa activa');",
+              "pm.expect(table.sala.nombre).to.be.a('string');",
+              "pm.collectionVariables.set('tableId',table.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 Create CONFIRMADA directly, no SMS/provider and no approval",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/reservations",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"nombreContacto\": \"Invitado RSV QA\",\n  \"personas\": 2,\n  \"inicio\": \"{{reservationStart}}\",\n  \"fin\": \"{{reservationEnd}}\",\n  \"mesaIds\": [\n    \"{{tableId}}\"\n  ],\n  \"notas\": \"Prueba funcional sin mensajes externos\",\n  \"claveOperacion\": \"RSV:{{runId}}:create\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);const j=pm.response.json();",
+              "pm.expect(j.estado).to.equal('CONFIRMADA');",
+              "pm.expect(j.mesas[0].id).to.equal(pm.collectionVariables.get('tableId'));",
+              "pm.expect(j.sucursal).to.have.property('nombre');",
+              "pm.expect(j.eventos.map(x=>x.accion)).to.include('RESERVATION_CREATED');",
+              "pm.collectionVariables.set('reservationId',j.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Enriched reservation detail and audit",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/reservations/{{reservationId}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);const j=pm.response.json();",
+              "pm.expect(j.sucursal).to.have.property('zonaHoraria');",
+              "pm.expect(j.mesas[0].sala).to.have.property('nombre');",
+              "pm.expect(j.eventos[0].actor).to.have.property('nombre');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 Overlap on the SAME table is blocked",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/reservations",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"nombreContacto\": \"Invitado solapado\",\n  \"personas\": 2,\n  \"inicio\": \"{{reservationStart}}\",\n  \"fin\": \"{{reservationEnd}}\",\n  \"mesaIds\": [\n    \"{{tableId}}\"\n  ],\n  \"claveOperacion\": \"RSV:{{runId}}:overlap\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(409);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Change notes/contact on active reservation",
+      "request": {
+        "method": "PATCH",
+        "url": "{{baseUrl}}/api/reservations/{{reservationId}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nombreContacto\": \"Invitado RSV editado\",\n  \"notas\": \"Actualización de reserva\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);const j=pm.response.json();",
+              "pm.expect(j.nombreContacto).to.equal('Invitado RSV editado');",
+              "pm.expect(j.eventos.map(x=>x.accion)).to.include('RESERVATION_UPDATED');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 Check-in opens table occupation in ONE action",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/reservations/{{reservationId}}/check-in",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);const j=pm.response.json();",
+              "pm.expect(j.estado).to.equal('COMPLETADA');",
+              "pm.expect(j.ocupaciones).to.have.lengthOf(1);",
+              "pm.expect(j.ocupaciones[0].mesaId).to.equal(pm.collectionVariables.get('tableId'));",
+              "pm.collectionVariables.set('occupancyId',j.ocupaciones[0].id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 Check-in replay does not create duplicate occupation",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/reservations/{{reservationId}}/check-in",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "pm.expect(pm.response.json().ocupaciones[0].id).to.equal(pm.collectionVariables.get('occupancyId'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 ORD-A order reuses check-in occupation",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/orders",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"modalidad\": \"MESA\",\n  \"origen\": \"MESERO\",\n  \"mesaId\": \"{{tableId}}\",\n  \"enviarCocina\": false,\n  \"claveOperacion\": \"RSV:{{runId}}:order\",\n  \"lineas\": [\n    {\n      \"varianteId\": \"{{varianteId}}\",\n      \"cantidad\": \"1.000\"\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);const j=pm.response.json();",
+              "pm.expect(j.ocupacionMesaId).to.equal(pm.collectionVariables.get('occupancyId'));",
+              "pm.collectionVariables.set('orderId',j.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 Detail contains occupancy, table and ORD-A order enriched",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/reservations/{{reservationId}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);const j=pm.response.json();",
+              "pm.expect(j.ocupaciones[0].ordenes[0].id).to.equal(pm.collectionVariables.get('orderId'));",
+              "pm.expect(j.eventos.map(x=>x.accion)).to.include('RESERVATION_CHECKED_IN');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 Cannot cancel a checked-in reservation",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/reservations/{{reservationId}}/cancel",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"motivo\": \"No se debe cancelar luego del check-in\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(409);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 List enriched reservations scoped to branch",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/reservations?sucursalId={{sucursalId}}&limit=20",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const j=pm.response.json();",
+              "const row=j.data.find(x=>x.id===pm.collectionVariables.get('reservationId'));",
+              "pm.expect(row).to.exist;pm.expect(row.mesas[0].sala).to.have.property('nombre');"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "sucursalId",
+      "value": ""
+    },
+    {
+      "key": "varianteId",
+      "value": ""
+    },
+    {
+      "key": "runId",
+      "value": ""
+    },
+    {
+      "key": "reservationStart",
+      "value": ""
+    },
+    {
+      "key": "reservationEnd",
+      "value": ""
+    },
+    {
+      "key": "tableId",
+      "value": ""
+    },
+    {
+      "key": "reservationId",
+      "value": ""
+    },
+    {
+      "key": "occupancyId",
+      "value": ""
+    },
+    {
+      "key": "orderId",
+      "value": ""
+    }
+  ]
+}

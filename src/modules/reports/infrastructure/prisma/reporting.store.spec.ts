@@ -104,6 +104,7 @@ describe('REP-1 sources and accounting guardrails',()=>{
   const report=await store.cashShifts(admin,{sucursalId:'s1',periodo:'DIA',
    fecha:'2026-10-30',page:1,limit:20}) as any;
   expect(report.data[0].diferencia).toBe('-5.00');
+  expect(report.data[0].evidenciaUrl).toBe('/api/reports/analytics/cash-shifts/turno-1/evidence?sucursalId=s1');
   expect(report.data[0].movimientos.ingresos).toBe('200.00');
   expect(report.meta.total).toBe(1);
  });

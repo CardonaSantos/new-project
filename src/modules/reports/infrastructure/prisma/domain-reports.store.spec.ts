@@ -78,7 +78,7 @@ describe('REP-A source reports data and financial guardrails',()=>{
     orden:header,ordenLinea:{id:'ol1',nombreSnapshot:'Café',variante:{
      id:'v1',nombre:'Mediano',producto:{id:'p1',nombre:'Café'}}},
     comandaLineaId:'cl1',recetaVersionId:'rv1',cantidadPreparada:d('1.000'),
-    consumoOrdenLineasComoConsumo:[{id:'dline1',articulo,ubicacionId:'loc1',
+    consumoOrdenLineasComoConsumo:[{id:'dline1',articulo,articuloId:'art1',ubicacionId:'loc1',
      loteId:null,cantidad:d('150.000000'),costoUnitario:d('0.010286'),movimientoId:'mov1',
      movimiento:{id:'mov1',creadoEn:new Date('2026-10-30T16:00:00Z'),tipo:'CONSUMO',
       cantidad:d('-150.000000'),costoTotal:d('1.542857'),articuloId:'art1',
@@ -86,7 +86,7 @@ describe('REP-A source reports data and financial guardrails',()=>{
       referenciaId:'doc1'}}]},
    {id:'doc2',tipo:'EMPAQUE',creadoEn:new Date('2026-10-30T16:01:00Z'),
     orden:header,ordenLinea:null,comandaLineaId:null,recetaVersionId:null,cantidadPreparada:null,
-    consumoOrdenLineasComoConsumo:[{id:'dline2',articulo,ubicacionId:'loc1',
+    consumoOrdenLineasComoConsumo:[{id:'dline2',articulo,articuloId:'art1',ubicacionId:'loc1',
      loteId:null,cantidad:d('1.000000'),costoUnitario:d('0.200000'),movimientoId:null,
      movimiento:null}]}
   ]);

@@ -152,6 +152,31 @@ export class DeliveryStore extends DeliveryPort{
    return this.output(row);
   });
  }
+ async closureReadiness(u:Principal,id:string){
+  return this.atomic(async tx=>{
+   const row=await this.get(tx,id);
+   await this.requireManage(tx,u.id,row.orden.sucursalId);
+   const [lines,accounts,pendingKitchen]=await Promise.all([
+    tx.ordenLinea.findMany({where:{ordenId:row.ordenId,canceladaEn:null},
+     select:{cantidad:true,cantidadEnviada:true}}),
+    tx.cuenta.findMany({where:{ordenId:row.ordenId},select:{total:true,pagado:true}}),
+    tx.comanda.count({where:{ordenId:row.ordenId,estado:{in:['PENDIENTE','PREPARANDO']}}})
+   ]);
+   return {entregaId:id,ordenId:row.ordenId,...closureReadiness({
+    orderStatus:row.orden.estado,deliveryStatus:row.estado,lines,accounts,pendingKitchen
+   })};
+  });
+ }
+ async finalizeOrder(u:Principal,id:string){
+  const readiness=await this.closureReadiness(u,id);
+  if(!readiness.alreadyClosed){
+   if(!readiness.canFinalize)
+    throw new ConflictException('Cierre bloqueado: '+readiness.blockers.join(', '));
+   // Delegate Venta, Cuenta and Orden finalization exclusively to PAY-A.
+   await this.payments.settle(u,readiness.ordenId);
+  }
+  return this.closureReadiness(u,id);
+ }
  async events(u:Principal,id:string){
   return this.atomic(async tx=>{
    const row=await this.get(tx,id);

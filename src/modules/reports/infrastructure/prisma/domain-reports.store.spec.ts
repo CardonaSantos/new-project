@@ -95,8 +95,8 @@ describe('REP-A source reports data and financial guardrails',()=>{
    {tipo:'EMPAQUE',documentos:1,lineas:1,lineasSinMovimiento:1,documentosSinLineas:0,costoRegistrado:'0'}
   ]);
   const r=await store.records(actor,'PREPARATION_COSTS',{
-   sucursalId:'s1',periodo:'DIA',fecha:'2026-10-30',page:1,limit:1}) as any;
-  expect(r.meta).toMatchObject({total:2,page:1,limit:1});
+   sucursalId:'s1',periodo:'DIA',fecha:'2026-10-30',page:1,limit:20}) as any;
+  expect(r.meta).toMatchObject({total:2,page:1,limit:20});
   expect(r.totales).toMatchObject({documentos:2,lineas:2,lineasSinMovimiento:1,
    documentosSinLineas:0,
    costoRegistrado:'1.542857'});
@@ -108,7 +108,7 @@ describe('REP-A source reports data and financial guardrails',()=>{
   expect(r.data[0].lineas[0]).toMatchObject({movimientoId:'mov1',
    costoUnitarioHistorico:'0.010286',costoMovimiento:'1.542857',trazabilidadValida:true});
   expect(tx.consumoOrden.findMany).toHaveBeenCalledWith(expect.objectContaining({
-   where:{orden:{sucursalId:'s1'},creadoEn:expect.any(Object)},take:1,skip:0
+   where:{orden:{sucursalId:'s1'},creadoEn:expect.any(Object)},take:20,skip:0
   }));
   expect(tx.usuarioRol.findFirst).toHaveBeenCalledTimes(2);
   expect(r).not.toHaveProperty('note');

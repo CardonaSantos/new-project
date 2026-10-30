@@ -16,6 +16,7 @@ describe('DEL-A D3 hexagonal HTTP contracts',()=>{
   pending:vi.fn().mockResolvedValue({data:[],meta:{total:0}}),
   createCourier:vi.fn().mockResolvedValue({id:'settlement',totalEsperado:'22.00'}),
   closeCourier:vi.fn().mockResolvedValue({id:'settlement',movimientoCajaId:'movement'}),
+  closeCourierDirect:vi.fn().mockResolvedValue({id:'settlement',estado:'CERRADA',movimientoCajaId:'movement'}),
   discrepancy:vi.fn().mockResolvedValue({id:'settlement',estado:'ABIERTA',diferencia:'1.00'}),
   courierDetail:vi.fn().mockResolvedValue({id:'settlement',estado:'CERRADA'}),
   platformChannels:vi.fn().mockResolvedValue({data:[]}),
@@ -57,6 +58,15 @@ describe('DEL-A D3 hexagonal HTTP contracts',()=>{
    .send({...key,montoDeclarado:'21.00',motivo:'Faltante de prueba documentado'}).expect(201);
   expect(stub.discrepancy).toHaveBeenCalledOnce();
   expect(stub.closeCourier).toHaveBeenCalledOnce();
+ });
+ it('can settle courier cash in one operator confirmation',async()=>{
+  const payload={...key,sucursalId:'s1',repartidorId:'courier',pagoIds:['p1'],
+   turnoCajaId:'shift',totalEntregado:'22.00'};
+  await request(app.getHttpServer()).post('/api/deliveries/settlements/couriers/close-direct')
+   .send(payload).expect(201);
+  expect(stub.closeCourierDirect).toHaveBeenCalledExactlyOnceWith(u,expect.objectContaining(payload));
+  await request(app.getHttpServer()).post('/api/deliveries/settlements/couriers/close-direct')
+   .send({...payload,totalEntregado:'22.001'}).expect(400);
  });
  it('requires valid platform periods and commission decimals',async()=>{
   const req={...key,sucursalId:'s1',canalId:'channel',cuentaFinancieraId:'bank',

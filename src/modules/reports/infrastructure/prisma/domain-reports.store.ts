@@ -157,41 +157,49 @@ export class DomainReportsStore extends DomainReportsPort{
         consumoOrdenLineasComoConsumo:{orderBy:{id:'asc'},
          include:{articulo:{select:{id:true,codigo:true,nombre:true}},
           movimiento:{select:{id:true,creadoEn:true,tipo:true,cantidad:true,
+           articuloId:true,ubicacionId:true,loteId:true,
            costoTotal:true,referenciaTipo:true,referenciaId:true}}}}
        }}),
       tx.consumoOrden.count({where}),
       tx.$queryRaw<Array<{tipo:string;documentos:number;lineas:number;
-       lineasSinMovimiento:number;costoRegistrado:string}>>`
+       lineasSinMovimiento:number;documentosSinLineas:number;costoRegistrado:string}>>`
        SELECT co.tipo::text AS tipo,
         COUNT(DISTINCT co.id)::int AS documentos,
         COUNT(cl.id)::int AS lineas,
         COUNT(cl.id) FILTER (WHERE mi.id IS NULL)::int AS "lineasSinMovimiento",
+        COUNT(DISTINCT co.id) FILTER (WHERE cl.id IS NULL)::int AS "documentosSinLineas",
         COALESCE(SUM(mi."costoTotal"),0)::text AS "costoRegistrado"
        FROM "ConsumoOrden" co
         JOIN "Orden" o ON o.id=co."ordenId"
         LEFT JOIN "ConsumoOrdenLinea" cl ON cl."consumoId"=co.id
         LEFT JOIN "MovimientoInventario" mi ON mi.id=cl."movimientoId"
          AND mi.tipo='CONSUMO' AND mi."referenciaTipo"='CONSUMO_ORDEN'
-         AND mi."referenciaId"=co.id
+         AND mi."referenciaId"=co.id AND mi."articuloId"=cl."articuloId"
+         AND mi."ubicacionId"=cl."ubicacionId"
+         AND mi."loteId" IS NOT DISTINCT FROM cl."loteId"
        WHERE o."sucursalId"=${b.id} AND co."creadoEn">=${b.from}
         AND co."creadoEn"<${b.to}
        GROUP BY co.tipo ORDER BY co.tipo`
      ]);
      const categories=groups.map(g=>({tipo:g.tipo,documentos:g.documentos,
       lineas:g.lineas,lineasSinMovimiento:g.lineasSinMovimiento,
+      documentosSinLineas:g.documentosSinLineas,
       costoRegistrado:new Prisma.Decimal(g.costoRegistrado).toFixed(6)}));
-     const sum=(field:'lineas'|'lineasSinMovimiento')=>
+     const sum=(field:'lineas'|'lineasSinMovimiento'|'documentosSinLineas')=>
       categories.reduce((n,c)=>n+c[field],0);
      const totalCost=categories.reduce((n,c)=>n.plus(c.costoRegistrado),
       new Prisma.Decimal(0));
      return {...header,totales:{documentos:total,lineas:sum('lineas'),
       lineasSinMovimiento:sum('lineasSinMovimiento'),
+      documentosSinLineas:sum('documentosSinLineas'),
       costoRegistrado:totalCost.toFixed(6),porTipo:categories},
       data:rows.map(doc=>{
        const lineas=doc.consumoOrdenLineasComoConsumo.map(l=>{
         const m=l.movimiento;
         const trazabilidadValida=!!m&&m.tipo==='CONSUMO'&&
-         m.referenciaTipo==='CONSUMO_ORDEN'&&m.referenciaId===doc.id;
+         m.referenciaTipo==='CONSUMO_ORDEN'&&m.referenciaId===doc.id&&
+         m.articuloId===l.articuloId&&m.ubicacionId===l.ubicacionId&&
+         m.loteId===l.loteId;
         return {id:l.id,articulo:l.articulo,ubicacionId:l.ubicacionId,
          loteId:l.loteId,cantidad:decimal(l.cantidad),
          costoUnitarioHistorico:decimal(l.costoUnitario),
@@ -199,6 +207,7 @@ export class DomainReportsStore extends DomainReportsPort{
          costoMovimiento:trazabilidadValida?m!.costoTotal.toFixed(6):null,
          movimiento:m?{id:m.id,fecha:m.creadoEn,tipo:m.tipo,
           cantidad:decimal(m.cantidad),costoTotal:decimal(m.costoTotal),
+          articuloId:m.articuloId,ubicacionId:m.ubicacionId,loteId:m.loteId,
           referenciaTipo:m.referenciaTipo,referenciaId:m.referenciaId}:null};
        });
        const completo=lineas.length>0&&lineas.every(l=>l.trazabilidadValida);

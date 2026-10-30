@@ -131,6 +131,16 @@ describe('REP-A source reports data and financial guardrails',()=>{
   expect(tx.usuarioRol.findFirst).toHaveBeenCalledTimes(3);
   expect(tx.$queryRaw).not.toHaveBeenCalled();
  });
+ it('requires order read in addition to report and cost permissions for R4/C',async()=>{
+  const {store,tx}=rig();
+  tx.usuarioRol.findFirst.mockResolvedValueOnce({id:'reports'})
+   .mockResolvedValueOnce({id:'costs'}).mockResolvedValueOnce(null);
+  await expect(store.records(actor,'ORDER_COST_OUTCOMES',{
+   sucursalId:'s1',periodo:'DIA',fecha:'2026-10-30',page:1,limit:20}))
+   .rejects.toThrow('orders.read');
+  expect(tx.usuarioRol.findFirst).toHaveBeenCalledTimes(3);
+  expect(tx.$queryRaw).not.toHaveBeenCalled();
+ });
  it('keeps inventory cost at actual recorded precision and references original movement',async()=>{
   const {store,tx}=rig();
   const x=await store.records(actor,'INVENTORY_MOVEMENTS',{

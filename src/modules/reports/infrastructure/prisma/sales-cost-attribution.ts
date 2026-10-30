@@ -112,7 +112,7 @@ export async function salesCostAttribution(tx:Tx,b:Scope,page:number,limit:numbe
     COUNT(*) FILTER (WHERE cobertura='NO_APLICA')::int AS "lineasNoAplicables",
     COALESCE(SUM(subtotal),0)::text AS ingresos,
     COALESCE(SUM("costoAsignado"),0)::text AS "costoIdentificado",
-    CASE WHEN COUNT(*)=COUNT(*) FILTER (WHERE cobertura='COMPLETO')
+    CASE WHEN COUNT(*)>0 AND COUNT(*)=COUNT(*) FILTER (WHERE cobertura='COMPLETO')
      THEN COALESCE(SUM(subtotal-"costoAsignado"),0)::text ELSE NULL END
      AS "margenAntesEmpaque"
    FROM attributed`),
@@ -123,7 +123,7 @@ export async function salesCostAttribution(tx:Tx,b:Scope,page:number,limit:numbe
     COUNT(*) FILTER (WHERE cobertura='NO_APLICA')::int AS "lineasNoAplicables",
     COALESCE(SUM(subtotal),0)::text AS ingresos,
     COALESCE(SUM("costoAsignado"),0)::text AS "costoIdentificado",
-    CASE WHEN COUNT(*)=COUNT(*) FILTER (WHERE cobertura='COMPLETO')
+    CASE WHEN COUNT(*)>0 AND COUNT(*)=COUNT(*) FILTER (WHERE cobertura='COMPLETO')
      THEN COALESCE(SUM(subtotal-"costoAsignado"),0)::text ELSE NULL END
      AS "margenAntesEmpaque"
    FROM attributed GROUP BY "productoId",producto

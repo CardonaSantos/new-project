@@ -1,7 +1,7 @@
 {
   "info": {
-    "name": "Gastro Core REP-2 — CSV XLSX PDF y auditoría de exportaciones DEV",
-    "description": "Descargas de fuente de reportes completa en un solo snapshot READ REPEATABLE, máximo 1000 registros por fuente; no permite truncar silenciosamente. Reutiliza RBAC de fuente y sucursal. Contenido completo en Excel y CSV; PDF pagina paneles de columnas. X-Report-SHA256 coincide con auditoría REP_EXPORT_GENERATED. Para guardar XLSX/PDF usar Send and Download en Postman.",
+    "name": "Gastro Core REP-2B — Exportaciones profesionales mensual y diario (11 pruebas)",
+    "description": "XLSX nuevo: Resumen, Diario y Detalle; debe abrir en Excel sin reparaciones de styles.xml. PDF nuevo: portada KPIs, fecha operativa real y detalle legible. Las tres pruebas finales son de un solo día. Guardar y abrir archivos binarios, no basta solo status 200. Pruebas TXT y sin sucursal responden 400.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -526,6 +526,195 @@
           }
         }
       ]
+    },
+    {
+      "name": "09 Diario SALES_COSTS XLSX (Resumen + Diario + Detalle)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/reports/analytics/exports/SALES_COSTS?sucursalId={{sucursalId}}&periodo=DIA&fecha={{fecha}}&format=XLSX",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "reports",
+            "analytics",
+            "exports",
+            "SALES_COSTS"
+          ],
+          "query": [
+            {
+              "key": "sucursalId",
+              "value": "{{sucursalId}}"
+            },
+            {
+              "key": "periodo",
+              "value": "DIA"
+            },
+            {
+              "key": "fecha",
+              "value": "{{fecha}}"
+            },
+            {
+              "key": "format",
+              "value": "XLSX"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "pm.expect(pm.response.headers.get('Cache-Control')).to.include('no-store');",
+              "const f=pm.response.headers.get('Content-Disposition');",
+              "pm.expect(f).to.match(/^attachment; filename=\"Gastro_Core_/);",
+              "pm.expect(f).to.include('.xlsx');",
+              "pm.expect(pm.response.headers.get('X-Report-SHA256')).to.match(/^[0-9a-f]{64}$/);",
+              "pm.expect(Number(pm.response.headers.get('Content-Length'))).to.be.above(0);",
+              "pm.expect(pm.response.headers.get('Content-Type')).to.include('spreadsheetml.sheet');",
+              "pm.expect(pm.response.headers.get('X-Content-Type-Options')).to.equal('nosniff');",
+              "pm.expect(pm.response.size().body).to.be.greaterThan(20);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 Diario SALES_COSTS PDF (portada + día + detalle)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/reports/analytics/exports/SALES_COSTS?sucursalId={{sucursalId}}&periodo=DIA&fecha={{fecha}}&format=PDF",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "reports",
+            "analytics",
+            "exports",
+            "SALES_COSTS"
+          ],
+          "query": [
+            {
+              "key": "sucursalId",
+              "value": "{{sucursalId}}"
+            },
+            {
+              "key": "periodo",
+              "value": "DIA"
+            },
+            {
+              "key": "fecha",
+              "value": "{{fecha}}"
+            },
+            {
+              "key": "format",
+              "value": "PDF"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "pm.expect(pm.response.headers.get('Cache-Control')).to.include('no-store');",
+              "const f=pm.response.headers.get('Content-Disposition');",
+              "pm.expect(f).to.match(/^attachment; filename=\"Gastro_Core_/);",
+              "pm.expect(f).to.include('.pdf');",
+              "pm.expect(pm.response.headers.get('X-Report-SHA256')).to.match(/^[0-9a-f]{64}$/);",
+              "pm.expect(Number(pm.response.headers.get('Content-Length'))).to.be.above(0);",
+              "pm.expect(pm.response.headers.get('Content-Type')).to.include('application/pdf');",
+              "pm.expect(pm.response.headers.get('X-Content-Type-Options')).to.equal('nosniff');",
+              "pm.expect(pm.response.size().body).to.be.greaterThan(20);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "11 Diario PAYMENT_SALES_RECON PDF (cobros Q88 frente a venta Q22)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/reports/analytics/exports/PAYMENT_SALES_RECON?sucursalId={{sucursalId}}&periodo=DIA&fecha={{fecha}}&format=PDF",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "reports",
+            "analytics",
+            "exports",
+            "PAYMENT_SALES_RECON"
+          ],
+          "query": [
+            {
+              "key": "sucursalId",
+              "value": "{{sucursalId}}"
+            },
+            {
+              "key": "periodo",
+              "value": "DIA"
+            },
+            {
+              "key": "fecha",
+              "value": "{{fecha}}"
+            },
+            {
+              "key": "format",
+              "value": "PDF"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "pm.expect(pm.response.headers.get('Cache-Control')).to.include('no-store');",
+              "const f=pm.response.headers.get('Content-Disposition');",
+              "pm.expect(f).to.match(/^attachment; filename=\"Gastro_Core_/);",
+              "pm.expect(f).to.include('.pdf');",
+              "pm.expect(pm.response.headers.get('X-Report-SHA256')).to.match(/^[0-9a-f]{64}$/);",
+              "pm.expect(Number(pm.response.headers.get('Content-Length'))).to.be.above(0);",
+              "pm.expect(pm.response.headers.get('Content-Type')).to.include('application/pdf');",
+              "pm.expect(pm.response.headers.get('X-Content-Type-Options')).to.equal('nosniff');",
+              "pm.expect(pm.response.size().body).to.be.greaterThan(20);"
+            ]
+          }
+        }
+      ]
     }
   ],
   "variable": [
@@ -547,6 +736,10 @@
     },
     {
       "key": "hasta",
+      "value": "2026-10-30"
+    },
+    {
+      "key": "fecha",
       "value": "2026-10-30"
     }
   ]

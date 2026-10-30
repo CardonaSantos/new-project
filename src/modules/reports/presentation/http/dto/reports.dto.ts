@@ -21,3 +21,12 @@ export class CashEvidenceDto extends BranchReportDto{
  @IsOptional() @Type(()=>Number) @IsInt() @Min(1) @Max(100) limit=20;
  @IsOptional() @IsEnum(['INGRESO','EGRESO']) tipo?:'INGRESO'|'EGRESO';
 }
+
+/** R6: comma-separated branch IDs, 1-10; each checked for authorization. */
+export class ConsolidatedReportDto{
+ @IsString() @Matches(/^[a-zA-Z0-9_-]+(?:,[a-zA-Z0-9_-]+){0,9}$/) sucursalIds!:string;
+ @IsEnum(['DIA','SEMANA','MES','PERSONALIZADO']) periodo!:'DIA'|'SEMANA'|'MES'|'PERSONALIZADO';
+ @IsOptional() @Matches(date) fecha?:string;
+ @IsOptional() @Matches(date) desde?:string;
+ @IsOptional() @Matches(date) hasta?:string;
+}

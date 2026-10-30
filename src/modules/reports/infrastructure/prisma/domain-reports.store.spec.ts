@@ -17,7 +17,17 @@ function rig(){
   $queryRaw:vi.fn().mockResolvedValueOnce([{productoId:'prod1',nombre:'Café',categoriaId:'cat1',
    unidades:'2.000',importe:'33.50',descuentos:'1.50'}])
    .mockResolvedValueOnce([{categoriaId:'cat1',categoria:'Bebidas',
-    unidades:'2.000',importe:'33.50',descuentos:'1.50'}]),
+    unidades:'2.000',importe:'33.50',descuentos:'1.50'}])
+   .mockResolvedValueOnce([
+    {varianteId:'v1',variante:'Grande',productoId:'prod1',producto:'Café',
+     unidades:'1.000',importe:'25.00',descuentos:'1.00'},
+    {varianteId:'v2',variante:'Pequeño',productoId:'prod1',producto:'Café',
+     unidades:'1.000',importe:'8.50',descuentos:'0.50'}
+   ])
+   .mockResolvedValueOnce([
+    {modalidad:'MESA',unidades:'1.000',importe:'22.00',descuentos:'1.00'},
+    {modalidad:'DELIVERY',unidades:'1.000',importe:'11.50',descuentos:'0.50'}
+   ]),
   movimientoInventario:{
    findMany:vi.fn().mockResolvedValue([{id:'mov1',creadoEn:new Date('2026-10-30T17:00:00Z'),
     tipo:'CONSUMO',articulo:{id:'art1',codigo:'A1',nombre:'Harina'},
@@ -44,7 +54,18 @@ describe('REP-A source reports data and financial guardrails',()=>{
   expect(r.porProducto).toEqual([{productoId:'prod1',nombre:'Café',categoriaId:'cat1',
    unidades:'2.000',importe:'33.50',descuentos:'1.50'}]);
   expect(r.porCategoria[0].importe).toBe('33.50');
-  expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+  expect(r.porVariante).toHaveLength(2);
+  expect(r.porVariante.map(x=>x.varianteId)).toEqual(['v1','v2']);
+  expect(r.porModalidad.map(x=>x.modalidad)).toEqual(['MESA','DELIVERY']);
+  for(const group of [r.porProducto,r.porCategoria,r.porVariante,r.porModalidad]){
+   const importe=group.reduce((sum:Prisma.Decimal,row:{importe:string})=>
+    sum.plus(new Prisma.Decimal(row.importe)),new Prisma.Decimal(0));
+   const descuentos=group.reduce((sum:Prisma.Decimal,row:{descuentos:string})=>
+    sum.plus(new Prisma.Decimal(row.descuentos)),new Prisma.Decimal(0));
+   expect(importe.toFixed(2)).toBe(r.totales.importeLineas);
+   expect(descuentos.toFixed(2)).toBe(r.totales.descuentos);
+  }
+  expect(tx.$queryRaw).toHaveBeenCalledTimes(4);
  });
  it('keeps inventory cost at actual recorded precision and references original movement',async()=>{
   const {store,tx}=rig();

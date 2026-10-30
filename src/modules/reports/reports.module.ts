@@ -12,12 +12,15 @@ import {DomainReportsController} from './presentation/http/domain-reports.contro
 import {DomainReportsService} from './application/domain-reports.service.js';
 import {DomainReportsPort} from './application/ports/domain-reports.port.js';
 import {DomainReportsStore} from './infrastructure/prisma/domain-reports.store.js';
+import {ReportExportController} from './presentation/http/report-export.controller.js';
+import {ReportExportService} from './application/report-export.service.js';
 @Module({
  imports:[PrismaModule],
- controllers:[ReportsController,ReportEvidenceController,DomainReportsController],
+ controllers:[ReportsController,ReportEvidenceController,DomainReportsController,ReportExportController],
  providers:[ReportingStore,ReportingService,{provide:ReportingPort,useExisting:ReportingStore},
   ReportEvidenceStore,ReportEvidenceService,{provide:ReportEvidencePort,useExisting:ReportEvidenceStore},
-  DomainReportsStore,DomainReportsService,{provide:DomainReportsPort,useExisting:DomainReportsStore}],
+  DomainReportsStore,DomainReportsService,{provide:DomainReportsPort,useExisting:DomainReportsStore},
+  ReportExportService],
  exports:[ReportingService,ReportingPort,ReportEvidenceService,ReportEvidencePort,DomainReportsService,DomainReportsPort]
 })
 export class ReportsModule{}

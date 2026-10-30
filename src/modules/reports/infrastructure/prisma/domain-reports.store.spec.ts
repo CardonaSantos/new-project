@@ -141,6 +141,26 @@ describe('REP-A source reports data and financial guardrails',()=>{
   expect(tx.usuarioRol.findFirst).toHaveBeenCalledTimes(3);
   expect(tx.$queryRaw).not.toHaveBeenCalled();
  });
+ it('rejects duplicate or oversized branch rollup requests before database access',async()=>{
+  const {store,db}=rig();
+  await expect(store.consolidated(actor,{sucursalIds:'s1,s1',
+   periodo:'DIA',fecha:'2026-10-30'})).rejects.toThrow('sucursalIds');
+  await expect(store.consolidated(actor,{sucursalIds:Array.from({length:11},
+   (_,i)=>'s'+i).join(','),periodo:'DIA',fecha:'2026-10-30'}))
+   .rejects.toThrow('sucursalIds');
+  expect(db.$transaction).not.toHaveBeenCalled();
+ });
+ it('denies multi-branch rollup when any branch lacks payments permission',async()=>{
+  const {store,tx}=rig();
+  tx.usuarioRol.findFirst
+   .mockResolvedValueOnce({id:'rep1'}).mockResolvedValueOnce({id:'sales1'})
+   .mockResolvedValueOnce({id:'payment1'})
+   .mockResolvedValueOnce({id:'rep2'}).mockResolvedValueOnce({id:'sales2'})
+   .mockResolvedValueOnce(null);
+  await expect(store.consolidated(actor,{sucursalIds:'s1,s2',
+   periodo:'DIA',fecha:'2026-10-30'})).rejects.toThrow('payments.read');
+  expect(tx.$queryRaw).not.toHaveBeenCalled();
+ });
  it('keeps inventory cost at actual recorded precision and references original movement',async()=>{
   const {store,tx}=rig();
   const x=await store.records(actor,'INVENTORY_MOVEMENTS',{

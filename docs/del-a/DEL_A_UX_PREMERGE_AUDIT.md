@@ -37,7 +37,7 @@
 
 - Consulta pagos elegibles; exige misma sucursal y repartidor asignado, entrega ENTREGADA, Pago EFECTIVO recibido por courier y no liquidado/reembolsado.
 - Exige `delivery.settlements.manage` y `cash.manage` del actor, un turno activo del mismo día operativo/sucursal y cantidad entregada idéntica a la esperada.
-- En **una transacción PostgreSQL SERIALIZABLE**, crea `LiquidacionRepartidor` ya CERRADA con sus líneas, **un** `MovimientoCaja` vinculado, auditoría/outbox y resultado idempotente. No crea otro Pago.
+- En **una sola transacción PostgreSQL SERIALIZABLE**, crea `LiquidacionRepartidor` ya CERRADA con sus líneas, **un** `MovimientoCaja` vinculado, auditoría/outbox y resultado idempotente; devuelve todos los datos de la operación sin una segunda lectura/transacción. No crea otro Pago.
 - Reintentos con la misma clave/payload devuelven el mismo movimiento, incluso si luego se cierra el turno; una clave distinta para los mismos pagos recibe 409, protegida también por `LiquidacionRepartidorLinea.pagoId UNIQUE`.
 - No permite conciliar diferencias silenciosamente. Ante faltante: mantener el flujo original `POST /settlements/couriers`, `POST /:id/discrepancy` y `POST /:id/close` cuando el efectivo completo se recibe.
 - Conserva los endpoints anteriores por compatibilidad con D3, sin romper los ensayos que ya aprobó el usuario.

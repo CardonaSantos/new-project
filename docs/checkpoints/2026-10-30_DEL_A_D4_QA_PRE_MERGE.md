@@ -66,3 +66,18 @@ npm run start:dev
 - D4 no crea ni necesita nuevas migraciones o seed. El merge del PR #14 requiere **consentimiento expreso** posterior a esta revisión.
 
 **Estado de entrega:** D1–D4 desarrolladas; D1–D4 probadas funcionalmente en DEV en los escenarios definidos, PR #14 en DRAFT y pendiente decisión de merge. Después: RSV-A Reservaciones.
+
+
+## Auditoría de fluidez premerge — 30 octubre 2026
+
+Ante la pregunta explícita del operador sobre procesos lentos o aprobaciones redundantes, se examinó el código real D1–D4 y se identificó un paso manual evitable en **liquidación ordinaria de efectivo**: antes requería `crear liquidación ABIERTA` y `cerrar liquidación` incluso cuando efectivo contado coincidía.
+
+**Corrección de UX en rama, sin nuevas migraciones ni permisos:**
+- Se añadió `POST /api/deliveries/settlements/couriers/close-direct`, una única acción de caja que crea la liquidación CERRADA y el único movimiento de caja en **la misma transacción SERIALIZABLE**, con autorización vigente, día operativo válido, efectivo esperado exacto, audit/outbox e idempotencia. Conserva flujo de incidencia existente.
+- Code CI [41089286779](https://github.com/CardonaSantos/new-project/actions/runs/41089286779) SUCCESS: **211 unitarias + 77 HTTP**, PostgreSQL migration-smoke SUCCESS. El nuevo atajo incorpora 4 pruebas unitarias y una prueba HTTP; la migración existente no cambió.
+- Colección Postman independiente con **9 solicitudes DEV**: `docs/del-a/Gastro_Core_DEL_A_UX_Direct_Cash.postman_collection.json`. **Aún no ejecutada manualmente en DEV** al escribir este checkpoint. No fusionar sin esa evidencia adicional.
+- Análisis por rol y acción: `docs/del-a/DEL_A_UX_PREMERGE_AUDIT.md`. No hay doble autorización para asignar repartidor; asignar al crear entrega es directo. Cocina, despacho, entrega física, cobro y recepción del efectivo son eventos auditables, no pasos burocráticos. Los 27/30 requests Postman originales representan QA, no clics del usuario.
+- **Punto de implementación Angular:** `GET closure-readiness` debe ser consulta de UI, no botón; el frontend podrá encadenar cierre PAY-A si ya está lista la orden y el actor tiene permisos. Los IDs de datos deben elegirse por select; no pedirlos tecleados.
+- **No existe benchmark de latencia ni prueba de carga:** un liquidación de plataforma grande puede recorrer muchos pagos en una transacción. No afirmar que p95/p99 estén certificados. Mantener prueba de rendimiento realista como compuerta anterior a producción, no como autorización añadida al usuario.
+
+**Estado de merge:** PR #14 DRAFT, sin merge. El usuario aprobó el objetivo de fusionar pero pidió una revisión de fluidez **antes**; comprobar la nueva colección DEV y cerrar el punto de auditoría antes de ejecutar merge.

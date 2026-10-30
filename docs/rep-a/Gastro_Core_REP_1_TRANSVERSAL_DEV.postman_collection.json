@@ -62,7 +62,12 @@
               "pm.expect(r).not.to.have.property('definicion');",
               "pm.expect(r).not.to.have.property('definitions');",
               "pm.expect(r.data.every(x=>typeof x.id==='string')).to.equal(true);",
-              "if(r.meta.total<=100)pm.expect(r.data.length).to.equal(r.meta.total);"
+              "if(r.meta.total<=100)pm.expect(r.data.length).to.equal(r.meta.total);",
+              "pm.expect(r.porProducto).to.be.an('array');",
+              "pm.expect(r.porCategoria).to.be.an('array');",
+              "const cents = v => {const m=/^(-?)(\\d+)\\.(\\d{2})$/.exec(String(v)); pm.expect(m).not.to.equal(null); return (m[1]==='-'?-1:1)*(Number(m[2])*100+Number(m[3]));};",
+              "pm.expect(r.porProducto.reduce((acc,x)=>acc+cents(x.importe),0)).to.equal(cents(r.totales.importeLineas));",
+              "pm.expect(r.porCategoria.reduce((acc,x)=>acc+cents(x.importe),0)).to.equal(cents(r.totales.importeLineas));"
             ]
           }
         }

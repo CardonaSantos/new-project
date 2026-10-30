@@ -8,6 +8,7 @@ import type {Principal} from '../../../auth/application/auth.service.js';
 import type {TicketQuery} from '../../application/contracts/reporting.types.js';
 import {salesCostAttribution} from './sales-cost-attribution.js';
 import {orderCostOutcomes} from './order-cost-outcomes.js';
+import {paymentSalesReconciliation,supplierBalances,platformSettlements,bankMatchStatus} from './financial-reconciliation.js';
 import {DomainReportsPort,type ReportSource} from '../../application/ports/domain-reports.port.js';
 
 type Tx=Prisma.TransactionClient;
@@ -20,7 +21,9 @@ const permissions:Record<ReportSource,string>={
  DELIVERY_EVENTS:'delivery.read',RESERVATION_EVENTS:'reservations.read',
  SUPPLY_REQUESTS:'supply.read',SUPPLY_TRANSFERS:'supply.read',
  PREPARATION_COSTS:'inventory.costs.read',SALES_COSTS:'sales.read',
- ORDER_COST_OUTCOMES:'inventory.costs.read'
+ ORDER_COST_OUTCOMES:'inventory.costs.read',
+ PAYMENT_SALES_RECON:'payments.read',SUPPLIER_BALANCES:'purchases.read',
+ PLATFORM_SETTLEMENTS:'delivery.platform.manage',BANK_MATCH_STATUS:'finance.statements.read'
 };
 @Injectable()
 export class DomainReportsStore extends DomainReportsPort{
@@ -147,6 +150,18 @@ export class DomainReportsStore extends DomainReportsPort{
        precioUnitario:money(x.precioUnitario),descuento:money(x.descuento),
        subtotal:money(x.subtotal)})),
       meta:meta(q.page,q.limit,total)};
+    }
+    case 'PAYMENT_SALES_RECON':{
+     return {...header,...await paymentSalesReconciliation(tx,b,q.page,q.limit)};
+    }
+    case 'SUPPLIER_BALANCES':{
+     return {...header,...await supplierBalances(tx,b,q.page,q.limit)};
+    }
+    case 'PLATFORM_SETTLEMENTS':{
+     return {...header,...await platformSettlements(tx,b,q.page,q.limit)};
+    }
+    case 'BANK_MATCH_STATUS':{
+     return {...header,...await bankMatchStatus(tx,b,q.page,q.limit)};
     }
     case 'ORDER_COST_OUTCOMES':{
      return {...header,...await orderCostOutcomes(tx,b,q.page,q.limit)};

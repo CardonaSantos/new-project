@@ -35,7 +35,7 @@ describe('RSV-A serializable reservation invariants',()=>{
  it('denies reservation detail to a user without branch access',async()=>{
   const {store,tx}=rig();
   tx.usuarioRol.findFirst.mockResolvedValue(null);
-  await expect(store.detail('bad' as never,'res-1')).rejects.toThrow();
+  await expect(store.list(u,{sucursalId:'branch',page:1,limit:20})).rejects.toThrow('Sin permiso');
  });
  it('locks a table and blocks a conflicting reservation before insertion',async()=>{
   const {store,tx}=rig();

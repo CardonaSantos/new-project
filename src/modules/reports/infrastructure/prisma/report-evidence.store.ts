@@ -72,7 +72,12 @@ export class ReportEvidenceStore extends ReportEvidencePort{
       pagoProveedor:{select:{id:true,monto:true,metodo:true,proveedorId:true,
        referencia:true,estado:true,confirmadoEn:true}},
       liquidacionRepartidor:{select:{id:true,repartidorId:true,estado:true,
-       totalEsperado:true,totalEntregado:true,cerradaEn:true}}
+       totalEsperado:true,totalEntregado:true,cerradaEn:true,
+       liquidacionRepartidorLineasComoLiquidacion:{select:{
+        id:true,pagoId:true,entregaId:true,monto:true,
+        pago:{select:{id:true,metodo:true,cuentaId:true,cobradoEn:true}},
+        entrega:{select:{orden:{select:{id:true,numero:true}}}}
+       }}}}
      }}),
     tx.movimientoCaja.count({where}),
     tx.movimientoCaja.groupBy({by:['tipo'],where,
@@ -100,9 +105,14 @@ export class ReportEvidenceStore extends ReportEvidencePort{
      estado:m.liquidacionRepartidor.estado,
      totalEsperado:amount(m.liquidacionRepartidor.totalEsperado),
      totalEntregado:amount(m.liquidacionRepartidor.totalEntregado),
-     fechaDocumento:m.liquidacionRepartidor.cerradaEn};
-    return {tipo:'MANUAL',id:m.id,tabla:'MovimientoCaja',
-     descripcion:'Movimiento de caja sin documento enlazado; revisar motivo, actor y auditoría'};
+     fechaDocumento:m.liquidacionRepartidor.cerradaEn,
+     lineas:m.liquidacionRepartidor.liquidacionRepartidorLineasComoLiquidacion.map(l=>({
+      liquidacionLineaId:l.id,entregaId:l.entregaId,pagoId:l.pagoId,
+      cuentaId:l.pago.cuentaId,ordenId:l.entrega.orden.id,
+      numeroOrden:l.entrega.orden.numero,metodoPago:l.pago.metodo,
+      cobradoEn:l.pago.cobradoEn,monto:positive(l.monto)
+     }))};
+    return {tipo:'MANUAL',id:m.id,tabla:'MovimientoCaja'};
    };
    const data=rows.map(m=>({movimientoId:m.id,turnoId:m.turnoId,
     fecha:m.creadoEn,tipo:m.tipo,monto:positive(m.monto),motivo:m.motivo,
@@ -132,10 +142,7 @@ export class ReportEvidenceStore extends ReportEvidencePort{
     filtro:{tipo:q.tipo??null},
     totalesFiltro:{ingresos,egresos,cantidadIngresos:sum('INGRESO'),cantidadEgresos:sum('EGRESO'),
      saldoMovimientos:new Prisma.Decimal(ingresos).minus(egresos).toFixed(2)},
-    data,meta:pageInfo(q.page,q.limit,total),
-    definicion:'Sumatoria de MovimientoCaja por turno/tipo, NO ventas adicionales. '+
-     'Cada fila apunta al documento de origen o se identifica como MANUAL. '+
-     'El arqueo de turno es distinto al saldo aritmético de movimientos.'};
+    data,meta:pageInfo(q.page,q.limit,total)};
   });
  }
  async payments(u:Principal,q:TicketQuery){
@@ -166,9 +173,7 @@ export class ReportEvidenceStore extends ReportEvidencePort{
      turnoCajaId:p.movimientoCajasComoPago?.turnoId??p.turnoId,
      reembolsos:p.reembolsoPagosComoPago.map(x=>({id:x.id,monto:positive(x.monto),
       fecha:x.creadoEn}))})),
-    meta:pageInfo(q.page,q.limit,total),
-    definicion:'Lista de pagos por cobradoEn; cada reembolso enlazado se presenta aparte '+
-     'y puede pertenecer a otro período. No sumar reembolsos sin filtrar por fecha.'};
+    meta:pageInfo(q.page,q.limit,total)};
   });
  }
  async expenses(u:Principal,q:TicketQuery){
@@ -196,9 +201,7 @@ export class ReportEvidenceStore extends ReportEvidencePort{
      registradoPor:x.usuario,proveedor:x.proveedor,
      cuentaFinancieraId:x.cuentaFinancieraId,turnoCajaId:x.turnoId,
      movimientoCajaId:x.movimientoCajasComoGasto?.id??null})),
-    meta:pageInfo(q.page,q.limit,total),
-    definicion:'Lista de gastos registrados; no prueba cobro, pago ni salida bancaria. '+
-     'El movimiento de caja enlazado se identifica si existe.'};
+    meta:pageInfo(q.page,q.limit,total)};
   });
  }
 }

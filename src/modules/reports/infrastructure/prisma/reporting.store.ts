@@ -156,16 +156,6 @@ export class ReportingStore extends ReportingPort{
      turnosCajaActualmenteAbiertos:cashOpen,
      margenBruto:null,resultadoNeto:null
     },
-    definitions:{
-     ventasNetas:'SUM(Venta.total) por Venta.cerradaEn; no son cobros',
-     ticketsUnicos:'COUNT DISTINCT Cuenta.ordenId entre ventas cerradas',
-     ticketPromedio:'ventasNetas / ticketsUnicos; null si no hay tickets',
-     cobrosNetos:'SUM(Pago.monto) - SUM(ReembolsoPago.monto) por eventos de cada período',
-     gastosRegistrados:'SUM(GastoOperativo.monto) según registradoEn; no se presumen pagados',
-     diferenciaCajaCerrada:'SUM(TurnoCaja.diferencia) solo cuando TODOS los turnos cerrados del período tienen diferencia registrada; null en otro caso',
-     margenBruto:'No calculado en este corte REP-1: requiere costo de consumo trazable de INV/REC',
-     resultadoNeto:'No calculado hasta consolidar todas las reglas financieras'
-    },
     serieDiaria:series};
   });
  }
@@ -188,8 +178,7 @@ export class ReportingStore extends ReportingPort{
     data:rows.map(v=>({id:v.id,numero:v.numero,total:money(v.total),
      descuentoTotal:money(v.descuentoTotal),cerradaEn:v.cerradaEn,
      cuentaId:v.cuenta.id,orden:v.cuenta.orden})),
-    meta:{page:q.page,limit:q.limit,total,totalPages:Math.ceil(total/q.limit)},
-    note:'Cada fila corresponde a una Venta/cuenta; los ticketsUnicos del resumen deduplican Orden.'};
+    meta:{page:q.page,limit:q.limit,total,totalPages:Math.ceil(total/q.limit)}};
   });
  }
  async paymentsByMethod(u:Principal,q:ReportingQuery){
@@ -221,10 +210,7 @@ export class ReportingStore extends ReportingPort{
      cantidadReembolsos:refundMap.get(m)?.conteo??0};
    });
    return {sucursal:b,periodo:{desde:p.desde,hasta:p.hasta},
-    generatedAt:new Date().toISOString(),currency:b.moneda,data,
-    definitions:{cobrosBrutos:'Pago.monto por fecha de cobro',
-     reembolsos:'ReembolsoPago.monto por fecha de reembolso, atribuido al método de pago original',
-     neto:'Cobros brutos menos reembolsos del período; NO es total de ventas'}};
+    generatedAt:new Date().toISOString(),currency:b.moneda,data};
   });
  }
  async expensesByCategory(u:Principal,q:ReportingQuery){
@@ -238,8 +224,7 @@ export class ReportingStore extends ReportingPort{
     monto:money(x._sum.monto),registros:x._count.id}));
    return {sucursal:b,periodo:{desde:p.desde,hasta:p.hasta},
     currency:b.moneda,generatedAt:new Date().toISOString(),data,
-    totalRegistrado:rows.reduce((n,x)=>n.plus(x._sum.monto??0),new Prisma.Decimal(0)).toFixed(2),
-    definition:'GastoOperativo.monto en registradoEn; no equivale necesariamente a flujo de caja pagado'};
+    totalRegistrado:rows.reduce((n,x)=>n.plus(x._sum.monto??0),new Prisma.Decimal(0)).toFixed(2)};
   });
  }
  async cashShifts(u:Principal,q:TicketQuery){
@@ -274,8 +259,7 @@ export class ReportingStore extends ReportingPort{
      cantidadIngresos:breakdown(s.id,'INGRESO')?._count.id??0,
      cantidadEgresos:breakdown(s.id,'EGRESO')?._count.id??0}}));
    return {sucursal:b,periodo:{desde:p.desde,hasta:p.hasta},data,
-    meta:{page:q.page,limit:q.limit,total,totalPages:Math.ceil(total/q.limit)},
-    note:'Los movimientos están dentro de caja; no son ingresos adicionales a las ventas o pagos.'};
+    meta:{page:q.page,limit:q.limit,total,totalPages:Math.ceil(total/q.limit)}};
   });
  }
 

@@ -8,6 +8,11 @@ export class DomainReportsService{
  consolidated(u:Principal,q:ConsolidatedQuery){
   return this.source.consolidated(u,q);
  }
+ exportRecords(u:Principal,kind:string,q:TicketQuery){
+  if(!REPORT_SOURCES.includes(kind as ReportSource))
+   throw new BadRequestException('Fuente de reporte no admitida');
+  return this.source.exportRecords(u,kind as ReportSource,q);
+ }
  records(u:Principal,kind:string,q:TicketQuery){
   if(!REPORT_SOURCES.includes(kind as ReportSource))
    throw new BadRequestException('Fuente de reporte no admitida');

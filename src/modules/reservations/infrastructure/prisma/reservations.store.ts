@@ -21,7 +21,7 @@ const details={
  }},
  eventoReservasComoReserva:{orderBy:[{creadoEn:'asc' as const},{id:'asc' as const}],
   include:{usuario:{select:{id:true,nombre:true}}}}
-} as const;
+} satisfies Prisma.ReservaInclude;
 type ReservationDetail=Prisma.ReservaGetPayload<{include:typeof details}>;
 const hash=(x:unknown)=>createHash('sha256').update(JSON.stringify(x)).digest('hex');
 
@@ -251,7 +251,7 @@ export class ReservationsStore extends ReservationsPort{
     ...(d.emailContacto!==undefined?{emailContacto:d.emailContacto?.trim()||null}:{}),
     ...(d.clienteId!==undefined?{clienteId:d.clienteId}:{}),
     ...(d.notas!==undefined?{notas:d.notas?.trim()||null}:{}),
-    personas,inicio:window.inicio,fin:window.fin
+    personas:persons,inicio:window.inicio,fin:window.fin
    }});
    if(d.mesaIds!==undefined){
     await tx.reservaMesa.deleteMany({where:{reservaId:id}});

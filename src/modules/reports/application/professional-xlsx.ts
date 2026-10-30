@@ -138,9 +138,11 @@ function zip(files:{name:string;content:string}[]){
  return Buffer.concat([...blocks,directory,end]);
 }
 function summarySheet(r:ExportPayload):Worksheet{
- const metrics=reportMetrics(r),title=reportTitle(r),lines:Line[]=[];
- const full=(text:string,style=1,height=42)=>lines.push(row([
-  tag(text,style),...Array.from({length:7},()=>tag('',style))],height));
+ const metrics=reportMetrics(r),title=reportTitle(r),lines:Line[]=[],merges:string[]=[];
+ const full=(text:string,style=1,height=42)=>{
+  lines.push(row([tag(text,style),...Array.from({length:7},()=>tag('',style))],height));
+  merges.push('A'+lines.length+':H'+lines.length);
+ };
  full('GASTRO CORE    |    REPORTES Y ANALÍTICA',1,48);
  full(title,2,40);
  full('Sucursal: '+r.sucursal.nombre+'    •    '+r.currency+
@@ -160,8 +162,7 @@ function summarySheet(r:ExportPayload):Worksheet{
  if(r.diarioNota)full(r.diarioNota,15,42);
  full('Las hojas Diario y Detalle contienen la evidencia; los identificadores técnicos se conservan en Detalle.',15,42);
  return {name:'Resumen',lines,widths:[26,25,25,26,24,20,23,23],
-  merges:lines.map((_,i)=>[0,1,2,4,lines.length-1].includes(i)?'A'+(i+1)+':H'+(i+1):'')
-  .filter(Boolean),freeze:2};
+  merges,freeze:2};
 }
 function dailySheet(r:ExportPayload):Worksheet{
  const d=reportDaily(r);const keys=[...new Set(d.rows.flatMap(x=>Object.keys(x)))];

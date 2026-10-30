@@ -65,3 +65,5 @@ jobs:
         run: npm run prisma:generate
       - name: Execute REP-A R4B/R4C reporting SQL on PostgreSQL
         run: npx tsx prisma/ci/rep-a-r4c-query-smoke.ts
+      - name: Execute REP-A R5/R6 reconciliation and multi-branch SQL on PostgreSQL
+        run: npx tsx prisma/ci/rep-a-r5-r6-query-smoke.ts

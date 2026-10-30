@@ -61,3 +61,7 @@ jobs:
         run: npx prisma db execute --file prisma/ci/del-a-d4-integrity.sql
       - name: Reapply safely without creating duplicate objects
         run: npm run prisma:deploy
+      - name: Generate Prisma client for REP-A SQL smoke
+        run: npm run prisma:generate
+      - name: Execute REP-A R4B/R4C reporting SQL on PostgreSQL
+        run: npx tsx prisma/ci/rep-a-r4c-query-smoke.ts

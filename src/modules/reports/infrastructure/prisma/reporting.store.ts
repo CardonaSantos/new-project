@@ -260,7 +260,10 @@ export class ReportingStore extends ReportingPort{
     where:{turnoId:{in:rows.map(x=>x.id)}},_sum:{monto:true},_count:{id:true}}):[];
    const breakdown=(id:string,type:'INGRESO'|'EGRESO')=>
     groups.find(x=>x.turnoId===id&&x.tipo===type);
-   const data=rows.map(s=>({id:s.id,fechaOperativa:s.fechaOperativa.toISOString().slice(0,10),
+   const data=rows.map(s=>({id:s.id,
+    evidenciaUrl:'/api/reports/analytics/cash-shifts/'+encodeURIComponent(s.id)+
+     '/evidence?sucursalId='+encodeURIComponent(b.id),
+    fechaOperativa:s.fechaOperativa.toISOString().slice(0,10),
     caja:s.caja,cajero:s.cajero,abiertaEn:s.abiertaEn,cerradaEn:s.cerradaEn,
     estado:s.cerradaEn?'CERRADO':'ABIERTO',fondoInicial:money(s.fondoInicial),
     efectivoEsperado:s.efectivoEsperado===null?null:money(s.efectivoEsperado),

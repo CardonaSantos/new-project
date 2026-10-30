@@ -321,6 +321,11 @@ export class OrderStore{
    const accounts=await tx.cuenta.findMany({where:{ordenId:id}});
    if(accounts.some(c=>c.pagado.gt(0)))
     throw new ConflictException('Orden con pagos: resolver reembolso en Pagos/Caja');
+   const shipment=await tx.entrega.findUnique({where:{ordenId:id}});
+   if(shipment?.estado==='ENTREGADA')
+    throw new ConflictException('La entrega ya fue realizada; use el proceso de devolución');
+   if(shipment?.estado==='EN_REPARTO')
+    throw new ConflictException('Cancele la entrega en reparto antes de cancelar la orden');
    const [consumed,prepared,delivered]=await Promise.all([
     tx.consumoOrden.count({where:{ordenId:id}}),
     tx.comandaLinea.count({where:{comanda:{ordenId:id},cantidadPreparada:{gt:0}}}),
@@ -336,6 +341,14 @@ export class OrderStore{
     importeAnulado:order.total,clasificacionCancelacion:d.clasificacion??null,
     motivoCancelacion:requireNote(d.motivo),autorizadaCancelacionPreparada:protectedCancel,
     canceladaEn:now,version:{increment:1}}});
+   if(shipment?.estado==='PENDIENTE'){
+    await tx.entrega.update({where:{id:shipment.id},data:{estado:'CANCELADA'}});
+    await tx.entregaEvento.create({data:{entregaId:shipment.id,usuarioId:u.id,
+     accion:'DELIVERY_CANCELLED_WITH_ORDER',estadoAntes:'PENDIENTE',estadoDespues:'CANCELADA',
+     repartidorAntesId:shipment.repartidorId,repartidorDespuesId:shipment.repartidorId,
+     motivo:requireNote(d.motivo)}});
+    await outbox(tx,'DELIVERY_CANCELLED_WITH_ORDER','Entrega',shipment.id,order.sucursalId);
+   }
    for(const account of accounts){
     await tx.intentoPago.updateMany({where:{cuentaId:account.id,estado:'PENDIENTE'},
      data:{estado:'CANCELADO'}});

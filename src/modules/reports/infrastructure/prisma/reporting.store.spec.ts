@@ -13,7 +13,7 @@ function rig(){
   pago:{aggregate:vi.fn().mockResolvedValue({_sum:{monto:'80.00'},_count:{id:2}}),groupBy:vi.fn().mockResolvedValue([])},
   reembolsoPago:{aggregate:vi.fn().mockResolvedValue({_sum:{monto:'10.00'},_count:{id:1}})},
   gastoOperativo:{aggregate:vi.fn().mockResolvedValue({_sum:{monto:'20.00'},_count:{id:1}}),groupBy:vi.fn().mockResolvedValue([])},
-  turnoCaja:{aggregate:vi.fn().mockResolvedValue({_sum:{diferencia:null},_count:{id:0}}),
+  turnoCaja:{aggregate:vi.fn().mockResolvedValue({_sum:{diferencia:null},_count:{id:0,diferencia:0}}),
    count:vi.fn().mockResolvedValue(0),findMany:vi.fn().mockResolvedValue([])},
   movimientoCaja:{groupBy:vi.fn().mockResolvedValue([])},
   $queryRaw:vi.fn().mockResolvedValueOnce([{total:2}])
@@ -42,6 +42,28 @@ describe('REP-1 sources and accounting guardrails',()=>{
   expect(report.serieDiaria[0].ventasNetas).toBe('100.00');
   expect(tx.pago.aggregate).toHaveBeenCalledOnce();
   expect(tx.venta.aggregate).toHaveBeenCalledOnce();
+ });
+ it('keeps incomplete cash reconciliation unknown instead of inventing Q0',async()=>{
+  const {store,tx}=rig();
+  tx.turnoCaja.aggregate.mockResolvedValue({
+   _sum:{diferencia:'0.00'},_count:{id:3,diferencia:2}
+  });
+  const report=await store.overview(admin,{sucursalId:'s1',periodo:'DIA',
+   fecha:'2026-10-30'}) as any;
+  expect(report.kpis.turnosCajaCerrados).toBe(3);
+  expect(report.kpis.turnosCajaConDiferenciaRegistrada).toBe(2);
+  expect(report.kpis.estadoDiferenciaCaja).toBe('INCOMPLETO');
+  expect(report.kpis.diferenciaCajaCerrada).toBe(null);
+ });
+ it('accepts genuine Q0 discrepancy when every closed shift has an arqueo',async()=>{
+  const {store,tx}=rig();
+  tx.turnoCaja.aggregate.mockResolvedValue({
+   _sum:{diferencia:'0.00'},_count:{id:3,diferencia:3}
+  });
+  const report=await store.overview(admin,{sucursalId:'s1',periodo:'DIA',
+   fecha:'2026-10-30'}) as any;
+  expect(report.kpis.estadoDiferenciaCaja).toBe('COMPLETO');
+  expect(report.kpis.diferenciaCajaCerrada).toBe('0.00');
  });
  it('blocks reporting across branches without reports.read',async()=>{
   const {store,tx}=rig();

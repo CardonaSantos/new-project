@@ -152,7 +152,7 @@ export class ReportEvidenceStore extends ReportEvidencePort{
      include:{cobradoPor:{select:{id:true,nombre:true}},
       cuenta:{select:{id:true,orden:{select:{id:true,numero:true}}}},
       movimientoCajasComoPago:{select:{id:true,turnoId:true,monto:true,tipo:true}},
-      reembolsoPagosComoPago:{select:{id:true,monto:true,creadoEn:true}}}}}),
+      reembolsoPagosComoPago:{select:{id:true,monto:true,creadoEn:true}}}}),
     tx.pago.count({where})
    ]);
    return {version:'REP_EVIDENCE_V1',sucursal:branch,moneda:branch.moneda,
@@ -184,7 +184,7 @@ export class ReportEvidenceStore extends ReportEvidencePort{
      take:q.limit,skip:(q.page-1)*q.limit,
      include:{usuario:{select:{id:true,nombre:true}},
       proveedor:{select:{id:true,nombre:true}},
-      movimientoCajasComoGasto:{select:{id:true,turnoId:true,tipo:true,monto:true}}}}}),
+      movimientoCajasComoGasto:{select:{id:true,turnoId:true,tipo:true,monto:true}}}}),
     tx.gastoOperativo.count({where})
    ]);
    return {version:'REP_EVIDENCE_V1',sucursal:branch,moneda:branch.moneda,

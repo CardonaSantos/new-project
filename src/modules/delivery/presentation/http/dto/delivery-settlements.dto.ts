@@ -24,6 +24,10 @@ export class CreateCourierSettlementDto extends SettlementKeyDto{
  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(100) @ArrayUnique()
  @IsString({each:true}) pagoIds!:string[];
 }
+export class DirectCourierSettlementDto extends CreateCourierSettlementDto{
+ @IsString() turnoCajaId!:string;
+ @Matches(amountPattern) totalEntregado!:string;
+}
 export class CloseCourierSettlementDto extends SettlementKeyDto{
  @IsString() turnoCajaId!:string;
  @Matches(amountPattern) totalEntregado!:string;

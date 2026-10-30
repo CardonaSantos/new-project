@@ -22,6 +22,12 @@ const details={
  eventoReservasComoReserva:{orderBy:[{creadoEn:'asc' as const},{id:'asc' as const}],
   include:{usuario:{select:{id:true,nombre:true}}}}
 } satisfies Prisma.ReservaInclude;
+const listDetails={
+ ...details,
+ // Lists show the most recent event; GET /:id returns the complete audit trail.
+ eventoReservasComoReserva:{orderBy:[{creadoEn:'desc' as const},{id:'desc' as const}],
+  take:1,include:{usuario:{select:{id:true,nombre:true}}}}
+} satisfies Prisma.ReservaInclude;
 type ReservationDetail=Prisma.ReservaGetPayload<{include:typeof details}>;
 const hash=(x:unknown)=>createHash('sha256').update(JSON.stringify(x)).digest('hex');
 
@@ -187,10 +193,10 @@ export class ReservationsStore extends ReservationsPort{
      {telefonoContacto:{contains:search}},{cliente:{nombre:{contains:search,mode:'insensitive'}}}]}:{})
    };
    const [rows,total]=await Promise.all([
-    tx.reserva.findMany({where,include:details,orderBy:[{inicio:'asc'},{id:'asc'}],
+    tx.reserva.findMany({where,include:listDetails,orderBy:[{inicio:'asc'},{id:'asc'}],
      skip:(q.page-1)*q.limit,take:q.limit}),tx.reserva.count({where})
    ]);
-   return {data:rows.map(x=>this.output(x)),meta:{page:q.page,limit:q.limit,total,
+   return {data:rows.map(x=>({...this.output(x),historialCompleto:false})),meta:{page:q.page,limit:q.limit,total,
     totalPages:Math.ceil(total/q.limit)}};
   });
  }

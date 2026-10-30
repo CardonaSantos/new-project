@@ -1,17 +1,19 @@
 import {Type} from 'class-transformer';
 import {ArrayMaxSize,ArrayMinSize,ArrayUnique,IsArray,IsEmail,IsEnum,IsInt,IsOptional,IsString,Matches,Max,MaxLength,Min,MinLength,ValidateIf,IsISO8601} from 'class-validator';
 const key=/^[A-Za-z0-9][A-Za-z0-9:_.-]{5,119}$/;
+// Explicit offset is mandatory; the server timezone must never shift reservations.
+const timezone=/(?:Z|[+-](?:0\\d|1[0-4]):[0-5]\\d)$/;
 const states=['PENDIENTE','CONFIRMADA','CANCELADA','COMPLETADA','NO_ASISTIO'] as const;
 export class AvailabilityDto{
  @IsString() @MinLength(1) sucursalId!:string;
- @IsISO8601({strict:true}) inicio!:string;
- @IsISO8601({strict:true}) fin!:string;
+ @IsISO8601({strict:true}) @Matches(timezone) inicio!:string;
+ @IsISO8601({strict:true}) @Matches(timezone) fin!:string;
  @Type(()=>Number) @IsInt() @Min(1) @Max(100) personas!:number;
 }
 export class ReservationListDto{
  @IsString() @MinLength(1) sucursalId!:string;
- @IsOptional() @IsISO8601({strict:true}) desde?:string;
- @IsOptional() @IsISO8601({strict:true}) hasta?:string;
+ @IsOptional() @IsISO8601({strict:true}) @Matches(timezone) desde?:string;
+ @IsOptional() @IsISO8601({strict:true}) @Matches(timezone) hasta?:string;
  @IsOptional() @IsEnum(states) estado?:typeof states[number];
  @IsOptional() @IsString() @MaxLength(120) search?:string;
  @IsOptional() @Type(()=>Number) @IsInt() @Min(1) page=1;
@@ -23,8 +25,8 @@ export class ReservationCreateDto{
  @IsOptional() @IsString() @MaxLength(45) telefonoContacto?:string|null;
  @IsOptional() @ValidateIf((_o,v)=>v!==null) @IsEmail() @MaxLength(254) emailContacto?:string|null;
  @Type(()=>Number) @IsInt() @Min(1) @Max(100) personas!:number;
- @IsISO8601({strict:true}) inicio!:string;
- @IsISO8601({strict:true}) fin!:string;
+ @IsISO8601({strict:true}) @Matches(timezone) inicio!:string;
+ @IsISO8601({strict:true}) @Matches(timezone) fin!:string;
  @IsOptional() @IsString() clienteId?:string|null;
  @IsOptional() @IsString() @MaxLength(1000) notas?:string|null;
  @IsOptional() @IsEnum(['PENDIENTE','CONFIRMADA']) estadoInicial?:'PENDIENTE'|'CONFIRMADA';
@@ -36,8 +38,8 @@ export class ReservationUpdateDto{
  @IsOptional() @IsString() @MaxLength(45) telefonoContacto?:string|null;
  @IsOptional() @ValidateIf((_o,v)=>v!==null) @IsEmail() @MaxLength(254) emailContacto?:string|null;
  @IsOptional() @Type(()=>Number) @IsInt() @Min(1) @Max(100) personas?:number;
- @IsOptional() @IsISO8601({strict:true}) inicio?:string;
- @IsOptional() @IsISO8601({strict:true}) fin?:string;
+ @IsOptional() @IsISO8601({strict:true}) @Matches(timezone) inicio?:string;
+ @IsOptional() @IsISO8601({strict:true}) @Matches(timezone) fin?:string;
  @IsOptional() @IsString() clienteId?:string|null;
  @IsOptional() @IsString() @MaxLength(1000) notas?:string|null;
  @IsOptional() @IsArray() @ArrayMinSize(1) @ArrayMaxSize(15) @ArrayUnique() @IsString({each:true}) mesaIds?:string[];

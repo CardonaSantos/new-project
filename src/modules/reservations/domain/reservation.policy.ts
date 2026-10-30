@@ -27,3 +27,12 @@ export function noShowWindow(start:Date,now=new Date()){
  if(now.getTime()<start.getTime()+15*60000)
   throw new ConflictException('Espere 15 minutos desde el inicio para registrar no asistencia');
 }
+
+// COMPLETADA is the persisted attendance/check-in state. For UI, distinguish
+// whether the restaurant is still serving the checked-in guest.
+export function servicePhase(status:ReservationStatus,hasOpenOccupation:boolean){
+ if(status==='COMPLETADA')return hasOpenOccupation?'EN_MESA':'ATENCION_FINALIZADA';
+ if(status==='NO_ASISTIO')return 'NO_ASISTIO';
+ if(status==='CANCELADA')return 'CANCELADA';
+ return status;
+}

@@ -36,3 +36,7 @@ Se agregó fuente 11, `ORDER_COST_OUTCOMES`, sin migraciones ni escrituras.
 5. Pendiente transversal: diagnosticar 3 órdenes con pago Q66 fuera de `Venta` de día; pruebas RBAC cruzadas, SQL independiente, rendimiento, R5 finanzas, R6 multibranch, REP-2 XLSX/CSV/PDF. **No merge** sin aprobación.
 
 El usuario pidió que trabajemos en GitHub hasta llegar a una prueba local imprescindible. Por tanto, no solicitar nueva sincronización por cada commit, solo al terminar el bloque con CI y Postman preparado.
+
+## Refuerzo de CI después del checkpoint inicial
+
+Se agregó `prisma/ci/rep-a-r4c-query-smoke.ts` y una etapa del job `migration-smoke` en `.github/workflows/ci.yml` que genera el cliente Prisma y **ejecuta realmente el SQL de `SALES_COSTS` y `ORDER_COST_OUTCOMES` contra PostgreSQL migrado**, usando una sucursal deliberadamente inexistente y verificando resultados vacíos sin error. Este smoke comprueba la validez de SQL y tipos de respuestas, no la corrección aritmética sobre datos de negocios ni permisos HTTP. Confirmar su resultado en el HEAD antes de probar en local.

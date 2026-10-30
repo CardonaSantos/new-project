@@ -117,8 +117,8 @@
           "script": {
             "type": "text/javascript",
             "exec": [
-              "for(const key of ['token','sucursalId','courierId','varianteId','turnoCajaId','bankAccountId']){",
-              " if(!pm.collectionVariables.get(key))throw new Error('Debe configurar '+key+' de PostgreSQL DEV');",
+              "for(const key of [\"token\",\"sucursalId\"]){",
+              " if(!pm.collectionVariables.get(key))throw new Error('Debe configurar '+key+' en variables de la colección');",
               "}"
             ]
           }
@@ -165,6 +165,17 @@
       },
       "event": [
         {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "for(const key of [\"varianteId\",\"courierId\"]){",
+              " if(!pm.collectionVariables.get(key))throw new Error('Debe configurar '+key+' en variables de la colección');",
+              "}"
+            ]
+          }
+        },
+        {
           "listen": "test",
           "script": {
             "type": "text/javascript",
@@ -208,6 +219,17 @@
         }
       },
       "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "for(const key of [\"courierId\"]){",
+              " if(!pm.collectionVariables.get(key))throw new Error('Debe configurar '+key+' en variables de la colección');",
+              "}"
+            ]
+          }
+        },
         {
           "listen": "test",
           "script": {
@@ -454,6 +476,17 @@
       },
       "event": [
         {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "for(const key of [\"turnoCajaId\"]){",
+              " if(!pm.collectionVariables.get(key))throw new Error('Debe configurar '+key+' en variables de la colección');",
+              "}"
+            ]
+          }
+        },
+        {
           "listen": "test",
           "script": {
             "type": "text/javascript",
@@ -572,6 +605,17 @@
       },
       "event": [
         {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "for(const key of [\"turnoCajaId\"]){",
+              " if(!pm.collectionVariables.get(key))throw new Error('Debe configurar '+key+' en variables de la colección');",
+              "}"
+            ]
+          }
+        },
+        {
           "listen": "test",
           "script": {
             "type": "text/javascript",
@@ -655,6 +699,17 @@
         }
       },
       "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "for(const key of [\"turnoCajaId\"]){",
+              " if(!pm.collectionVariables.get(key))throw new Error('Debe configurar '+key+' en variables de la colección');",
+              "}"
+            ]
+          }
+        },
         {
           "listen": "test",
           "script": {
@@ -1016,6 +1071,17 @@
       },
       "event": [
         {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "for(const key of [\"bankAccountId\"]){",
+              " if(!pm.collectionVariables.get(key))throw new Error('Debe configurar '+key+' en variables de la colección');",
+              "}"
+            ]
+          }
+        },
+        {
           "listen": "test",
           "script": {
             "type": "text/javascript",
@@ -1127,6 +1193,17 @@
         ]
       },
       "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "for(const key of [\"bankAccountId\"]){",
+              " if(!pm.collectionVariables.get(key))throw new Error('Debe configurar '+key+' en variables de la colección');",
+              "}"
+            ]
+          }
+        },
         {
           "listen": "test",
           "script": {

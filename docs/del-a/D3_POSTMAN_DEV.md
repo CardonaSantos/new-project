@@ -50,3 +50,13 @@ Los GET 00 y 01 muestran turnos y cuentas financieras. Si no existe turno, usar 
 - Se mantiene la validación multisucursal y de roles restringidos como cobertura futura de D4; no marcarla como probada en DEV solo porque CI está verde.
 
 **Al terminar:** enviar únicamente los JSON relevantes, status HTTP y resumen de Postman (sin JWT, datos personales, claves de cuentas bancarias ni referencias reales). PR #14 sigue DRAFT.
+
+## Actualización de preparación progresiva
+El paso 02 ahora solo exige `token` y `sucursalId`. `varianteId` y `courierId` se necesitan al crear la orden/entrega; `turnoCajaId` se solicita al probar reembolso/cierre; `bankAccountId` se solicita al reconocer la transferencia de plataforma. Esto evita bloquear la creación del cliente cuando aún estás preparando PAY-A y FIN-A.
+
+### Cómo localizar o crear el turno PAY-A en Postman
+1. `GET /api/cash/shifts?sucursalId={{sucursalId}}&page=1&limit=20`: seleccionar un elemento de `data` con `cerradaEn:null` y `fechaOperativa` vigente; copiar su `id` a `turnoCajaId`.
+2. Si no existe, `GET /api/cash/registers?sucursalId={{sucursalId}}` para obtener un `Caja.id` activo (NO es un `TurnoCaja.id`).
+3. Si tampoco hay una Caja, crear DEV con `POST /api/cash/registers` y JSON `{\"sucursalId\":\"{{sucursalId}}\",\"codigo\":\"CAJA_D3_DEV\",\"nombre\":\"Caja D3 DEV\"}`.
+4. `POST /api/cash/shifts` con `{\"cajaId\":\"ID_DE_CAJA\",\"fondoInicial\":\"0.00\",\"claveOperacion\":\"D3:SHIFT:DEV:001\"}`. La respuesta contiene **`shiftId`**, que debes pegar en `turnoCajaId`.
+5. Cuentas de banco: `GET /api/finance/accounts?sucursalId={{sucursalId}}&page=1&limit=20`; elegir **explícitamente** `CuentaFinanciera.id` con `tipo:BANCO`, `activa:true`, `moneda:GTQ` y `sucursalId` igual. No seleccionar `Cuenta.id`, `Caja.id` ni `TurnoCaja.id` como cuenta bancaria.

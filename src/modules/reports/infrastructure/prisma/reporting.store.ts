@@ -85,7 +85,7 @@ export class ReportingStore extends ReportingPort{
       WHERE v."sucursalId"=${b.id} AND v."cerradaEn">=${p.from} AND v."cerradaEn"<${p.to}`,
     tx.turnoCaja.aggregate({where:{caja:{sucursalId:b.id},fechaOperativa:{
       gte:new Date(p.desde+'T00:00:00Z'),lte:new Date(p.hasta+'T00:00:00Z')},cerradaEn:{not:null}},
-     _sum:{diferencia:true},_count:{id:true}}),
+     _sum:{diferencia:true},_count:{id:true,diferencia:true}}),
     tx.turnoCaja.count({where:{caja:{sucursalId:b.id},cerradaEn:null}}),
     tx.$queryRaw<RawDay[]>`
       SELECT to_char(((v."cerradaEn" AT TIME ZONE ${b.zonaHoraria})
@@ -146,7 +146,13 @@ export class ReportingStore extends ReportingPort{
      cobrosNetos:cobrado.minus(reembolso).toFixed(2),
      gastosRegistrados:money(expenses._sum.monto),
      turnosCajaCerrados:cashClosed._count.id,
-     diferenciaCajaCerrada:cashClosed._count.id?money(cashClosed._sum.diferencia):null,
+     // Partial or absent arqueos are not evidence of a zero discrepancy.
+     diferenciaCajaCerrada:cashClosed._count.id>0&&
+      cashClosed._count.id===cashClosed._count.diferencia?
+       money(cashClosed._sum.diferencia):null,
+     turnosCajaConDiferenciaRegistrada:cashClosed._count.diferencia,
+     estadoDiferenciaCaja:cashClosed._count.id===0?'SIN_CIERRES':
+      cashClosed._count.id===cashClosed._count.diferencia?'COMPLETO':'INCOMPLETO',
      turnosCajaActualmenteAbiertos:cashOpen,
      margenBruto:null,resultadoNeto:null
     },
@@ -156,7 +162,7 @@ export class ReportingStore extends ReportingPort{
      ticketPromedio:'ventasNetas / ticketsUnicos; null si no hay tickets',
      cobrosNetos:'SUM(Pago.monto) - SUM(ReembolsoPago.monto) por eventos de cada período',
      gastosRegistrados:'SUM(GastoOperativo.monto) según registradoEn; no se presumen pagados',
-     diferenciaCajaCerrada:'SUM(TurnoCaja.diferencia) de turnos cerrados cuya fechaOperativa está en rango',
+     diferenciaCajaCerrada:'SUM(TurnoCaja.diferencia) solo cuando TODOS los turnos cerrados del período tienen diferencia registrada; null en otro caso',
      margenBruto:'No calculado en este corte REP-1: requiere costo de consumo trazable de INV/REC',
      resultadoNeto:'No calculado hasta consolidar todas las reglas financieras'
     },

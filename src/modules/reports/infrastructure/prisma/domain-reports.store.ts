@@ -1,4 +1,4 @@
-import {BadRequestException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
+import {BadRequestException,ForbiddenException,Injectable,NotFoundException,PayloadTooLargeException,ConflictException} from '@nestjs/common';
 import {Prisma} from '../../../../generated/prisma/client.js';
 import {PrismaService} from '../../../../infrastructure/database/prisma/prisma.service.js';
 import {operationalDate} from '../../../payments/domain/payment.policy.js';
@@ -84,7 +84,34 @@ export class DomainReportsStore extends DomainReportsPort{
  }
  async records(u:Principal,kind:ReportSource,q:TicketQuery){
   ensurePage(q.page,q.limit);
-  return this.read(async tx=>{
+  return this.read(tx=>this.recordsInTx(tx,u,kind,q));
+ }
+ async exportRecords(u:Principal,kind:ReportSource,q:TicketQuery){
+  // All export pages are fetched inside ONE PostgreSQL RepeatableRead snapshot.
+  // Do not silently truncate reports; the caller must narrow overly large periods.
+  return this.db.$transaction(async tx=>{
+   const limit=100,max=1000;
+   const first=await this.recordsInTx(tx,u,kind,{...q,page:1,limit}) as
+    {data:Record<string,unknown>[];meta:{total:number};[key:string]:unknown};
+   if(!Array.isArray(first.data)||!Number.isSafeInteger(first.meta?.total))
+    throw new ConflictException('Fuente no compatible con exportación tabular');
+   const total=first.meta.total;
+   if(total>max)throw new PayloadTooLargeException('Máximo 1000 registros por exportación; reduzca período');
+   const data=[...first.data];
+   for(let page=2;page<=Math.ceil(total/limit);page++){
+    const chunk=await this.recordsInTx(tx,u,kind,{...q,page,limit}) as
+     {data:Record<string,unknown>[];meta:{total:number}};
+    if(chunk.meta?.total!==total||!Array.isArray(chunk.data))
+     throw new ConflictException('Cambió la cantidad de registros al exportar');
+    data.push(...chunk.data);
+   }
+   if(data.length!==total)
+    throw new ConflictException('Datos incompletos; reintente exportación');
+   return {...first,data,meta:{page:1,limit:total,total,totalPages:total?1:0},
+    exportacion:{registros:total,limite:max,scope:'COMPLETO',snapshot:'REPEATABLE_READ'}};
+  },{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead,timeout:60000});
+ }
+ private async recordsInTx(tx:Tx,u:Principal,kind:ReportSource,q:TicketQuery):Promise<unknown>{
    const b=await this.context(tx,u,kind,q),span={gte:b.from,lt:b.to};
    const skip=(q.page-1)*q.limit,take=q.limit;
    const header={source:kind,sucursal:{id:b.id,nombre:b.nombre},currency:b.moneda,
@@ -415,6 +442,5 @@ export class DomainReportsStore extends DomainReportsPort{
       meta:meta(q.page,q.limit,total)};
     }
    }
-  });
  }
 }

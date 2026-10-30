@@ -113,7 +113,7 @@ function dailyPages(r:ExportPayload,pages:Page[]){
  const keys=dailyColumns(rows);
  const headings=keys.length>1?keys:['fecha','registros'];
  const widths=tableWidths(headings,inner);
- const pageSize=17;
+ const pageSize=10;
  if(!rows.length){
   const p:Page={content:[]};pages.push(p);commonHeader(p,r,'INFORMACIÓN DIARIA');
   write(p,'Resumen diario',M,105,19,'F2');

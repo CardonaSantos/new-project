@@ -17,6 +17,11 @@ function rig(){
   usuarioRol:{findFirst:vi.fn().mockResolvedValue({id:'rol-1'})},
   sucursal:{findUnique:vi.fn().mockResolvedValue({activa:true})},
   orden:{findUnique:vi.fn().mockResolvedValue(order)},
+  ordenLinea:{findMany:vi.fn().mockResolvedValue([{
+   cantidad:{gt:()=>false},cantidadEnviada:{}
+  }])},
+  cuenta:{findMany:vi.fn().mockResolvedValue([{total:{eq:()=>true},pagado:{}}])},
+  comanda:{count:vi.fn().mockResolvedValue(0)},
   pago:{count:vi.fn().mockResolvedValue(0)},
   entrega:{findUnique:vi.fn(async({where}:any)=>where.ordenId?null:row),
    create:vi.fn().mockResolvedValue({id:'delivery-1'}),
@@ -32,6 +37,37 @@ function rig(){
  return {store:new DeliveryStore(db,payments as never),tx,row,order,payments};
 }
 describe('DEL-A D2 transactional delivery',()=>{
+ it('blocks premature accounting close and explains missing readiness conditions',async()=>{
+  const {store,tx,row,payments}=rig();
+  const readiness=await store.closureReadiness(user,'delivery-1') as any;
+  expect(readiness.canFinalize).toBe(false);
+  expect(readiness.blockers).toContain('DELIVERY_NOT_COMPLETED');
+  await expect(store.finalizeOrder(user,'delivery-1')).rejects.toThrow('Cierre bloqueado');
+  expect(payments.settle).not.toHaveBeenCalled();
+ });
+ it('delegates a delivered paid and prepared order to PAY-A once',async()=>{
+  const {store,tx,row,order,payments}=rig();
+  row.estado='ENTREGADA';
+  payments.settle.mockImplementation(async()=>{
+   order.estado='CERRADA';
+   return {orderId:order.id,closed:true};
+  });
+  const result=await store.finalizeOrder(user,'delivery-1') as any;
+  expect(result.alreadyClosed).toBe(true);
+  expect(payments.settle).toHaveBeenCalledExactlyOnceWith(user,order.id);
+  expect(tx.eventoAuditoria.create).not.toHaveBeenCalled();
+  await store.finalizeOrder(user,'delivery-1');
+  expect(payments.settle).toHaveBeenCalledOnce();
+ });
+ it('does not close an unpaid delivery even if it is already ENTREGADA',async()=>{
+  const {store,tx,row,payments}=rig();
+  row.estado='ENTREGADA';
+  tx.cuenta.findMany.mockResolvedValueOnce([{total:{eq:()=>false},pagado:{}}]);
+  const readiness=await store.closureReadiness(user,'delivery-1') as any;
+  expect(readiness.blockers).toContain('ACCOUNTS_UNPAID');
+  expect(payments.settle).not.toHaveBeenCalled();
+ });
+
  it('creates immediately assigned delivery without approval, cash or accounting writes',async()=>{
   const {store,tx,row}=rig();
   row.repartidorId='courier-1';

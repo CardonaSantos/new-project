@@ -72,7 +72,7 @@ describe('REP-A source reports data and financial guardrails',()=>{
   const {store,tx}=rig();
   tx.consumoOrden.count.mockResolvedValue(2);
   const header={id:'order1',numero:'ORD-1',modalidad:'MESA',estado:'CERRADA'};
-  const article={id:'art1',codigo:'MILK',nombre:'Leche'};
+  const articulo={id:'art1',codigo:'MILK',nombre:'Leche'};
   tx.consumoOrden.findMany.mockResolvedValue([
    {id:'doc1',tipo:'RECETA',creadoEn:new Date('2026-10-30T16:00:00Z'),
     orden:header,ordenLinea:{id:'ol1',nombreSnapshot:'Café',variante:{

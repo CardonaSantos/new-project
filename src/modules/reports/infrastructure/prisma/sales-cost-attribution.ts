@@ -46,6 +46,8 @@ export async function salesCostAttribution(tx:Tx,b:Scope,page:number,limit:numbe
    COALESCE(SUM(mi."costoTotal"),0)::numeric AS costo
   FROM "ConsumoOrden" co JOIN relevant_lines rel
    ON rel."ordenLineaId"=co."ordenLineaId"
+  JOIN "OrdenLinea" consOl ON consOl.id=co."ordenLineaId"
+   AND consOl."ordenId"=co."ordenId"
   LEFT JOIN "ConsumoOrdenLinea" cl ON cl."consumoId"=co.id
   LEFT JOIN "MovimientoInventario" mi ON mi.id=cl."movimientoId"
    AND mi.tipo='CONSUMO' AND mi."referenciaTipo"='CONSUMO_ORDEN'

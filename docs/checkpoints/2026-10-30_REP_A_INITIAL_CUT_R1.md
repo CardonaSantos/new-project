@@ -56,3 +56,22 @@ Todos los endpoints `analytics` admiten `periodo=DIA|SEMANA|MES|PERSONALIZADO`, 
 6. Benchmark y endurecimiento PostgreSQL para rangos anuales y múltiples sedes; exports en jobs si se requiere.
 
 **NO fusionar** el PR #18 ni decir REP-A 15/16 hasta las dos fases completas, verificadas con datos reales y aceptadas.
+
+## Anexo REP-1 — Auditoría de evidencia exigida después de primera Postman
+
+El usuario confirma la distinción entre **resúmenes de Angular** y **detalle auditable**: por ejemplo, `cash-shifts` mostraba `ingresos=Q66` con `cantidadIngresos=3` pero no los documentos individuales. El resumen es válido como vista rápida; insuficiente para contabilidad o Excel.
+
+Se agregó el adaptador hexagonal `ReportEvidenceStore` detrás de `ReportEvidencePort` y `ReportEvidenceService`, sin tocar módulo PAY-A/FIN-A. Incluye GET:
+- `/api/reports/analytics/cash-shifts/:id/evidence?sucursalId=&page=&limit=&tipo=`
+- `/api/reports/analytics/payments/records?sucursalId=&periodo=&fecha=&page=&limit=`
+- `/api/reports/analytics/expenses/records?sucursalId=&periodo=&fecha=&page=&limit=`
+
+Cada movimiento de caja incluye `movimientoId`, usuario, fecha, motivo, importe y **fuente concreta** `Pago/ReembolsoPago/GastoOperativo/PagoProveedor/LiquidacionRepartidor`, o `MANUAL` explícito. El listado `cash-shifts` ofrece `evidenciaUrl` por turno. Se agrega encabezado de arqueo y suma completa de movimientos con filtro (independiente de la paginación). Se reutiliza un modelo de evidencia `REP_EVIDENCE_V1` que deberá alimentar REP-2.
+
+Los registros del Pago revelan ID de cuenta, ID/número de orden, método, actor, referencia y reembolsos asociados sin sumar eventos de períodos distintos. Gastos incluyen ID, fecha, motivo/descripción, documento de proveedor, referencia de cuenta financiera y movimiento de caja si existe.
+
+Se exigen permisos superpuestos por sucursal: `reports.read + cash.read` para arqueos, `reports.read + payments.read` para cobros detallados y `reports.read + finance.expenses.read` para gastos. `limit<=100` y snapshots de lectura REPEATABLE READ. Tests nuevos de origen, RBAC, sucursal y paginación y HTTP validado por CI.
+
+La colección Postman pasó a **13 escenarios** y agrega validación de evidencia de turno y registros reales de cobros/gastos. Leer [contrato completo](../rep-a/REP_A_TRACEABILITY_CONTRACT.md).
+
+**PENDIENTE:** evidencia DEV ejecutada del endpoint nuevo (3 ingresos Q66 o lo que devuelva PostgreSQL actualizado), origen/relación de cada Q, detalle de todas las familias (compras, inventario, delivery) y **generación XLSX real** con fórmulas, CSV/PDF y conciliación por snapshot. No declarar REP-2 construido. No merge aún.

@@ -93,6 +93,7 @@
             "type": "text/javascript",
             "exec": [
               "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
               "pm.expect(pm.response.json().serieDiaria).to.have.length(7);",
               "const cents = value => {",
               " const s = String(value); const m = /^(-?)(\\d+)\\.(\\d{2})$/.exec(s);",
@@ -127,6 +128,7 @@
             "type": "text/javascript",
             "exec": [
               "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
               "pm.expect(pm.response.json().serieDiaria.length).to.be.gte(28);",
               "const cents = value => {",
               " const s = String(value); const m = /^(-?)(\\d+)\\.(\\d{2})$/.exec(s);",
@@ -164,6 +166,7 @@
             "type": "text/javascript",
             "exec": [
               "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
               "pm.expect(pm.response.json().periodo.tipo).to.equal('PERSONALIZADO');",
               "const cents = value => {",
               " const s = String(value); const m = /^(-?)(\\d+)\\.(\\d{2})$/.exec(s);",
@@ -237,6 +240,7 @@
             "type": "text/javascript",
             "exec": [
               "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
               "pm.expect(pm.response.json().data).to.be.an('array');",
               "const cents = value => {",
               " const s = String(value); const m = /^(-?)(\\d+)\\.(\\d{2})$/.exec(s);",
@@ -272,6 +276,7 @@
             "type": "text/javascript",
             "exec": [
               "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
               "pm.expect(pm.response.json().data).to.be.an('array');",
               "const cents = value => {",
               " const s = String(value); const m = /^(-?)(\\d+)\\.(\\d{2})$/.exec(s);",
@@ -305,6 +310,7 @@
             "type": "text/javascript",
             "exec": [
               "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
               "pm.expect(pm.response.json().data).to.be.an('array');",
               "const day=JSON.parse(pm.collectionVariables.get('REP_QA_DAY_SNAPSHOT')||'null');",
               "if(day)pm.expect(r.data.filter(x=>x.estado==='ABIERTO').length).to.be.at.most(day.turnosAbiertos);",

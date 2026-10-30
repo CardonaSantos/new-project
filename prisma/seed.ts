@@ -49,7 +49,7 @@ const permissions=[
  ['payments.split','payments'],['sales.read','payments'],
  ['payments.refund','payments'],['delivery.manage','delivery'],['delivery.read','delivery'],['delivery.courier','delivery'],
  ['delivery.payments.collect','delivery'],['delivery.settlements.read','delivery'],
- ['delivery.settlements.manage','delivery'],['delivery.platform.manage','delivery'],['reservations.manage','reservations'],
+ ['delivery.settlements.manage','delivery'],['delivery.platform.manage','delivery'],['reservations.read','reservations'],['reservations.manage','reservations'],
  ['customers.read','customers'],['customers.create','customers'],['customers.manage','customers'],
  ['customers.global.manage','customers'],
  ['reports.read','reports'],['settings.manage','settings']

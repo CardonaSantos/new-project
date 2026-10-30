@@ -1,0 +1,355 @@
+{
+  "info": {
+    "name": "Gastro Core REP-1 Transversal DEV — 8 fuentes",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Verificar 8 fuentes transaccionales; los registros son reales, por sucursal y fecha operativa. Requiere permisos reports.read + permisos del módulo. No modificar la DB durante la batería."
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "sucursalId",
+      "value": "cmv8p4k3x0001u4v4xor2zgqu"
+    },
+    {
+      "key": "fechaOperativa",
+      "value": "2026-10-30"
+    },
+    {
+      "key": "desde",
+      "value": "2026-10-01"
+    },
+    {
+      "key": "hasta",
+      "value": "2026-10-30"
+    }
+  ],
+  "item": [
+    {
+      "name": "00 Líneas de venta por producto y orden",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reports/analytics/sources/SALES_LINES?sucursalId={{sucursalId}}&periodo=PERSONALIZADO&desde={{desde}}&hasta={{hasta}}&page=1&limit=100"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
+              "pm.expect(r.source).to.equal('SALES_LINES');",
+              "pm.expect(r.periodo.desde).to.equal(pm.variables.get('desde'));",
+              "pm.expect(r.periodo.hasta).to.equal(pm.variables.get('hasta'));",
+              "pm.expect(r.data).to.be.an('array');",
+              "pm.expect(r.totales).to.be.an('object');",
+              "pm.expect(r.meta).to.have.property('total');",
+              "pm.expect(r.data.length).to.be.at.most(r.meta.limit);",
+              "pm.expect(r).not.to.have.property('note');",
+              "pm.expect(r).not.to.have.property('definicion');",
+              "pm.expect(r).not.to.have.property('definitions');",
+              "pm.expect(r.data.every(x=>typeof x.id==='string')).to.equal(true);",
+              "if(r.meta.total<=100)pm.expect(r.data.length).to.equal(r.meta.total);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 Movimientos y costo histórico de inventario",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reports/analytics/sources/INVENTORY_MOVEMENTS?sucursalId={{sucursalId}}&periodo=PERSONALIZADO&desde={{desde}}&hasta={{hasta}}&page=1&limit=100"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
+              "pm.expect(r.source).to.equal('INVENTORY_MOVEMENTS');",
+              "pm.expect(r.periodo.desde).to.equal(pm.variables.get('desde'));",
+              "pm.expect(r.periodo.hasta).to.equal(pm.variables.get('hasta'));",
+              "pm.expect(r.data).to.be.an('array');",
+              "pm.expect(r.totales).to.be.an('object');",
+              "pm.expect(r.meta).to.have.property('total');",
+              "pm.expect(r.data.length).to.be.at.most(r.meta.limit);",
+              "pm.expect(r).not.to.have.property('note');",
+              "pm.expect(r).not.to.have.property('definicion');",
+              "pm.expect(r).not.to.have.property('definitions');",
+              "pm.expect(r.data.every(x=>typeof x.id==='string')).to.equal(true);",
+              "if(r.meta.total<=100)pm.expect(r.data.length).to.equal(r.meta.total);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Facturas por proveedor y estado",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reports/analytics/sources/PURCHASE_INVOICES?sucursalId={{sucursalId}}&periodo=PERSONALIZADO&desde={{desde}}&hasta={{hasta}}&page=1&limit=100"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
+              "pm.expect(r.source).to.equal('PURCHASE_INVOICES');",
+              "pm.expect(r.periodo.desde).to.equal(pm.variables.get('desde'));",
+              "pm.expect(r.periodo.hasta).to.equal(pm.variables.get('hasta'));",
+              "pm.expect(r.data).to.be.an('array');",
+              "pm.expect(r.totales).to.be.an('object');",
+              "pm.expect(r.meta).to.have.property('total');",
+              "pm.expect(r.data.length).to.be.at.most(r.meta.limit);",
+              "pm.expect(r).not.to.have.property('note');",
+              "pm.expect(r).not.to.have.property('definicion');",
+              "pm.expect(r).not.to.have.property('definitions');",
+              "pm.expect(r.data.every(x=>typeof x.id==='string')).to.equal(true);",
+              "if(r.meta.total<=100)pm.expect(r.data.length).to.equal(r.meta.total);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 Recepciones confirmadas y costos",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reports/analytics/sources/PURCHASE_RECEIPT_LINES?sucursalId={{sucursalId}}&periodo=PERSONALIZADO&desde={{desde}}&hasta={{hasta}}&page=1&limit=100"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
+              "pm.expect(r.source).to.equal('PURCHASE_RECEIPT_LINES');",
+              "pm.expect(r.periodo.desde).to.equal(pm.variables.get('desde'));",
+              "pm.expect(r.periodo.hasta).to.equal(pm.variables.get('hasta'));",
+              "pm.expect(r.data).to.be.an('array');",
+              "pm.expect(r.totales).to.be.an('object');",
+              "pm.expect(r.meta).to.have.property('total');",
+              "pm.expect(r.data.length).to.be.at.most(r.meta.limit);",
+              "pm.expect(r).not.to.have.property('note');",
+              "pm.expect(r).not.to.have.property('definicion');",
+              "pm.expect(r).not.to.have.property('definitions');",
+              "pm.expect(r.data.every(x=>typeof x.id==='string')).to.equal(true);",
+              "if(r.meta.total<=100)pm.expect(r.data.length).to.equal(r.meta.total);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Eventos de entrega y responsables",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reports/analytics/sources/DELIVERY_EVENTS?sucursalId={{sucursalId}}&periodo=PERSONALIZADO&desde={{desde}}&hasta={{hasta}}&page=1&limit=100"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
+              "pm.expect(r.source).to.equal('DELIVERY_EVENTS');",
+              "pm.expect(r.periodo.desde).to.equal(pm.variables.get('desde'));",
+              "pm.expect(r.periodo.hasta).to.equal(pm.variables.get('hasta'));",
+              "pm.expect(r.data).to.be.an('array');",
+              "pm.expect(r.totales).to.be.an('object');",
+              "pm.expect(r.meta).to.have.property('total');",
+              "pm.expect(r.data.length).to.be.at.most(r.meta.limit);",
+              "pm.expect(r).not.to.have.property('note');",
+              "pm.expect(r).not.to.have.property('definicion');",
+              "pm.expect(r).not.to.have.property('definitions');",
+              "pm.expect(r.data.every(x=>typeof x.id==='string')).to.equal(true);",
+              "if(r.meta.total<=100)pm.expect(r.data.length).to.equal(r.meta.total);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 Historial de reservaciones",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reports/analytics/sources/RESERVATION_EVENTS?sucursalId={{sucursalId}}&periodo=PERSONALIZADO&desde={{desde}}&hasta={{hasta}}&page=1&limit=100"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
+              "pm.expect(r.source).to.equal('RESERVATION_EVENTS');",
+              "pm.expect(r.periodo.desde).to.equal(pm.variables.get('desde'));",
+              "pm.expect(r.periodo.hasta).to.equal(pm.variables.get('hasta'));",
+              "pm.expect(r.data).to.be.an('array');",
+              "pm.expect(r.totales).to.be.an('object');",
+              "pm.expect(r.meta).to.have.property('total');",
+              "pm.expect(r.data.length).to.be.at.most(r.meta.limit);",
+              "pm.expect(r).not.to.have.property('note');",
+              "pm.expect(r).not.to.have.property('definicion');",
+              "pm.expect(r).not.to.have.property('definitions');",
+              "pm.expect(r.data.every(x=>typeof x.id==='string')).to.equal(true);",
+              "if(r.meta.total<=100)pm.expect(r.data.length).to.equal(r.meta.total);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 Requisiciones por estado y líneas",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reports/analytics/sources/SUPPLY_REQUESTS?sucursalId={{sucursalId}}&periodo=PERSONALIZADO&desde={{desde}}&hasta={{hasta}}&page=1&limit=100"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
+              "pm.expect(r.source).to.equal('SUPPLY_REQUESTS');",
+              "pm.expect(r.periodo.desde).to.equal(pm.variables.get('desde'));",
+              "pm.expect(r.periodo.hasta).to.equal(pm.variables.get('hasta'));",
+              "pm.expect(r.data).to.be.an('array');",
+              "pm.expect(r.totales).to.be.an('object');",
+              "pm.expect(r.meta).to.have.property('total');",
+              "pm.expect(r.data.length).to.be.at.most(r.meta.limit);",
+              "pm.expect(r).not.to.have.property('note');",
+              "pm.expect(r).not.to.have.property('definicion');",
+              "pm.expect(r).not.to.have.property('definitions');",
+              "pm.expect(r.data.every(x=>typeof x.id==='string')).to.equal(true);",
+              "if(r.meta.total<=100)pm.expect(r.data.length).to.equal(r.meta.total);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 Despachos y transferencias",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reports/analytics/sources/SUPPLY_TRANSFERS?sucursalId={{sucursalId}}&periodo=PERSONALIZADO&desde={{desde}}&hasta={{hasta}}&page=1&limit=100"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
+              "pm.expect(r.source).to.equal('SUPPLY_TRANSFERS');",
+              "pm.expect(r.periodo.desde).to.equal(pm.variables.get('desde'));",
+              "pm.expect(r.periodo.hasta).to.equal(pm.variables.get('hasta'));",
+              "pm.expect(r.data).to.be.an('array');",
+              "pm.expect(r.totales).to.be.an('object');",
+              "pm.expect(r.meta).to.have.property('total');",
+              "pm.expect(r.data.length).to.be.at.most(r.meta.limit);",
+              "pm.expect(r).not.to.have.property('note');",
+              "pm.expect(r).not.to.have.property('definicion');",
+              "pm.expect(r).not.to.have.property('definitions');",
+              "pm.expect(r.data.every(x=>typeof x.id==='string')).to.equal(true);",
+              "if(r.meta.total<=100)pm.expect(r.data.length).to.equal(r.meta.total);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 Origen inexistente (400)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reports/analytics/sources/INVENTADO?sucursalId={{sucursalId}}&periodo=DIA&fecha={{fechaOperativa}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(400);"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

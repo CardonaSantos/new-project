@@ -4,6 +4,7 @@ import {PrismaClient,Prisma} from '../../src/generated/prisma/client.js';
 import {paymentSalesReconciliation,supplierBalances,platformSettlements,bankMatchStatus}
  from '../../src/modules/reports/infrastructure/prisma/financial-reconciliation.js';
 import {financialBranchRollup} from '../../src/modules/reports/infrastructure/prisma/branch-rollup.js';
+import {exportDaily} from '../../src/modules/reports/infrastructure/prisma/export-daily.js';
 
 // Real PostgreSQL migrations + raw SQL/type/shape smoke. This does not replace
 // the real DEV reconciliation Postman collections.
@@ -17,6 +18,11 @@ const b={id:'rep-a-ci-no-such-branch',nombre:'CI',moneda:'GTQ',
 try{
  await db.$connect();
  await db.$transaction(async tx=>{
+  const [dailyPayments,dailyCosts]=await Promise.all([
+   exportDaily(tx,b,'PAYMENT_SALES_RECON'),
+   exportDaily(tx,b,'ORDER_COST_OUTCOMES')]);
+  assert.deepEqual(dailyPayments.diario,[]);
+  assert.deepEqual(dailyCosts.diario,[]);
   const [payments,supplier,platform,bank,rollup]=await Promise.all([
    paymentSalesReconciliation(tx,b,1,20),supplierBalances(tx,b,1,20),
    platformSettlements(tx,b,1,20),bankMatchStatus(tx,b,1,20),

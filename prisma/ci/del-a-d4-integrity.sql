@@ -1,0 +1,1 @@
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname=current_schema() AND indexname='Venta_cuentaId_key' AND indexdef LIKE '%UNIQUE%') THEN RAISE EXCEPTION 'D4 sale uniqueness constraint missing'; END IF; END $$;

@@ -1,0 +1,553 @@
+{
+  "info": {
+    "name": "Gastro Core REP-2 — CSV XLSX PDF y auditoría de exportaciones DEV",
+    "description": "Descargas de fuente de reportes completa en un solo snapshot READ REPEATABLE, máximo 1000 registros por fuente; no permite truncar silenciosamente. Reutiliza RBAC de fuente y sucursal. Contenido completo en Excel y CSV; PDF pagina paneles de columnas. X-Report-SHA256 coincide con auditoría REP_EXPORT_GENERATED. Para guardar XLSX/PDF usar Send and Download en Postman.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "01 Exportar SALES_COSTS CSV",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/reports/analytics/exports/SALES_COSTS?sucursalId={{sucursalId}}&periodo=PERSONALIZADO&desde={{desde}}&hasta={{hasta}}&format=CSV",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "reports",
+            "analytics",
+            "exports",
+            "SALES_COSTS"
+          ],
+          "query": [
+            {
+              "key": "sucursalId",
+              "value": "{{sucursalId}}"
+            },
+            {
+              "key": "periodo",
+              "value": "PERSONALIZADO"
+            },
+            {
+              "key": "desde",
+              "value": "{{desde}}"
+            },
+            {
+              "key": "hasta",
+              "value": "{{hasta}}"
+            },
+            {
+              "key": "format",
+              "value": "CSV"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "pm.expect(pm.response.headers.get('Cache-Control')).to.include('no-store');",
+              "const f=pm.response.headers.get('Content-Disposition');",
+              "pm.expect(f).to.match(/^attachment; filename=\"Gastro_Core_/);",
+              "pm.expect(f).to.include('.csv');",
+              "pm.expect(pm.response.headers.get('X-Report-SHA256')).to.match(/^[0-9a-f]{64}$/);",
+              "pm.expect(Number(pm.response.headers.get('Content-Length'))).to.be.above(0);",
+              "pm.expect(pm.response.headers.get('Content-Type')).to.include('text/csv');",
+              "pm.expect(pm.response.headers.get('X-Content-Type-Options')).to.equal('nosniff');",
+              "pm.expect(pm.response.size().body).to.be.greaterThan(20);",
+              "const raw=pm.response.text();",
+              "pm.expect(raw).to.include('\\r\\n');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Exportar SALES_COSTS XLSX con fórmulas",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/reports/analytics/exports/SALES_COSTS?sucursalId={{sucursalId}}&periodo=PERSONALIZADO&desde={{desde}}&hasta={{hasta}}&format=XLSX",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "reports",
+            "analytics",
+            "exports",
+            "SALES_COSTS"
+          ],
+          "query": [
+            {
+              "key": "sucursalId",
+              "value": "{{sucursalId}}"
+            },
+            {
+              "key": "periodo",
+              "value": "PERSONALIZADO"
+            },
+            {
+              "key": "desde",
+              "value": "{{desde}}"
+            },
+            {
+              "key": "hasta",
+              "value": "{{hasta}}"
+            },
+            {
+              "key": "format",
+              "value": "XLSX"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "pm.expect(pm.response.headers.get('Cache-Control')).to.include('no-store');",
+              "const f=pm.response.headers.get('Content-Disposition');",
+              "pm.expect(f).to.match(/^attachment; filename=\"Gastro_Core_/);",
+              "pm.expect(f).to.include('.xlsx');",
+              "pm.expect(pm.response.headers.get('X-Report-SHA256')).to.match(/^[0-9a-f]{64}$/);",
+              "pm.expect(Number(pm.response.headers.get('Content-Length'))).to.be.above(0);",
+              "pm.expect(pm.response.headers.get('Content-Type')).to.include('spreadsheetml.sheet');",
+              "pm.expect(pm.response.headers.get('X-Content-Type-Options')).to.equal('nosniff');",
+              "pm.expect(pm.response.size().body).to.be.greaterThan(20);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 Exportar SALES_COSTS PDF paginado",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/reports/analytics/exports/SALES_COSTS?sucursalId={{sucursalId}}&periodo=PERSONALIZADO&desde={{desde}}&hasta={{hasta}}&format=PDF",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "reports",
+            "analytics",
+            "exports",
+            "SALES_COSTS"
+          ],
+          "query": [
+            {
+              "key": "sucursalId",
+              "value": "{{sucursalId}}"
+            },
+            {
+              "key": "periodo",
+              "value": "PERSONALIZADO"
+            },
+            {
+              "key": "desde",
+              "value": "{{desde}}"
+            },
+            {
+              "key": "hasta",
+              "value": "{{hasta}}"
+            },
+            {
+              "key": "format",
+              "value": "PDF"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "pm.expect(pm.response.headers.get('Cache-Control')).to.include('no-store');",
+              "const f=pm.response.headers.get('Content-Disposition');",
+              "pm.expect(f).to.match(/^attachment; filename=\"Gastro_Core_/);",
+              "pm.expect(f).to.include('.pdf');",
+              "pm.expect(pm.response.headers.get('X-Report-SHA256')).to.match(/^[0-9a-f]{64}$/);",
+              "pm.expect(Number(pm.response.headers.get('Content-Length'))).to.be.above(0);",
+              "pm.expect(pm.response.headers.get('Content-Type')).to.include('application/pdf');",
+              "pm.expect(pm.response.headers.get('X-Content-Type-Options')).to.equal('nosniff');",
+              "pm.expect(pm.response.size().body).to.be.greaterThan(20);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Exportar PAYMENT_SALES_RECON XLSX",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/reports/analytics/exports/PAYMENT_SALES_RECON?sucursalId={{sucursalId}}&periodo=PERSONALIZADO&desde={{desde}}&hasta={{hasta}}&format=XLSX",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "reports",
+            "analytics",
+            "exports",
+            "PAYMENT_SALES_RECON"
+          ],
+          "query": [
+            {
+              "key": "sucursalId",
+              "value": "{{sucursalId}}"
+            },
+            {
+              "key": "periodo",
+              "value": "PERSONALIZADO"
+            },
+            {
+              "key": "desde",
+              "value": "{{desde}}"
+            },
+            {
+              "key": "hasta",
+              "value": "{{hasta}}"
+            },
+            {
+              "key": "format",
+              "value": "XLSX"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "pm.expect(pm.response.headers.get('Cache-Control')).to.include('no-store');",
+              "const f=pm.response.headers.get('Content-Disposition');",
+              "pm.expect(f).to.match(/^attachment; filename=\"Gastro_Core_/);",
+              "pm.expect(f).to.include('.xlsx');",
+              "pm.expect(pm.response.headers.get('X-Report-SHA256')).to.match(/^[0-9a-f]{64}$/);",
+              "pm.expect(Number(pm.response.headers.get('Content-Length'))).to.be.above(0);",
+              "pm.expect(pm.response.headers.get('Content-Type')).to.include('spreadsheetml.sheet');",
+              "pm.expect(pm.response.headers.get('X-Content-Type-Options')).to.equal('nosniff');",
+              "pm.expect(pm.response.size().body).to.be.greaterThan(20);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 Exportar ORDER_COST_OUTCOMES PDF",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/reports/analytics/exports/ORDER_COST_OUTCOMES?sucursalId={{sucursalId}}&periodo=PERSONALIZADO&desde={{desde}}&hasta={{hasta}}&format=PDF",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "reports",
+            "analytics",
+            "exports",
+            "ORDER_COST_OUTCOMES"
+          ],
+          "query": [
+            {
+              "key": "sucursalId",
+              "value": "{{sucursalId}}"
+            },
+            {
+              "key": "periodo",
+              "value": "PERSONALIZADO"
+            },
+            {
+              "key": "desde",
+              "value": "{{desde}}"
+            },
+            {
+              "key": "hasta",
+              "value": "{{hasta}}"
+            },
+            {
+              "key": "format",
+              "value": "PDF"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "pm.expect(pm.response.headers.get('Cache-Control')).to.include('no-store');",
+              "const f=pm.response.headers.get('Content-Disposition');",
+              "pm.expect(f).to.match(/^attachment; filename=\"Gastro_Core_/);",
+              "pm.expect(f).to.include('.pdf');",
+              "pm.expect(pm.response.headers.get('X-Report-SHA256')).to.match(/^[0-9a-f]{64}$/);",
+              "pm.expect(Number(pm.response.headers.get('Content-Length'))).to.be.above(0);",
+              "pm.expect(pm.response.headers.get('Content-Type')).to.include('application/pdf');",
+              "pm.expect(pm.response.headers.get('X-Content-Type-Options')).to.equal('nosniff');",
+              "pm.expect(pm.response.size().body).to.be.greaterThan(20);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 Exportar SUPPLIER_BALANCES CSV",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/reports/analytics/exports/SUPPLIER_BALANCES?sucursalId={{sucursalId}}&periodo=PERSONALIZADO&desde={{desde}}&hasta={{hasta}}&format=CSV",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "reports",
+            "analytics",
+            "exports",
+            "SUPPLIER_BALANCES"
+          ],
+          "query": [
+            {
+              "key": "sucursalId",
+              "value": "{{sucursalId}}"
+            },
+            {
+              "key": "periodo",
+              "value": "PERSONALIZADO"
+            },
+            {
+              "key": "desde",
+              "value": "{{desde}}"
+            },
+            {
+              "key": "hasta",
+              "value": "{{hasta}}"
+            },
+            {
+              "key": "format",
+              "value": "CSV"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "pm.expect(pm.response.headers.get('Cache-Control')).to.include('no-store');",
+              "const f=pm.response.headers.get('Content-Disposition');",
+              "pm.expect(f).to.match(/^attachment; filename=\"Gastro_Core_/);",
+              "pm.expect(f).to.include('.csv');",
+              "pm.expect(pm.response.headers.get('X-Report-SHA256')).to.match(/^[0-9a-f]{64}$/);",
+              "pm.expect(Number(pm.response.headers.get('Content-Length'))).to.be.above(0);",
+              "pm.expect(pm.response.headers.get('Content-Type')).to.include('text/csv');",
+              "pm.expect(pm.response.headers.get('X-Content-Type-Options')).to.equal('nosniff');",
+              "pm.expect(pm.response.size().body).to.be.greaterThan(20);",
+              "const raw=pm.response.text();",
+              "pm.expect(raw).to.include('\\r\\n');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 Rechazar formato TXT con 400",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/reports/analytics/exports/SALES_COSTS?sucursalId={{sucursalId}}&periodo=PERSONALIZADO&desde={{desde}}&hasta={{hasta}}&format=TXT",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "reports",
+            "analytics",
+            "exports",
+            "SALES_COSTS"
+          ],
+          "query": [
+            {
+              "key": "sucursalId",
+              "value": "{{sucursalId}}"
+            },
+            {
+              "key": "periodo",
+              "value": "PERSONALIZADO"
+            },
+            {
+              "key": "desde",
+              "value": "{{desde}}"
+            },
+            {
+              "key": "hasta",
+              "value": "{{hasta}}"
+            },
+            {
+              "key": "format",
+              "value": "TXT"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(400);",
+              "pm.expect(pm.response.headers.get('Content-Disposition')).to.not.exist;",
+              "pm.expect(pm.response.json()).to.have.property('statusCode');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 Rechazar sucursalId ausente con 400",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/reports/analytics/exports/SALES_COSTS?periodo=PERSONALIZADO&desde={{desde}}&hasta={{hasta}}&format=CSV",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "reports",
+            "analytics",
+            "exports",
+            "SALES_COSTS"
+          ],
+          "query": [
+            {
+              "key": "periodo",
+              "value": "PERSONALIZADO"
+            },
+            {
+              "key": "desde",
+              "value": "{{desde}}"
+            },
+            {
+              "key": "hasta",
+              "value": "{{hasta}}"
+            },
+            {
+              "key": "format",
+              "value": "CSV"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(400);",
+              "pm.expect(pm.response.headers.get('Content-Disposition')).to.not.exist;",
+              "pm.expect(pm.response.json()).to.have.property('statusCode');"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "sucursalId",
+      "value": "cmv8p4k3x0001u4v4xor2zgqu"
+    },
+    {
+      "key": "desde",
+      "value": "2026-10-01"
+    },
+    {
+      "key": "hasta",
+      "value": "2026-10-30"
+    }
+  ]
+}

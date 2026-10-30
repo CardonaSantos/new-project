@@ -187,8 +187,8 @@ export class ReservationsStore extends ReservationsPort{
    const search=q.search?.trim();
    const where:Prisma.ReservaWhereInput={sucursalId:q.sucursalId,
     ...(q.estado?{estado:q.estado}:{}),
-    ...(q.desde?{inicio:{gte:new Date(q.desde)}}:{}),
-    ...(q.hasta?{fin:{lte:new Date(q.hasta)}}:{}),
+    ...(q.desde?{fin:{gt:new Date(q.desde)}}:{}),
+    ...(q.hasta?{inicio:{lt:new Date(q.hasta)}}:{}),
     ...(search?{OR:[{nombreContacto:{contains:search,mode:'insensitive'}},
      {telefonoContacto:{contains:search}},{cliente:{nombre:{contains:search,mode:'insensitive'}}}]}:{})
    };

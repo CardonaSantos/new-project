@@ -39,6 +39,12 @@ describe('RSV-A serializable reservation invariants',()=>{
   tx.usuarioRol.findFirst.mockResolvedValue(null);
   await expect(store.list(u,{sucursalId:'branch',page:1,limit:20})).rejects.toThrow('Sin permiso');
  });
+ it('never exposes enriched reservation detail across a denied branch',async()=>{
+  const {store,tx}=rig();
+  vi.mocked(store.detail).mockRestore();
+  tx.usuarioRol.findFirst.mockResolvedValue(null);
+  await expect(store.detail(u,'res-1')).rejects.toThrow('Sin permiso');
+ });
  it('locks a table and blocks a conflicting reservation before insertion',async()=>{
   const {store,tx}=rig();
   const d={sucursalId:'branch',nombreContacto:'Cliente de prueba',personas:2,

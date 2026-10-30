@@ -54,8 +54,15 @@ export class TableStore{
   const table=await tx.mesa.findUnique({where:{id:mesaId},include:{sala:true}});
   if(!table||!table.activa||!table.sala.activa||table.sala.sucursalId!==branch)
    throw new ConflictException('Mesa inactiva o ajena a sucursal');
+  // Use the same row lock as RSV-A check-in to prevent a walk-in race.
+  await tx.$queryRaw`SELECT "id" FROM "Mesa" WHERE "id" = ${mesaId} FOR UPDATE`;
   const occupied=await tx.ocupacionMesa.findFirst({where:{mesaId,cerradaEn:null}});
   if(occupied)return occupied;
+  const now=new Date();
+  const reserved=await tx.reservaMesa.findFirst({where:{mesaId,reserva:{
+   estado:{in:['PENDIENTE','CONFIRMADA']},inicio:{lte:now},fin:{gt:now}
+  }},select:{reservaId:true}});
+  if(reserved)throw new ConflictException('Mesa reservada en este horario; registre llegada de la reserva');
   const created=await tx.ocupacionMesa.create({data:{mesaId,abiertaPorId:u.id}});
   await audit(tx,u,'TABLE_OCCUPIED','OcupacionMesa',created.id,branch,{mesaId});
   await outbox(tx,'TABLE_OCCUPIED','Mesa',mesaId,branch,{ocupacionId:created.id});

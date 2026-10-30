@@ -157,33 +157,46 @@ export function renderXlsx(r:ExportPayload):Buffer{
   {name:'xl/worksheets/sheet2.xml',body:sheet(summaryRows.map(r=>[...r]),new Map())}
  ]);
 }
-const pdfSafe=(s:string)=>s.normalize('NFKD').replace(/[\u0300-\u036f]/g,'')
- .replace(/[^\x20-\x7e]/g,'?').replace(/\\/g,'\\\\')
- .replace(/\(/g,'\\(').replace(/\)/g,'\\)');
+const pdfSafe=(s:string)=>s.replace(/[^\x20-\x7E\xA1-\xFF]/g,'?')
+ .replace(/\\/g,'\\\\').replace(/\(/g,'\\(').replace(/\)/g,'\\)');
+const splitText=(raw:string,width:number)=>{
+ const text=raw.replace(/[\r\n\t]+/g,' ');
+ const parts:string[]=[];
+ for(let i=0;i<text.length;i+=width)parts.push(text.slice(i,i+width));
+ return parts.length?parts:[''];
+};
 export function renderPdf(r:ExportPayload):Buffer{
- const t=exportTable(r),panels=Math.ceil(t.headers.length/6),pageRows=24;
+ const t=exportTable(r),panels=Math.ceil(t.headers.length/6),pageRows=32;
  const pages:string[][]=[];
  for(let panel=0;panel<panels;panel++){
-  const cols=t.headers.slice(panel*6,panel*6+6);
-  for(let start=0;start<Math.max(1,t.rows.length);start+=pageRows){
-   const lines=[
+  const headers=t.headers.slice(panel*6,panel*6+6),body:string[]=[];
+  const width=21;
+  for(const row of t.rows){
+   const cells=row.slice(panel*6,panel*6+6).map(value=>splitText(value,width));
+   const depth=Math.max(...cells.map(c=>c.length),1);
+   for(let line=0;line<depth;line++){
+    body.push(cells.map(c=>(c[line]??'').padEnd(width,' ')).join(' | '));
+   }
+  }
+  if(!body.length)body.push('Sin registros para el periodo');
+  for(let start=0;start<body.length;start+=pageRows){
+   pages.push([
     'GASTRO CORE / '+r.source,
     'Sucursal: '+r.sucursal.nombre+' | '+r.periodo.desde+' a '+r.periodo.hasta+
     ' | '+r.currency+' | Registros: '+r.meta.total,
-    'Columnas '+(panel*6+1)+'-'+(panel*6+cols.length)+' de '+t.headers.length,
-    cols.map(c=>c.slice(0,21)).join(' | '),
-    '-'.repeat(122),
-    ...t.rows.slice(start,start+pageRows).map(row=>
-     row.slice(panel*6,panel*6+6).map(v=>v.replace(/\s+/g,' ').slice(0,21)).join(' | '))
-   ];
-   pages.push(lines);
+    'Columnas '+(panel*6+1)+'-'+(panel*6+headers.length)+' de '+t.headers.length,
+    headers.map(c=>c.slice(0,width).padEnd(width,' ')).join(' | '),
+    '-'.repeat(Math.min(142,headers.length*24)),
+    ...body.slice(start,start+pageRows)
+   ]);
   }
  }
+ if(pages.length>500)throw new RangeError('PDF supera 500 paginas; use CSV o XLSX');
  const pageObjects:number[]=[];
  const objects:string[]=[];
  const add=(s:string)=>{objects.push(s);return objects.length;};
  const catalog=add(''),pagesId=add('');
- const font=add('<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>');
+ const font=add('<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>');
  for(let i=0;i<pages.length;i++){
   let commands='BT /F1 9 Tf 35 554 Td 12 TL\n';
   for(const l of pages[i])commands+='('+pdfSafe(l)+') Tj T*\n';

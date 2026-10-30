@@ -69,7 +69,7 @@ export async function orderCostOutcomes(tx:Tx,b:Scope,page:number,limit:number){
    ARRAY_AGG(id ORDER BY id) AS "documentosConsumo"
   FROM document_costs d GROUP BY d."ordenId"
  ), result_orders AS (
-  SELECT o.id AS "ordenId",o.numero AS "numeroOrden",o.estado::text AS "estadoActual",
+  SELECT o.numero AS "numeroOrden",o.estado::text AS "estadoActual",
    o.modalidad::text AS modalidad,o."canceladaEn",o."clasificacionCancelacion",
    o."autorizadaCancelacionPreparada",o."importeAnulado"::text AS "importeAnulado",
    bo.*
@@ -81,8 +81,10 @@ export async function orderCostOutcomes(tx:Tx,b:Scope,page:number,limit:number){
     "canceladaEn","clasificacionCancelacion","autorizadaCancelacionPreparada",
     "importeAnulado",documentos,"documentosReceta","documentosDirecto",
     "documentosEmpaque",lineas,"lineasSinMovimiento","documentosSinLineas",
-    "documentosIncompletos","costoIdentificado","costoRecetasIdentificado",
-    "costoDirectoIdentificado","costoEmpaqueIdentificado",
+    "documentosIncompletos","costoIdentificado"::text AS "costoIdentificado",
+    "costoRecetasIdentificado"::text AS "costoRecetasIdentificado",
+    "costoDirectoIdentificado"::text AS "costoDirectoIdentificado",
+    "costoEmpaqueIdentificado"::text AS "costoEmpaqueIdentificado",
     "costoCompleto","documentosConsumo"
    FROM result_orders ORDER BY "numeroOrden","ordenId"
    LIMIT ${limit} OFFSET ${skip}`),

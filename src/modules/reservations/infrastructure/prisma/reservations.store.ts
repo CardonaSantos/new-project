@@ -277,7 +277,7 @@ export class ReservationsStore extends ReservationsPort{
     ...(d.inicio!==undefined||d.fin!==undefined?['HORARIO']:[]),
     ...(d.clienteId!==undefined?['CLIENTE']:[]),
     ...(d.notas!==undefined?['NOTAS']:[]),
-    ...(d.mesaIds!==undefined?['MESAS']:[]
+    ...(d.mesaIds!==undefined?['MESAS']:[])
    ];
    await this.event(tx,u,id,r.sucursalId,'RESERVATION_UPDATED',
     fields.length?'Campos actualizados: '+fields.join(', '):'Sin cambios de contenido');

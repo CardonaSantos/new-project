@@ -39,3 +39,14 @@ Diagnóstico recomendado: `GET /api/auth/capabilities?sucursalId=<id>`, verifica
 5. Completar REP-1 costos históricos y márgenes con cobertura real, finanzas/proveedores/delivery, multi-sucursal y rendimiento; implementar REP-2 XLSX/CSV/PDF.
 
 **Resultado: revisión parcial favorable, no aprobación final del sprint; PR #18 permanece DRAFT y sin merge.**
+
+
+## Actualización de QA — fuente de reservaciones validada en DEV
+
+Respuesta posterior aportada por el usuario: `GET /api/reports/analytics/sources/RESERVATION_EVENTS` responde 200 correctamente para sucursal `cmv8p4k3x0001u4v4xor2zgqu` y período 2026-10-01 a 2026-10-30. El bloqueo por `reservations.read` observado antes **está resuelto a nivel de llamada HTTP**. No se ha verificado desde aquí qué procedimiento exacto de asignación/seed efectuó el usuario.
+
+- `totales.eventos=10`; `porAccion`: 4 CREATED, 3 CANCELLED, 1 CHECKED_IN, 1 CONFIRMED, 1 UPDATED. `4+3+1+1+1=10`.
+- `meta.page=1`, `meta.limit=100`, `meta.total=10`, `meta.totalPages=1`; la respuesta incluye exactamente 10 filas y no se detectan IDs de evento duplicados.
+- 4 reservas distintas: 1 en estado actual `COMPLETADA`, 3 en estado actual `CANCELADA`. `reserva.estado` es un estado actual leído del registro, no un campo histórico `estadoDespues`: los eventos CREATED/CONFIRMED pueden mostrar CANCELADA posteriormente.
+- La cronología de cada reserva registrada no muestra acciones duplicadas en esta muestra; todos los eventos informados son del 30/10 y corresponden al período solicitado.
+- **Nuevo corte: 19/22 solicitudes con respuestas satisfactorias**, incluidos los 2 errores 400 negativos esperados; **solo faltan 3 respuestas iniciales**: 08 turnos caja, 10 cobros individuales, 11 gastos individuales. Siguen pendientes las conciliaciones SQL fuente y pruebas adicionales de paginación y RBAC cruzado. REP-1/REP-2 no terminados, PR #18 DRAFT.

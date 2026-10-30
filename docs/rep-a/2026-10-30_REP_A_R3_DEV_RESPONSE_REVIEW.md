@@ -50,3 +50,55 @@ Respuesta posterior aportada por el usuario: `GET /api/reports/analytics/sources
 - 4 reservas distintas: 1 en estado actual `COMPLETADA`, 3 en estado actual `CANCELADA`. `reserva.estado` es un estado actual leído del registro, no un campo histórico `estadoDespues`: los eventos CREATED/CONFIRMED pueden mostrar CANCELADA posteriormente.
 - La cronología de cada reserva registrada no muestra acciones duplicadas en esta muestra; todos los eventos informados son del 30/10 y corresponden al período solicitado.
 - **Nuevo corte: 19/22 solicitudes con respuestas satisfactorias**, incluidos los 2 errores 400 negativos esperados; **solo faltan 3 respuestas iniciales**: 08 turnos caja, 10 cobros individuales, 11 gastos individuales. Siguen pendientes las conciliaciones SQL fuente y pruebas adicionales de paginación y RBAC cruzado. REP-1/REP-2 no terminados, PR #18 DRAFT.
+
+
+## Actualización final Postman R3 — 22 de 22 respuestas esperadas recibidas
+
+El usuario suministró las tres respuestas HTTP restantes del 30/10/2026. Las 22 solicitudes de ambas colecciones ya tienen respuesta con la estructura y los estados esperados **según los JSON suministrados**. Esto no sustituye una ejecución automatizada de assertions Postman con reporte de resultados, ni una conciliación SQL independiente de DEV.
+
+- **08 Turnos de caja:** un turno \`cmvv3hupg0009fov4ji0uaci8\`, \`estado=ABIERTO\`, \`cerradaEn=null\`, fondo inicial Q0, 3 movimientos de ingreso por Q66, 0 egresos, diferencias/arqueos nulos. \`meta.total=1\`; concilia con evidencia del mismo turno en la solicitud 09 y con \`turnosCajaActualmenteAbiertos=1\` del overview.
+- **10 Evidencia de cobros:** 4 filas de \`Pago\`, Q22 cada una, total Q88, sin reembolsos, \`meta.total=4\`. Tres cobros \`EFECTIVO\` con \`recibidoPorRepartidor=true\`, \`pagoId\` equivalentes a las líneas de las tres liquidaciones cerradas (Q66). El cuarto, por Q22, es \`OTRO\`, con \`referencia=PLATFORM_SETTLEMENT:cmvv3uzwa0028fov4zdsiqz02\`, \`recibidoPorRepartidor=false\`, por plataforma. No aparece un \`MovimientoCaja\` directamente asociado a Pago, porque los Q66 ingresaron al turno a través de movimientos cuya fuente es la \`LiquidacionRepartidor\`; evitar duplicación. Conciliación con el overview día y \`payments-by-method\`: Q66 + Q22 = Q88.
+- **11 Evidencia de gastos:** \`data=[]\`, \`meta.total=0\`, \`totalPages=0\`. Conciliación con gastos registrados Q0 del mismo día; resultado vacío es correcto, no error.
+- Los tests escritos para estas tres solicitudes exigen HTTP 200, existencia de campos, conteos y sumas en centavos contra \`REP_QA_DAY_SNAPSHOT\`. Las respuestas proporcionadas cumplen las condiciones visibles y sumas; el usuario no compartió la salida de ejecución de assertions de Postman.
+- **Corte QA de respuestas: 22/22** (13 iniciales + 9 transversales, incluidos dos escenarios HTTP 400 esperados). No queda ninguna respuesta de estas colecciones por recopilar. Sigue abierto el gate de verificación independiente PostgreSQL, RBAC cruzado, paginación, rendimiento, y el desarrollo restante de REP-1/REP-2.
+
+### Diferencia de reconocimiento entre pagos y ventas: comprobación operativa pendiente
+
+El 30/10 hay cuatro pagos Q22 = Q88 pero solo una \`Venta\` cerrada por Q22. El código de PAY-A \`payments.store.ts\` reconoce \`Venta\` y \`VentaLinea\` **cuando \`settleTx\` cierra la orden**, mientras \`delivery-payments.store.ts\` reconoce \`Pago\` al cobrar mediante repartidor o plataforma. Las fechas/eventos y reglas son distintas, por lo que la diferencia no debe reportarse automáticamente como fallo de aritmética o ingreso adicional.
+
+La \`Venta\` visible corresponde a \`ORD-e0162508-788\` (cuenta \`cmvv5us2w00024gv4grrm99wh\`), cuyo Pago fue de Q22 y \`movimientoCajaId=null\` al ser cobro del repartidor. Los otros tres pedidos con pagos del día son:
+- \`ORD-ce214876-d7c\`, cuenta \`cmvv3n0rl000jfov4yf18hqxv\`, efectivo repartidor Q22.
+- \`ORD-994bf299-716\`, cuenta \`cmvv3tm3g001ofov48y1d04sp\`, plataforma Q22.
+- \`ORD-14b72e61-6f3\`, cuenta \`cmvv70scv00274gv46e2oo3to\`, efectivo repartidor Q22.
+
+**Pendiente** comprobar con datos fuente si dichas órdenes todavía están ABIERTAS/no finalizadas, si se cerraron fuera de la ventana consultada o si hay omisión de finalización. **No afirmar que Q66 ya es ingreso contable reconocido**, ni modificar ventas automáticamente sin conocer el estado real.
+
+Consulta SQL DEV sugerida, de solo lectura, restringida a los cuatro \`cuentaId\`:
+
+\`\`\`sql
+SELECT o."numero", o."estado" AS "estadoOrden",
+       c.id AS "cuentaId", c."estado" AS "estadoCuenta",
+       c."total", c."pagado",
+       COALESCE(p."cobrado",0) AS "totalPagos",
+       v.id AS "ventaId", v."cerradaEn" AS "ventaCerradaEn",
+       v."total" AS "totalVenta"
+FROM "Cuenta" c
+JOIN "Orden" o ON o.id = c."ordenId"
+LEFT JOIN LATERAL (
+  SELECT SUM(p."monto") AS "cobrado" FROM "Pago" p WHERE p."cuentaId" = c.id
+) p ON true
+LEFT JOIN "Venta" v ON v."cuentaId" = c.id
+WHERE c.id IN (
+  'cmvv3n0rl000jfov4yf18hqxv',
+  'cmvv3tm3g001ofov48y1d04sp',
+  'cmvv5us2w00024gv4grrm99wh',
+  'cmvv70scv00274gv46e2oo3to'
+)
+ORDER BY o."numero";
+\`\`\`
+
+### Próxima entrega de código
+
+**REP-1 R4: costos históricos y margen bruto**, con agregación histórica trazable. Priorizar asignación de \`ConsumoOrdenLinea\` / \`MovimientoInventario\` a \`OrdenLinea\` y \`VentaLinea\`, cobertura de costos, ajustes/modificadores, múltiples cuentas y consumos no vendidos por cancelación o merma. Mantener márgenes \`null\` si falta evidencia de costo, sin asumir cero. Mantener transacciones de solo lectura, filtros RBAC, fechas operativas y pruebas unitarias/HTTP/Postman antes de merge. REP-2 XLSX/CSV/PDF sigue pendiente.
+
+**Estado: ronda HTTP Postman R3 completada, módulo REP-A todavía en desarrollo, PR #18 DRAFT y main intacto.**

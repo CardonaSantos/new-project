@@ -1,0 +1,216 @@
+{
+  "info": {
+    "name": "Gastro Core REP-1 — Analytics DEV inicial",
+    "description": "Primer corte REP-1, sin importes simulados: dashboard operativo, resumen por fechas y detalle paginado de tickets; requiere token y reports.read en la sucursal.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 Dashboard operativo",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reports/operational/dashboard?sucursalId={{sucursalId}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
+              "pm.expect(r.freshness).to.equal('LIVE_READ');",
+              "pm.expect(r.kpis.pedidosAbiertos).to.be.a('number');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 Overview DIA operativo",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reports/analytics/overview?sucursalId={{sucursalId}}&periodo=DIA&fecha={{fechaOperativa}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
+              "pm.expect(r.kpis.ventasNetas).to.match(/^-?\\d+\\.\\d{2}$/);",
+              "pm.expect(r.kpis.margenBruto).to.equal(null);",
+              "pm.expect(r.serieDiaria).to.have.length(1);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Overview SEMANA",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reports/analytics/overview?sucursalId={{sucursalId}}&periodo=SEMANA&fecha={{fechaOperativa}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "pm.expect(pm.response.json().serieDiaria).to.have.length(7);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 Overview MES",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reports/analytics/overview?sucursalId={{sucursalId}}&periodo=MES&fecha={{fechaOperativa}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "pm.expect(pm.response.json().serieDiaria.length).to.be.gte(28);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Overview personalizado",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reports/analytics/overview?sucursalId={{sucursalId}}&periodo=PERSONALIZADO&desde={{desde}}&hasta={{hasta}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "pm.expect(pm.response.json().periodo.tipo).to.equal('PERSONALIZADO');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 Tickets del día",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reports/analytics/tickets?sucursalId={{sucursalId}}&periodo=DIA&fecha={{fechaOperativa}}&page=1&limit=20"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
+              "pm.expect(r.data).to.be.an('array');",
+              "pm.expect(r.meta).to.have.property('total');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 Sin sucursal (400 esperado)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reports/analytics/overview?periodo=DIA&fecha={{fechaOperativa}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(400);"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "sucursalId",
+      "value": ""
+    },
+    {
+      "key": "fechaOperativa",
+      "value": "2026-10-30"
+    },
+    {
+      "key": "desde",
+      "value": "2026-10-01"
+    },
+    {
+      "key": "hasta",
+      "value": "2026-10-30"
+    }
+  ]
+}

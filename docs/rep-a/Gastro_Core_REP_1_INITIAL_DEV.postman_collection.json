@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Gastro Core REP-1 — Analytics DEV inicial",
-    "description": "Primer corte REP-1, sin importes simulados: dashboard operativo, resumen por fechas y detalle paginado de tickets; requiere token y reports.read en la sucursal.",
+    "description": "Primer corte REP-1, sin importes simulados: dashboard operativo, resumen por fechas y detalle paginado de tickets; requiere token y reports.read en la sucursal. Includes cross-request consistency checks, assumes a quiet DEV database during execution.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -54,7 +54,21 @@
               "const r=pm.response.json();",
               "pm.expect(r.kpis.ventasNetas).to.match(/^-?\\d+\\.\\d{2}$/);",
               "pm.expect(r.kpis.margenBruto).to.equal(null);",
-              "pm.expect(r.serieDiaria).to.have.length(1);"
+              "pm.expect(r.serieDiaria).to.have.length(1);",
+              "const cents = value => {",
+              " const s = String(value); const m = /^(-?)(\\d+)\\.(\\d{2})$/.exec(s);",
+              " pm.expect(m, 'importe monetario exacto').not.to.equal(null);",
+              " return (m[1] === '-' ? -1 : 1) * (Number(m[2])*100 + Number(m[3]));",
+              "};",
+              "const totals = key => r.serieDiaria.reduce((a,d) => a+cents(d[key]),0);",
+              "for(const key of ['ventasNetas','cobrosBrutos','reembolsos','cobrosNetos','gastosRegistrados'])",
+              " pm.expect(totals(key), 'KPI coincide con serie '+key).to.equal(cents(r.kpis[key]));",
+              "pm.expect(r.kpis.cobrosNetos).to.equal(((cents(r.kpis.cobrosBrutos)-cents(r.kpis.reembolsos))/100).toFixed(2));",
+              "pm.collectionVariables.set('REP_QA_DAY_SNAPSHOT',JSON.stringify({",
+              " ventasNetas:r.kpis.ventasNetas,cobrosBrutos:r.kpis.cobrosBrutos,",
+              " cobrosNetos:r.kpis.cobrosNetos,gastos:r.kpis.gastosRegistrados,",
+              " cuentas:r.kpis.cuentasCerradas,turnosAbiertos:r.kpis.turnosCajaActualmenteAbiertos",
+              "}));"
             ]
           }
         }
@@ -79,7 +93,16 @@
             "type": "text/javascript",
             "exec": [
               "pm.response.to.have.status(200);",
-              "pm.expect(pm.response.json().serieDiaria).to.have.length(7);"
+              "pm.expect(pm.response.json().serieDiaria).to.have.length(7);",
+              "const cents = value => {",
+              " const s = String(value); const m = /^(-?)(\\d+)\\.(\\d{2})$/.exec(s);",
+              " pm.expect(m, 'importe monetario exacto').not.to.equal(null);",
+              " return (m[1] === '-' ? -1 : 1) * (Number(m[2])*100 + Number(m[3]));",
+              "};",
+              "for(const key of ['ventasNetas','cobrosBrutos','reembolsos','cobrosNetos','gastosRegistrados'])",
+              " pm.expect(r.serieDiaria.reduce((a,d)=>a+cents(d[key]),0)).to.equal(cents(r.kpis[key]));",
+              "pm.expect(r.periodo.desde).to.match(/^\\d{4}-\\d{2}-\\d{2}$/);",
+              "pm.expect(r.serieDiaria.map(d=>d.fechaOperativa)[0]).to.equal(r.periodo.desde);"
             ]
           }
         }
@@ -104,7 +127,19 @@
             "type": "text/javascript",
             "exec": [
               "pm.response.to.have.status(200);",
-              "pm.expect(pm.response.json().serieDiaria.length).to.be.gte(28);"
+              "pm.expect(pm.response.json().serieDiaria.length).to.be.gte(28);",
+              "const cents = value => {",
+              " const s = String(value); const m = /^(-?)(\\d+)\\.(\\d{2})$/.exec(s);",
+              " pm.expect(m, 'importe monetario exacto').not.to.equal(null);",
+              " return (m[1] === '-' ? -1 : 1) * (Number(m[2])*100 + Number(m[3]));",
+              "};",
+              "for(const key of ['ventasNetas','cobrosBrutos','reembolsos','cobrosNetos','gastosRegistrados'])",
+              " pm.expect(r.serieDiaria.reduce((a,d)=>a+cents(d[key]),0)).to.equal(cents(r.kpis[key]));",
+              "pm.collectionVariables.set('REP_QA_MONTH_SNAPSHOT',JSON.stringify({",
+              " desde:r.periodo.desde,hasta:r.periodo.hasta,ventasNetas:r.kpis.ventasNetas,",
+              " cobrosNetos:r.kpis.cobrosNetos,gastos:r.kpis.gastosRegistrados,",
+              " ticketsUnicos:r.kpis.ticketsUnicos",
+              "}));"
             ]
           }
         }
@@ -129,7 +164,21 @@
             "type": "text/javascript",
             "exec": [
               "pm.response.to.have.status(200);",
-              "pm.expect(pm.response.json().periodo.tipo).to.equal('PERSONALIZADO');"
+              "pm.expect(pm.response.json().periodo.tipo).to.equal('PERSONALIZADO');",
+              "const cents = value => {",
+              " const s = String(value); const m = /^(-?)(\\d+)\\.(\\d{2})$/.exec(s);",
+              " pm.expect(m, 'importe monetario exacto').not.to.equal(null);",
+              " return (m[1] === '-' ? -1 : 1) * (Number(m[2])*100 + Number(m[3]));",
+              "};",
+              "for(const key of ['ventasNetas','cobrosBrutos','reembolsos','cobrosNetos','gastosRegistrados'])",
+              " pm.expect(r.serieDiaria.reduce((a,d)=>a+cents(d[key]),0)).to.equal(cents(r.kpis[key]));",
+              "const month=JSON.parse(pm.collectionVariables.get('REP_QA_MONTH_SNAPSHOT')||'null');",
+              "if(month&&month.desde===r.periodo.desde&&month.hasta===r.periodo.hasta){",
+              " pm.expect(r.kpis.ventasNetas).to.equal(month.ventasNetas);",
+              " pm.expect(r.kpis.cobrosNetos).to.equal(month.cobrosNetos);",
+              " pm.expect(r.kpis.gastosRegistrados).to.equal(month.gastos);",
+              " pm.expect(r.kpis.ticketsUnicos).to.equal(month.ticketsUnicos);",
+              "}"
             ]
           }
         }
@@ -156,7 +205,14 @@
               "pm.response.to.have.status(200);",
               "const r=pm.response.json();",
               "pm.expect(r.data).to.be.an('array');",
-              "pm.expect(r.meta).to.have.property('total');"
+              "pm.expect(r.meta).to.have.property('total');",
+              "const day=JSON.parse(pm.collectionVariables.get('REP_QA_DAY_SNAPSHOT')||'null');",
+              "if(day) { pm.expect(r.meta.total).to.equal(day.cuentas);",
+              " if(r.meta.total<=20){",
+              " const cents = s => {const m=/^(-?)(\\d+)\\.(\\d{2})$/.exec(s); return (m[1]==='-'?-1:1)*(Number(m[2])*100+Number(m[3]));};",
+              " pm.expect(r.data.reduce((a,x)=>a+cents(x.total),0)).to.equal(cents(day.ventasNetas));",
+              " }}",
+              "pm.expect(r.data.every(x=>x.orden&&x.cuentaId)).to.equal(true);"
             ]
           }
         }
@@ -181,7 +237,17 @@
             "type": "text/javascript",
             "exec": [
               "pm.response.to.have.status(200);",
-              "pm.expect(pm.response.json().data).to.be.an('array');"
+              "pm.expect(pm.response.json().data).to.be.an('array');",
+              "const cents = value => {",
+              " const s = String(value); const m = /^(-?)(\\d+)\\.(\\d{2})$/.exec(s);",
+              " pm.expect(m, 'importe monetario exacto').not.to.equal(null);",
+              " return (m[1] === '-' ? -1 : 1) * (Number(m[2])*100 + Number(m[3]));",
+              "};",
+              "const day=JSON.parse(pm.collectionVariables.get('REP_QA_DAY_SNAPSHOT')||'null');",
+              "if(day){",
+              " pm.expect(r.data.reduce((a,x)=>a+cents(x.cobrosBrutos),0)).to.equal(cents(day.cobrosBrutos));",
+              " pm.expect(r.data.reduce((a,x)=>a+cents(x.neto),0)).to.equal(cents(day.cobrosNetos));",
+              "}"
             ]
           }
         }
@@ -206,7 +272,15 @@
             "type": "text/javascript",
             "exec": [
               "pm.response.to.have.status(200);",
-              "pm.expect(pm.response.json().data).to.be.an('array');"
+              "pm.expect(pm.response.json().data).to.be.an('array');",
+              "const cents = value => {",
+              " const s = String(value); const m = /^(-?)(\\d+)\\.(\\d{2})$/.exec(s);",
+              " pm.expect(m, 'importe monetario exacto').not.to.equal(null);",
+              " return (m[1] === '-' ? -1 : 1) * (Number(m[2])*100 + Number(m[3]));",
+              "};",
+              "pm.expect(r.data.reduce((a,x)=>a+cents(x.monto),0)).to.equal(cents(r.totalRegistrado));",
+              "const day=JSON.parse(pm.collectionVariables.get('REP_QA_DAY_SNAPSHOT')||'null');",
+              "if(day)pm.expect(cents(r.totalRegistrado)).to.equal(cents(day.gastos));"
             ]
           }
         }
@@ -231,14 +305,21 @@
             "type": "text/javascript",
             "exec": [
               "pm.response.to.have.status(200);",
-              "pm.expect(pm.response.json().data).to.be.an('array');"
+              "pm.expect(pm.response.json().data).to.be.an('array');",
+              "const day=JSON.parse(pm.collectionVariables.get('REP_QA_DAY_SNAPSHOT')||'null');",
+              "if(day)pm.expect(r.data.filter(x=>x.estado==='ABIERTO').length).to.be.at.most(day.turnosAbiertos);",
+              "for(const shift of r.data){",
+              " if(shift.cerradaEn===null){",
+              " pm.expect(shift.efectivoContado).to.equal(null);",
+              " pm.expect(shift.diferencia).to.equal(null);",
+              " }}"
             ]
           }
         }
       ]
     },
     {
-      "name": "06 Sin sucursal (400 esperado)",
+      "name": "09 Sin sucursal (400 esperado)",
       "request": {
         "method": "GET",
         "header": [
@@ -255,7 +336,8 @@
           "script": {
             "type": "text/javascript",
             "exec": [
-              "pm.response.to.have.status(400);"
+              "pm.response.to.have.status(400);",
+              "pm.expect(pm.response.json().statusCode).to.equal(400);"
             ]
           }
         }

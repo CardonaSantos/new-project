@@ -53,5 +53,11 @@ jobs:
         run: npm run prisma:status
       - name: Replay PUR-A SQL safely on populated schema
         run: npx prisma db execute --file prisma/migrations/20261017150000_pur_a_purchase_documents/migration.sql
+      - name: Assert DEL-A D1 customer and primary-address integrity
+        run: npx prisma db execute --file prisma/ci/del-a-d1-integrity.sql
+      - name: Assert DEL-A D3 platform reference and bank-ledger uniqueness
+        run: npx prisma db execute --file prisma/ci/del-a-d3-ledger-integrity.sql
+      - name: Assert DEL-A D4 one-sale, one-delivery and one-cash-handover uniqueness
+        run: npx prisma db execute --file prisma/ci/del-a-d4-integrity.sql
       - name: Reapply safely without creating duplicate objects
         run: npm run prisma:deploy

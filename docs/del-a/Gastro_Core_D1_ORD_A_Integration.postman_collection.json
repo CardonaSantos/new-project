@@ -1,0 +1,756 @@
+{
+  "info": {
+    "name": "Gastro Core — DEL-A D1 x ORD-A (DEV)",
+    "description": "Pruebas de integración únicamente contra DEV. Crea clientes y órdenes de prueba sin enviar a cocina. Requiere variante de catálogo habilitada y con precio. No ejecutar contra producción.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 Ver variantes de catálogo disponibles (elegir varianteId)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/catalog/variants/options?sucursalId={{sucursalId}}"
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if(!pm.collectionVariables.get('integrationRun'))pm.collectionVariables.set('integrationRun',Date.now().toString(36));"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Catálogo consultable',()=>pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 Crear cliente activo DEV",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/customers",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"claveOperacion\": \"CUS-ORD:{{integrationRun}}:active\",\n  \"nombre\": \"Cliente ORD-A DEV {{integrationRun}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Cliente activo creado',()=>pm.response.to.have.status(201));",
+              "pm.collectionVariables.set('activeCustomerId',pm.response.json().id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Crear cliente para desactivar",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/customers",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"claveOperacion\": \"CUS-ORD:{{integrationRun}}:inactive\",\n  \"nombre\": \"Cliente inactivo ORD-A DEV {{integrationRun}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Cliente creado',()=>pm.response.to.have.status(201));",
+              "pm.collectionVariables.set('inactiveCustomerId',pm.response.json().id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02b Crear cliente de reemplazo activo",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/customers",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"claveOperacion\": \"CUS-ORD:{{integrationRun}}:replacement\",\n  \"nombre\": \"Cliente reemplazo ORD-A DEV {{integrationRun}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Cliente reemplazo activo creado',()=>pm.response.to.have.status(201));",
+              "pm.collectionVariables.set('replacementCustomerId',pm.response.json().id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 Desactivar el segundo cliente",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/customers/{{inactiveCustomerId}}/deactivate",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"claveOperacion\": \"CUS-ORD:{{integrationRun}}:deactivate\",\n  \"motivo\": \"Prueba de integración clientes y pedidos\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Cliente inactivo',()=>pm.response.to.have.status(201));",
+              "pm.expect(pm.response.json().activo).to.eql(false);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Crear pedido con cliente activo",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/orders",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"modalidad\": \"MOSTRADOR\",\n  \"origen\": \"CAJA\",\n  \"claveOperacion\": \"ORD-D1:{{integrationRun}}:active\",\n  \"enviarCocina\": false,\n  \"clienteId\": \"{{activeCustomerId}}\",\n  \"lineas\": [\n    {\n      \"varianteId\": \"{{varianteId}}\",\n      \"cantidad\": \"1.000\"\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if(!pm.collectionVariables.get('varianteId'))throw new Error('Primero configurar varianteId con una variante vendible y con precio válido de DEV');"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Pedido con cliente activo creado',()=>pm.response.to.have.status(201));",
+              "const j=pm.response.json();pm.expect(j.clienteId).to.eql(pm.collectionVariables.get('activeCustomerId'));",
+              "pm.collectionVariables.set('integrationOrderId',j.id);pm.collectionVariables.set('integrationOrderVersion',String(j.version));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 Reintentar misma operación y verificar misma orden",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/orders",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"modalidad\": \"MOSTRADOR\",\n  \"origen\": \"CAJA\",\n  \"claveOperacion\": \"ORD-D1:{{integrationRun}}:active\",\n  \"enviarCocina\": false,\n  \"clienteId\": \"{{activeCustomerId}}\",\n  \"lineas\": [\n    {\n      \"varianteId\": \"{{varianteId}}\",\n      \"cantidad\": \"1.000\"\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Reintento crea una sola orden',()=>pm.response.to.have.status(201));",
+              "pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('integrationOrderId'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 Rechazar pedido para cliente inactivo",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/orders",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"modalidad\": \"MOSTRADOR\",\n  \"origen\": \"CAJA\",\n  \"claveOperacion\": \"ORD-D1:{{integrationRun}}:inactive\",\n  \"enviarCocina\": false,\n  \"clienteId\": \"{{inactiveCustomerId}}\",\n  \"lineas\": [\n    {\n      \"varianteId\": \"{{varianteId}}\",\n      \"cantidad\": \"1.000\"\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Cliente inactivo bloqueado',()=>pm.response.to.have.status(409));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 Rechazar pedido con cliente desconocido",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/orders",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"modalidad\": \"MOSTRADOR\",\n  \"origen\": \"CAJA\",\n  \"claveOperacion\": \"ORD-D1:{{integrationRun}}:unknown\",\n  \"enviarCocina\": false,\n  \"clienteId\": \"nonexistent-customer-id\",\n  \"lineas\": [\n    {\n      \"varianteId\": \"{{varianteId}}\",\n      \"cantidad\": \"1.000\"\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Cliente desconocido bloqueado',()=>pm.response.to.have.status(404));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 Crear pedido sin cliente",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/orders",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"modalidad\": \"MOSTRADOR\",\n  \"origen\": \"CAJA\",\n  \"claveOperacion\": \"ORD-D1:{{integrationRun}}:anonymous\",\n  \"enviarCocina\": false,\n  \"lineas\": [\n    {\n      \"varianteId\": \"{{varianteId}}\",\n      \"cantidad\": \"1.000\"\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Se permite MOSTRADOR sin cliente',()=>pm.response.to.have.status(201));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 No reasignar cliente inactivo al editar",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/orders/{{integrationOrderId}}",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"version\": 3,\n  \"clienteId\": \"{{inactiveCustomerId}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const v=Number(pm.collectionVariables.get('integrationOrderVersion'));",
+              "if(!Number.isInteger(v)||v<1)throw new Error('integrationOrderVersion faltante');",
+              "pm.request.body.update(JSON.stringify({version:v,clienteId:pm.collectionVariables.get('inactiveCustomerId')}));"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Edición con cliente inactivo bloqueada',()=>pm.response.to.have.status(409));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 No reasignar cliente desconocido al editar",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/orders/{{integrationOrderId}}",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"version\": 3,\n  \"clienteId\": \"nonexistent-customer-id\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const v=Number(pm.collectionVariables.get('integrationOrderVersion'));",
+              "if(!Number.isInteger(v)||v<1)throw new Error('integrationOrderVersion faltante');",
+              "pm.request.body.update(JSON.stringify({version:v,clienteId:'nonexistent-customer-id'}));"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Edición con cliente desconocido bloqueada',()=>pm.response.to.have.status(404));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "11 Reasignar a otro cliente activo en orden abierta",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/orders/{{integrationOrderId}}",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"version\": 3,\n  \"clienteId\": \"{{replacementCustomerId}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const v=Number(pm.collectionVariables.get('integrationOrderVersion'));",
+              "if(!Number.isInteger(v)||v<1)throw new Error('integrationOrderVersion faltante');",
+              "pm.request.body.update({mode:'raw',raw:JSON.stringify({version:v,clienteId:pm.collectionVariables.get('replacementCustomerId')})});"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Reasignación de cliente activo permitida',()=>pm.response.to.have.status(200));",
+              "pm.expect(pm.response.json().clienteId).to.eql(pm.collectionVariables.get('replacementCustomerId'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "12 Reconsultar la orden y su cliente",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/orders/{{integrationOrderId}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('La nueva asignación persiste',()=>pm.response.to.have.status(200));",
+              "pm.expect(pm.response.json().clienteId).to.eql(pm.collectionVariables.get('replacementCustomerId'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "13 Comprobar opciones: solo clientes activos",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/customers/options?sucursalId={{sucursalId}}&limit=50"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Opciones 200',()=>pm.response.to.have.status(200));",
+              "const rows=pm.response.json().data;",
+              "pm.expect(rows.find(x=>x.id===pm.collectionVariables.get('inactiveCustomerId'))).to.eql(undefined);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "14 Usuario restringido sin customers.read (opcional)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{restrictedToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/orders",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"modalidad\": \"MOSTRADOR\",\n  \"origen\": \"CAJA\",\n  \"claveOperacion\": \"ORD-D1:{{integrationRun}}:restricted\",\n  \"enviarCocina\": false,\n  \"clienteId\": \"{{activeCustomerId}}\",\n  \"lineas\": [\n    {\n      \"varianteId\": \"{{varianteId}}\",\n      \"cantidad\": \"1.000\"\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if(!pm.collectionVariables.get('restrictedToken'))pm.execution.skipRequest();",
+              "if(!pm.collectionVariables.get('varianteId'))throw new Error('Primero configurar varianteId con una variante vendible y con precio válido de DEV');"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('No puede asociar cliente sin autorización',()=>pm.response.to.have.status(403));"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "restrictedToken",
+      "value": ""
+    },
+    {
+      "key": "sucursalId",
+      "value": ""
+    },
+    {
+      "key": "varianteId",
+      "value": ""
+    },
+    {
+      "key": "activeCustomerId",
+      "value": ""
+    },
+    {
+      "key": "inactiveCustomerId",
+      "value": ""
+    },
+    {
+      "key": "integrationOrderId",
+      "value": ""
+    },
+    {
+      "key": "integrationOrderVersion",
+      "value": ""
+    },
+    {
+      "key": "integrationRun",
+      "value": ""
+    },
+    {
+      "key": "replacementCustomerId",
+      "value": ""
+    }
+  ]
+}

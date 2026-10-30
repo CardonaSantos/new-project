@@ -292,6 +292,7 @@ model Sucursal {
   actualizadoEn DateTime @updatedAt @db.Timestamptz(3)
 
   // Relaciones inversas (navegación Prisma)
+  clienteSucursalesComoSucursal          ClienteSucursal[]            @relation("ClienteSucursal_sucursal_Sucursal")
   configuracionSucursalesComoSucursal     ConfiguracionSucursal?       @relation("ConfiguracionSucursal_sucursal_Sucursal")
   mediosComoSucursal Media[] @relation("Media_sucursal_Sucursal")
   dispositivosComoSucursal                Dispositivo[]                @relation("Dispositivo_sucursal_Sucursal")
@@ -314,6 +315,7 @@ model Sucursal {
   cierreOperativosComoSucursal            CierreOperativo[]            @relation("CierreOperativo_sucursal_Sucursal")
   reversasFinancierasComoSucursal ReversaFinanciera[] @relation("ReversaFinanciera_sucursal_Sucursal")
   liquidacionRepartidoresComoSucursal     LiquidacionRepartidor[]      @relation("LiquidacionRepartidor_sucursal_Sucursal")
+  liquidacionCanalExternosComoSucursal LiquidacionCanalExterno[] @relation("LiquidacionCanalExterno_sucursal_Sucursal")
   reservasComoSucursal                    Reserva[]                    @relation("Reserva_sucursal_Sucursal")
   sesionAutoserviciosComoSucursal         SesionAutoservicio[]         @relation("SesionAutoservicio_sucursal_Sucursal")
   menusAsignados MenuSucursal[]
@@ -395,6 +397,7 @@ model Usuario {
   gastoOperativosComoUsuario            GastoOperativo[]          @relation("GastoOperativo_usuario_Usuario")
   cierreOperativosComoUsuario           CierreOperativo[]         @relation("CierreOperativo_usuario_Usuario")
   entregasComoRepartidor                Entrega[]                 @relation("Entrega_repartidor_Usuario")
+  eventosEntregaComoActor EntregaEvento[] @relation("EntregaEvento_actor_Usuario")
   liquidacionRepartidoresComoRepartidor LiquidacionRepartidor[]   @relation("LiquidacionRepartidor_repartidor_Usuario")
   reservasComoCreadaPor                 Reserva[]                 @relation("Reserva_creadaPor_Usuario")
   eventoReservasComoUsuario             EventoReserva[]           @relation("EventoReserva_usuario_Usuario")
@@ -1393,6 +1396,7 @@ model Cliente {
   creadoEn DateTime @default(now()) @db.Timestamptz(3)
 
   // Relaciones inversas (navegación Prisma)
+  clienteSucursalesComoCliente    ClienteSucursal[]  @relation("ClienteSucursal_cliente_Cliente")
   direccionClientesComoCliente DireccionCliente[] @relation("DireccionCliente_cliente_Cliente")
   ordenesComoCliente           Orden[]            @relation("Orden_cliente_Cliente")
   ventasComoCliente            Venta[]            @relation("Venta_cliente_Cliente")
@@ -1409,6 +1413,7 @@ model DireccionCliente {
   latitud    Decimal? @db.Decimal(10, 7)
   longitud   Decimal? @db.Decimal(10, 7)
   principal  Boolean  @default(false)
+  activa     Boolean  @default(true)
 
   // Relaciones inversas (navegación Prisma)
   entregasComoDireccion Entrega[] @relation("Entrega_direccion_DireccionCliente")
@@ -1500,6 +1505,7 @@ model Orden {
   entregasComoOrden            Entrega?             @relation("Entrega_orden_Orden")
   sesionAutoserviciosComoOrden SesionAutoservicio[] @relation("SesionAutoservicio_orden_Orden")
 
+  @@index([clienteId, sucursalId])
   @@unique([sucursalId, numero])
   @@index([sucursalId, estado, abiertaEn])
   @@index([sucursalId, clasificacionCancelacion, canceladaEn])
@@ -1824,6 +1830,7 @@ model Pago {
   liquidacionRepartidorLineasComoPago LiquidacionRepartidorLinea? @relation("LiquidacionRepartidorLinea_pago_Pago")
 
   @@index([cuentaId, cobradoEn])
+  @@index([recibidoPorRepartidor, cobradoPorId, cobradoEn])
 }
 
 model ReembolsoPago {
@@ -1860,6 +1867,7 @@ model Venta {
   // Relaciones inversas (navegación Prisma)
   ventaLineasComoVenta VentaLinea[] @relation("VentaLinea_venta_Venta")
 
+  @@index([clienteId, sucursalId])
   @@unique([sucursalId, numero])
   @@index([sucursalId, cerradaEn])
 }
@@ -2042,6 +2050,7 @@ model Entrega {
   // Relaciones inversas (navegación Prisma)
   liquidacionCanalExternoLineasComoEntrega LiquidacionCanalExternoLinea? @relation("LiquidacionCanalExternoLinea_entrega_Entrega")
   liquidacionRepartidorLineasComoEntrega   LiquidacionRepartidorLinea[]  @relation("LiquidacionRepartidorLinea_entrega_Entrega")
+  eventosComoEntrega EntregaEvento[] @relation("EntregaEvento_entrega_Entrega")
 
   @@index([repartidorId, estado])
   @@index([canalExternoId, referenciaExterna])
@@ -2049,6 +2058,8 @@ model Entrega {
 
 model LiquidacionCanalExterno {
   id                 String            @id @default(cuid())
+  sucursalId         String?
+  sucursal           Sucursal?         @relation("LiquidacionCanalExterno_sucursal_Sucursal", fields: [sucursalId], references: [id], onDelete: Restrict)
   canalId            String
   canal              CanalExterno      @relation("LiquidacionCanalExterno_canal_CanalExterno", fields: [canalId], references: [id], onDelete: Restrict)
   cuentaFinancieraId String?
@@ -2066,6 +2077,7 @@ model LiquidacionCanalExterno {
   liquidacionCanalExternoLineasComoLiquidacion LiquidacionCanalExternoLinea[] @relation("LiquidacionCanalExternoLinea_liquidacion_LiquidacionCanalExterno")
 
   @@index([canalId, periodoInicio])
+  @@index([sucursalId, periodoInicio])
 }
 
 model LiquidacionCanalExternoLinea {
@@ -2096,6 +2108,8 @@ model LiquidacionRepartidor {
   // Relaciones inversas (navegación Prisma)
   movimientoCajasComoLiquidacionRepartidor   MovimientoCaja?              @relation("MovimientoCaja_liquidacionRepartidor_LiquidacionRepartidor")
   liquidacionRepartidorLineasComoLiquidacion LiquidacionRepartidorLinea[] @relation("LiquidacionRepartidorLinea_liquidacion_LiquidacionRepartidor")
+
+  @@index([sucursalId, repartidorId, estado])
 }
 
 model LiquidacionRepartidorLinea {
@@ -2140,6 +2154,7 @@ model Reserva {
   eventoReservasComoReserva       EventoReserva[]       @relation("EventoReserva_reserva_Reserva")
   recordatorioReservasComoReserva RecordatorioReserva[] @relation("RecordatorioReserva_reserva_Reserva")
 
+  @@index([clienteId, sucursalId])
   @@index([sucursalId, inicio, estado])
 }
 
@@ -2597,4 +2612,35 @@ model ConsumoInterno {
  movimientoId String @unique
  creadoEn DateTime @default(now()) @db.Timestamptz(3)
  @@index([ubicacionId,creadoEn])
+}
+
+
+// DEL-A: visibilidad del cliente por sede sin duplicar su identidad comercial.
+model ClienteSucursal {
+  clienteId  String
+  sucursalId String
+  creadaEn   DateTime @default(now()) @db.Timestamptz(3)
+  cliente    Cliente  @relation("ClienteSucursal_cliente_Cliente", fields: [clienteId], references: [id], onDelete: Restrict)
+  sucursal   Sucursal @relation("ClienteSucursal_sucursal_Sucursal", fields: [sucursalId], references: [id], onDelete: Restrict)
+
+  @@id([clienteId, sucursalId])
+  @@index([sucursalId, clienteId])
+}
+
+// DEL-A D2: audit trail for delivery assignments and state transitions.
+model EntregaEvento {
+  id          String        @id @default(cuid())
+  entregaId   String
+  entrega     Entrega       @relation("EntregaEvento_entrega_Entrega", fields: [entregaId], references: [id], onDelete: Restrict)
+  usuarioId   String?
+  usuario     Usuario?      @relation("EntregaEvento_actor_Usuario", fields: [usuarioId], references: [id], onDelete: SetNull)
+  accion      String        @db.VarChar(64)
+  estadoAntes EstadoEntrega?
+  estadoDespues EstadoEntrega?
+  repartidorAntesId String?
+  repartidorDespuesId String?
+  motivo      String?       @db.VarChar(500)
+  creadoEn    DateTime      @default(now()) @db.Timestamptz(3)
+
+  @@index([entregaId, creadoEn])
 }

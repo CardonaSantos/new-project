@@ -1,0 +1,1377 @@
+{
+  "info": {
+    "name": "Gastro Core — DEL-A D3 Cobros y liquidaciones DEV",
+    "description": "Solo PostgreSQL DEV. Requiere sucursal, turno de caja activo y cuenta FIN-A BANK activa. Genera cliente/órdenes/entregas/pagos de prueba. No usar producción.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 Check existing shift for cash receipt",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/cash/shifts?sucursalId={{sucursalId}}&page=1&limit=20",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if(!pm.collectionVariables.get('runId'))pm.collectionVariables.set('runId',Date.now().toString());",
+              "const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/Guatemala',",
+              " year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());",
+              "const get=t=>parts.find(p=>p.type===t).value;",
+              "pm.collectionVariables.set('deliveryDay',get('year')+'-'+get('month')+'-'+get('day'));"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Shifts accessible',()=>pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 Check FIN-A bank accounts in branch",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/finance/accounts?sucursalId={{sucursalId}}&page=1&limit=20",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Financial accounts accessible',()=>pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Create DEV customer",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/customers",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"claveOperacion\": \"D3:{{runId}}:customer\",\n  \"nombre\": \"D3 Cash customer DEV {{runId}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "for(const key of [\"token\",\"sucursalId\"]){",
+              " if(!pm.collectionVariables.get(key))throw new Error('Debe configurar '+key+' en variables de la colección');",
+              "}"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Customer created',()=>pm.response.to.have.status(201));pm.collectionVariables.set('customerId',pm.response.json().id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 Create own-courier DELIVERY order",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/orders",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"modalidad\": \"DELIVERY\",\n  \"origen\": \"CAJA\",\n  \"claveOperacion\": \"D3:{{runId}}:order-cash\",\n  \"enviarCocina\": false,\n  \"clienteId\": \"{{customerId}}\",\n  \"lineas\": [\n    {\n      \"varianteId\": \"{{varianteId}}\",\n      \"cantidad\": \"1.000\"\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "for(const key of [\"varianteId\",\"courierId\"]){",
+              " if(!pm.collectionVariables.get(key))throw new Error('Debe configurar '+key+' en variables de la colección');",
+              "}"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Order created',()=>pm.response.to.have.status(201));",
+              "const j=pm.response.json();pm.collectionVariables.set('cashOrderId',j.id);",
+              "pm.collectionVariables.set('cashAccountId',j.cuentasComoOrden[0].id);",
+              "pm.collectionVariables.set('cashOrderTotal',String(j.total));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Create and directly assign courier",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/deliveries",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"ordenId\": \"{{cashOrderId}}\",\n  \"claveOperacion\": \"D3:{{runId}}:cash-delivery\",\n  \"direccionTexto\": \"Zona 1, Calle 3, domicilio sintético D3\",\n  \"repartidorId\": \"{{courierId}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "for(const key of [\"courierId\"]){",
+              " if(!pm.collectionVariables.get(key))throw new Error('Debe configurar '+key+' en variables de la colección');",
+              "}"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Delivery created and assigned',()=>pm.response.to.have.status(201));",
+              "pm.collectionVariables.set('cashDeliveryId',pm.response.json().id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 Dispatch courier",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/deliveries/{{cashDeliveryId}}/dispatch",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D3:{{runId}}:cash-dispatch\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Delivery dispatched',()=>pm.response.to.have.status(201));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 Complete delivery",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/deliveries/{{cashDeliveryId}}/complete",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D3:{{runId}}:cash-complete\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Delivery completed',()=>pm.response.to.have.status(201));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 Courier receives cash (PAY-A, without cash movement)",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/deliveries/{{cashDeliveryId}}/collect-cash",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D3:{{runId}}:cash-pay\",\n  \"cuentaId\": \"{{cashAccountId}}\",\n  \"monto\": \"22.00\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Payment recorded',()=>pm.response.to.have.status(201));",
+              "pm.expect(pm.response.json().monto).to.equal('22.00');",
+              "pm.collectionVariables.set('courierPaymentId',pm.response.json().pagoId);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 Same cash key => same Pago (no double charge)",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/deliveries/{{cashDeliveryId}}/collect-cash",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D3:{{runId}}:cash-pay\",\n  \"cuentaId\": \"{{cashAccountId}}\",\n  \"monto\": \"22.00\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Idempotent cash payment',()=>pm.response.to.have.status(201));",
+              "pm.expect(pm.response.json().pagoId).to.equal(pm.collectionVariables.get('courierPaymentId'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 Account now marked as paid; courier Pago without turno",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/accounts/{{cashAccountId}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('PAY-A account read',()=>pm.response.to.have.status(200));",
+              "const j=pm.response.json();pm.expect(String(j.pagado)).to.equal('22.00');",
+              "const p=j.pagos.find(p=>p.id===pm.collectionVariables.get('courierPaymentId'));",
+              "pm.expect(p.recibidoPorRepartidor).to.equal(true);",
+              "pm.expect(p.turnoId).to.equal(null);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 Refund before handover blocked",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/payments/{{courierPaymentId}}/refund",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D3:{{runId}}:refund-blocked\",\n  \"turnoId\": \"{{turnoCajaId}}\",\n  \"monto\": \"1.00\",\n  \"motivo\": \"Probar rechazo del reembolso antes de entrega de efectivo\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "for(const key of [\"turnoCajaId\"]){",
+              " if(!pm.collectionVariables.get(key))throw new Error('Debe configurar '+key+' en variables de la colección');",
+              "}"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Refund blocked until cash settled',()=>pm.response.to.have.status(409));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "11 Pending courier cash eligible for settlement",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/deliveries/settlements/couriers/pending?sucursalId={{sucursalId}}&repartidorId={{courierId}}&page=1&limit=20",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Pending 200',()=>pm.response.to.have.status(200));",
+              "const row=pm.response.json().data.find(p=>p.pagoId===pm.collectionVariables.get('courierPaymentId'));",
+              "pm.expect(row).to.exist;pm.expect(row.monto).to.equal('22.00');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "12 Open courier settlement for selected Pago",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/deliveries/settlements/couriers",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D3:{{runId}}:courier-open\",\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"repartidorId\": \"{{courierId}}\",\n  \"pagoIds\": [\n    \"{{courierPaymentId}}\"\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Settlement open',()=>pm.response.to.have.status(201));",
+              "const j=pm.response.json();pm.expect(j.totalEsperado).to.equal('22.00');",
+              "pm.collectionVariables.set('courierSettlementId',j.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "13 Wrong cash amount must not close / 409",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/deliveries/settlements/couriers/{{courierSettlementId}}/close",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D3:{{runId}}:courier-shortage\",\n  \"turnoCajaId\": \"{{turnoCajaId}}\",\n  \"totalEntregado\": \"21.00\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "for(const key of [\"turnoCajaId\"]){",
+              " if(!pm.collectionVariables.get(key))throw new Error('Debe configurar '+key+' en variables de la colección');",
+              "}"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Shortage rejected',()=>pm.response.to.have.status(409));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "13b Record shortage discrepancy without posting cash (audit only)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/deliveries/settlements/couriers/{{courierSettlementId}}/discrepancy",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D3:{{runId}}:shortage-note\",\n  \"montoDeclarado\": \"21.00\",\n  \"motivo\": \"Diferencia de prueba D3; liquidación permanece abierta\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Discrepancy recorded without closing',()=>pm.response.to.have.status(201));",
+              "pm.expect(pm.response.json().estado).to.eql('ABIERTA');",
+              "pm.expect(pm.response.json().diferencia).to.eql('1.00');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "14 Close courier settlement / exactly ONE MovimientoCaja",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/deliveries/settlements/couriers/{{courierSettlementId}}/close",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D3:{{runId}}:courier-close\",\n  \"turnoCajaId\": \"{{turnoCajaId}}\",\n  \"totalEntregado\": \"22.00\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "for(const key of [\"turnoCajaId\"]){",
+              " if(!pm.collectionVariables.get(key))throw new Error('Debe configurar '+key+' en variables de la colección');",
+              "}"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Cash handed over',()=>pm.response.to.have.status(201));",
+              "const j=pm.response.json();pm.expect(j.estado).to.equal('CERRADA');",
+              "pm.collectionVariables.set('cashMovementId',j.movimientoCajaId);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "15 Close replay / same cash movement",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/deliveries/settlements/couriers/{{courierSettlementId}}/close",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D3:{{runId}}:courier-close\",\n  \"turnoCajaId\": \"{{turnoCajaId}}\",\n  \"totalEntregado\": \"22.00\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('No duplicate cash drawer movement',()=>pm.response.to.have.status(201));",
+              "pm.expect(pm.response.json().movimientoCajaId).to.equal(pm.collectionVariables.get('cashMovementId'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "16 Verify courier settlement detail",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/deliveries/settlements/couriers/{{courierSettlementId}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Closed settlement detail',()=>pm.response.to.have.status(200));",
+              "const j=pm.response.json();pm.expect(j.estado).to.equal('CERRADA');",
+              "pm.expect(j.lineas).to.have.lengthOf(1);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "17 List platform channels",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/deliveries/settlements/platforms/channels?sucursalId={{sucursalId}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Platform channel list',()=>pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "18 Register isolated DEV platform channel",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/deliveries/settlements/platforms/channels",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D3:{{runId}}:channel\",\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"codigo\": \"DEV_{{runId}}\",\n  \"nombre\": \"Canal sintético de prueba D3\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Platform channel created',()=>pm.response.to.have.status(201));",
+              "pm.collectionVariables.set('channelId',pm.response.json().id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "19 Create platform DELIVERY order",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/orders",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"modalidad\": \"DELIVERY\",\n  \"origen\": \"PLATAFORMA\",\n  \"claveOperacion\": \"D3:{{runId}}:order-platform\",\n  \"enviarCocina\": false,\n  \"clienteId\": \"{{customerId}}\",\n  \"lineas\": [\n    {\n      \"varianteId\": \"{{varianteId}}\",\n      \"cantidad\": \"1.000\"\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Platform order created',()=>pm.response.to.have.status(201));",
+              "const j=pm.response.json();pm.collectionVariables.set('platformOrderId',j.id);",
+              "pm.collectionVariables.set('platformAccountId',j.cuentasComoOrden[0].id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "20 Create platform delivery with its channel",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/deliveries",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D3:{{runId}}:platform-delivery\",\n  \"ordenId\": \"{{platformOrderId}}\",\n  \"direccionTexto\": \"Zona 2, domicilio sintético D3\",\n  \"repartidorId\": \"{{courierId}}\",\n  \"canalExternoId\": \"{{channelId}}\",\n  \"referenciaExterna\": \"TEST_{{runId}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Platform delivery created',()=>pm.response.to.have.status(201));",
+              "pm.collectionVariables.set('platformDeliveryId',pm.response.json().id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "21 Dispatch platform delivery",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/deliveries/{{platformDeliveryId}}/dispatch",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D3:{{runId}}:platform-dispatch\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Dispatched',()=>pm.response.to.have.status(201));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "22 Complete platform delivery",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/deliveries/{{platformDeliveryId}}/complete",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D3:{{runId}}:platform-complete\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Delivered',()=>pm.response.to.have.status(201));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "23 Platform gross 22 - commission 2 = net 20",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/deliveries/settlements/platforms",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D3:{{runId}}:platform-settlement\",\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"canalId\": \"{{channelId}}\",\n  \"cuentaFinancieraId\": \"{{bankAccountId}}\",\n  \"periodoInicio\": \"{{deliveryDay}}\",\n  \"periodoFin\": \"{{deliveryDay}}\",\n  \"referencia\": \"BANK-D3-{{runId}}\",\n  \"lineas\": [\n    {\n      \"entregaId\": \"{{platformDeliveryId}}\",\n      \"cuentaId\": \"{{platformAccountId}}\",\n      \"importeBruto\": \"22.00\",\n      \"comision\": \"2.00\"\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "for(const key of [\"bankAccountId\"]){",
+              " if(!pm.collectionVariables.get(key))throw new Error('Debe configurar '+key+' en variables de la colección');",
+              "}"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('One net settlement',()=>pm.response.to.have.status(201));",
+              "const j=pm.response.json();pm.expect(j.totalBruto).to.equal('22.00');",
+              "pm.expect(j.totalComision).to.equal('2.00');pm.expect(j.totalNeto).to.equal('20.00');",
+              "pm.collectionVariables.set('platformSettlementId',j.id);",
+              "pm.collectionVariables.set('bankMovementId',j.movimientoFinancieroId);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "24 Platform replay => one original financial movement",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/deliveries/settlements/platforms",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D3:{{runId}}:platform-settlement\",\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"canalId\": \"{{channelId}}\",\n  \"cuentaFinancieraId\": \"{{bankAccountId}}\",\n  \"periodoInicio\": \"{{deliveryDay}}\",\n  \"periodoFin\": \"{{deliveryDay}}\",\n  \"referencia\": \"BANK-D3-{{runId}}\",\n  \"lineas\": [\n    {\n      \"entregaId\": \"{{platformDeliveryId}}\",\n      \"cuentaId\": \"{{platformAccountId}}\",\n      \"importeBruto\": \"22.00\",\n      \"comision\": \"2.00\"\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Idempotent platform net',()=>pm.response.to.have.status(201));",
+              "pm.expect(pm.response.json().movimientoFinancieroId).to.equal(",
+              "pm.collectionVariables.get('bankMovementId'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "25 Verify platform settlement detail",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/deliveries/settlements/platforms/{{platformSettlementId}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Platform settlement detail',()=>pm.response.to.have.status(200));",
+              "pm.expect(pm.response.json().totalNeto).to.equal('20.00');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "26 Verify FIN-A financial account movements",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/finance/accounts/{{bankAccountId}}/movements?page=1&limit=50",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "for(const key of [\"bankAccountId\"]){",
+              " if(!pm.collectionVariables.get(key))throw new Error('Debe configurar '+key+' en variables de la colección');",
+              "}"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Financial movements visible',()=>pm.response.to.have.status(200));",
+              "const j=pm.response.json();const rows=j.data||[];",
+              "pm.expect(rows.filter(x=>x.id===pm.collectionVariables.get('bankMovementId'))).to.have.lengthOf(1);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "27 Verify PAY-A recognized only one platform gross payment",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/accounts/{{platformAccountId}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Platform account paid once',()=>pm.response.to.have.status(200));",
+              "const j=pm.response.json();pm.expect(j.pagado).to.equal('22.00');",
+              "const gross=j.pagos.filter(p=>String(p.referencia||'').startsWith('PLATFORM_SETTLEMENT:'));",
+              "pm.expect(gross).to.have.lengthOf(1);",
+              "pm.collectionVariables.set('platformPaymentId',gross[0].id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "28 FIN-A pending external payments excludes platform gross",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/finance/reconciliation/pending?sucursalId={{sucursalId}}&sourceType=PAGO&page=1&limit=100"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Finance pending list',()=>pm.response.to.have.status(200));",
+              "const rows=pm.response.json().data;",
+              "pm.expect(rows.some(p=>p.sourceId===pm.collectionVariables.get('platformPaymentId'))).to.eql(false);"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "sucursalId",
+      "value": ""
+    },
+    {
+      "key": "varianteId",
+      "value": ""
+    },
+    {
+      "key": "courierId",
+      "value": ""
+    },
+    {
+      "key": "turnoCajaId",
+      "value": ""
+    },
+    {
+      "key": "bankAccountId",
+      "value": ""
+    },
+    {
+      "key": "runId",
+      "value": ""
+    },
+    {
+      "key": "deliveryDay",
+      "value": ""
+    },
+    {
+      "key": "customerId",
+      "value": ""
+    },
+    {
+      "key": "cashOrderId",
+      "value": ""
+    },
+    {
+      "key": "cashAccountId",
+      "value": ""
+    },
+    {
+      "key": "cashDeliveryId",
+      "value": ""
+    },
+    {
+      "key": "courierPaymentId",
+      "value": ""
+    },
+    {
+      "key": "courierSettlementId",
+      "value": ""
+    },
+    {
+      "key": "cashMovementId",
+      "value": ""
+    },
+    {
+      "key": "channelId",
+      "value": ""
+    },
+    {
+      "key": "platformOrderId",
+      "value": ""
+    },
+    {
+      "key": "platformAccountId",
+      "value": ""
+    },
+    {
+      "key": "platformDeliveryId",
+      "value": ""
+    },
+    {
+      "key": "platformSettlementId",
+      "value": ""
+    },
+    {
+      "key": "bankMovementId",
+      "value": ""
+    },
+    {
+      "key": "platformPaymentId",
+      "value": ""
+    }
+  ]
+}

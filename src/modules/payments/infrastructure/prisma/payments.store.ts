@@ -90,6 +90,11 @@ export class PaymentsStore{
   if(!order)throw new NotFoundException('Orden inexistente');
   if(order.estado==='CERRADA')return {orderId,closed:true};
   if(order.estado!=='ABIERTA')throw new ConflictException('Orden no está abierta');
+  if(order.modalidad==='DELIVERY'){
+   const delivery=await tx.entrega.findUnique({where:{ordenId:orderId},select:{estado:true}});
+   if(delivery?.estado!=='ENTREGADA')
+    throw new ConflictException('La entrega debe estar ENTREGADA antes de cerrar la orden');
+  }
   const lines=await tx.ordenLinea.findMany({where:{ordenId:orderId,canceladaEn:null}});
   if(!lines.length||lines.some(x=>x.cantidadEnviada.lt(x.cantidad)))
    throw new ConflictException('Hay productos sin enviar');
@@ -137,6 +142,12 @@ export class PaymentsStore{
   return {orderId,closed:true};
  }
  private async readyToSettle(tx:Tx,orderId:string){
+  const order=await tx.orden.findUnique({where:{id:orderId},select:{modalidad:true,estado:true}});
+  if(!order||order.estado!=='ABIERTA')return false;
+  if(order.modalidad==='DELIVERY'){
+   const delivery=await tx.entrega.findUnique({where:{ordenId:orderId},select:{estado:true}});
+   if(delivery?.estado!=='ENTREGADA')return false;
+  }
   const lines=await tx.ordenLinea.findMany({where:{ordenId:orderId,canceladaEn:null}});
   if(!lines.length||lines.some(l=>l.cantidadEnviada.lt(l.cantidad)))return false;
   if(await tx.comanda.count({where:{ordenId:orderId,estado:{in:['PENDIENTE','PREPARANDO']}}}))return false;
@@ -253,6 +264,14 @@ export class PaymentsStore{
    if(!payment)throw new NotFoundException('Pago inexistente');
    const branch=payment.cuenta.orden.sucursalId;
    await allowed(tx,u,branch,'payments.refund');
+   if(payment.referencia?.startsWith('PLATFORM_SETTLEMENT:'))
+    throw new ConflictException('Reembolso de plataforma requiere reversa financiera conciliada');
+   if(payment.recibidoPorRepartidor){
+    const courierLine=await tx.liquidacionRepartidorLinea.findUnique({
+     where:{pagoId:payment.id},include:{liquidacion:true}});
+    if(courierLine?.liquidacion.estado!=='CERRADA')
+     throw new ConflictException('Efectivo del repartidor debe liquidarse antes de reembolsar');
+   }
    // Every refund changes financial totals, including an external refund for
    // which the original bank route has not yet been configured.
    const sucursal=await tx.sucursal.findUnique({where:{id:branch},

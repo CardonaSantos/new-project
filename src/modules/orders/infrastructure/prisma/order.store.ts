@@ -11,6 +11,7 @@ import {audit,outbox,runOnce,orderInclude,type Tx} from './order-shared.js';
 import {TableStore} from './table.store.js';
 import {PaymentsStore} from '../../../payments/infrastructure/prisma/payments.store.js';
 import {KitchenStore} from './kitchen.store.js';
+import {CustomerSelectionPort} from '../../../customers/application/ports/customers.port.js';
 import type {CreateOrderDto,AddItemsDto,OrderItemDto,EditLineDto,EditOrderDto,OrderListDto,ReasonDto,CancelOrderDto,SendDto} from '../../presentation/http/dto/orders.dto.js';
 import {requiresCancellationAuthorization,requireCancellationClassification} from '../../domain/cancellation.policy.js';
 export type IngredientModifierSnapshot={modificadorId:string;articuloId:string;
@@ -24,7 +25,8 @@ type QuotedLine={varianteId:string;nombre:string;cantidad:Prisma.Decimal;unit:Pr
 export class OrderStore{
  constructor(private readonly db:PrismaService,private readonly engine:InventoryPostingEngine,
   private readonly identity:IdentityRepository,private readonly tables:TableStore,
-  private readonly kitchen:KitchenStore,private readonly payments:PaymentsStore){}
+  private readonly kitchen:KitchenStore,private readonly payments:PaymentsStore,
+  private readonly customerSelection:CustomerSelectionPort){}
  private async visible(u:Principal,branch:string){
   const caps=await this.identity.capabilities(u.id,branch);
   if(!['orders.read','orders.create','orders.manage'].some(x=>caps.includes(x)))
@@ -165,14 +167,16 @@ export class OrderStore{
   });
  }
  async create(u:Principal,d:CreateOrderDto){
-  const result=await this.engine.tx(tx=>runOnce(tx,u,d.claveOperacion,'ORDER_CREATE',d,async()=>{
+  const result=await this.engine.tx(async tx=>{
+   // Authorization is outside runOnce so replay cannot bypass a revoked role.
    await this.engine.allowed(tx,u.id,'orders.create',d.sucursalId);
    const branch=await tx.sucursal.findUnique({where:{id:d.sucursalId}});
    if(!branch?.activa)throw new ConflictException('Sucursal inexistente o inactiva');
+   if(d.clienteId)await this.customerSelection.assertVisibleInTx(tx,u.id,d.sucursalId,d.clienteId);
+   return runOnce(tx,u,d.claveOperacion,'ORDER_CREATE',d,async()=>{
    if(d.modalidad==='MESA'&&!d.mesaId)throw new BadRequestException('Servicio MESA requiere mesaId');
    if(d.modalidad!=='MESA'&&d.mesaId)throw new BadRequestException('mesaId solo en modalidad MESA');
-   if(d.clienteId&&!await tx.cliente.findFirst({where:{id:d.clienteId,activo:true}}))
-    throw new NotFoundException('Cliente inexistente o inactivo');
+   if(d.clienteId)await this.customerSelection.assertSelectableInTx(tx,u.id,d.sucursalId,d.clienteId);
    const occupant=d.mesaId?await this.tables.findOrOpen(tx,u,d.mesaId,d.sucursalId):null;
    const order=await tx.orden.create({data:{
     sucursalId:d.sucursalId,numero:'ORD-'+randomUUID().slice(0,12),
@@ -189,7 +193,8 @@ export class OrderStore{
    await audit(tx,u,'ORDER_CREATED','Orden',order.id,d.sucursalId,{lineas:d.lineas.length});
    await outbox(tx,'ORDER_CREATED','Orden',order.id,d.sucursalId);
    return {orderId:order.id};
-  }));
+   });
+  });
   return this.detail(u,result.orderId);
  }
  async edit(u:Principal,id:string,d:EditOrderDto){
@@ -197,8 +202,7 @@ export class OrderStore{
    const order=await this.order(tx,id);
    await this.engine.allowed(tx,u.id,'orders.manage',order.sucursalId);
    if(order.estado!=='ABIERTA')throw new ConflictException('Orden no editable');
-   if(d.clienteId&&!await tx.cliente.findFirst({where:{id:d.clienteId,activo:true}}))
-    throw new NotFoundException('Cliente inexistente');
+   if(d.clienteId)await this.customerSelection.assertSelectableInTx(tx,u.id,order.sucursalId,d.clienteId);
    const updated=await tx.orden.updateMany({where:{id,version:d.version,estado:'ABIERTA'},
     data:{version:{increment:1},
      ...(d.observaciones!==undefined?{observaciones:d.observaciones}:{}),
@@ -317,6 +321,11 @@ export class OrderStore{
    const accounts=await tx.cuenta.findMany({where:{ordenId:id}});
    if(accounts.some(c=>c.pagado.gt(0)))
     throw new ConflictException('Orden con pagos: resolver reembolso en Pagos/Caja');
+   const shipment=await tx.entrega.findUnique({where:{ordenId:id}});
+   if(shipment?.estado==='ENTREGADA')
+    throw new ConflictException('La entrega ya fue realizada; use el proceso de devolución');
+   if(shipment?.estado==='EN_REPARTO')
+    throw new ConflictException('Cancele la entrega en reparto antes de cancelar la orden');
    const [consumed,prepared,delivered]=await Promise.all([
     tx.consumoOrden.count({where:{ordenId:id}}),
     tx.comandaLinea.count({where:{comanda:{ordenId:id},cantidadPreparada:{gt:0}}}),
@@ -332,6 +341,14 @@ export class OrderStore{
     importeAnulado:order.total,clasificacionCancelacion:d.clasificacion??null,
     motivoCancelacion:requireNote(d.motivo),autorizadaCancelacionPreparada:protectedCancel,
     canceladaEn:now,version:{increment:1}}});
+   if(shipment?.estado==='PENDIENTE'){
+    await tx.entrega.update({where:{id:shipment.id},data:{estado:'CANCELADA'}});
+    await tx.entregaEvento.create({data:{entregaId:shipment.id,usuarioId:u.id,
+     accion:'DELIVERY_CANCELLED_WITH_ORDER',estadoAntes:'PENDIENTE',estadoDespues:'CANCELADA',
+     repartidorAntesId:shipment.repartidorId,repartidorDespuesId:shipment.repartidorId,
+     motivo:requireNote(d.motivo)}});
+    await outbox(tx,'DELIVERY_CANCELLED_WITH_ORDER','Entrega',shipment.id,order.sucursalId);
+   }
    for(const account of accounts){
     await tx.intentoPago.updateMany({where:{cuentaId:account.id,estado:'PENDIENTE'},
      data:{estado:'CANCELADO'}});

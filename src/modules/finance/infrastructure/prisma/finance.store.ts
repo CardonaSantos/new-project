@@ -295,7 +295,9 @@ export class FinanceStore{
    let sources:{id:string;monto:Prisma.Decimal;metodo:string;referencia:string|null;fecha:Date}[]=[];
    let total=0;
    if(q.sourceType==='PAGO'){
+    // Platform gross is already recognized in PAY-A; FIN-A posts only net.
     const where:Prisma.PagoWhereInput={metodo:{not:'EFECTIVO'},
+     OR:[{referencia:null},{referencia:{not:{startsWith:'PLATFORM_SETTLEMENT:'}}}],
      cuenta:{orden:{sucursalId:q.sucursalId}}};
     const [rows,count]=await Promise.all([
      tx.pago.findMany({where,skip,take,orderBy:[{cobradoEn:'desc'},{id:'desc'}]}),
@@ -354,6 +356,8 @@ export class FinanceStore{
       throw new NotFoundException('Cobro externo inexistente en sucursal');
      if(p.metodo==='EFECTIVO'||p.recibidoPorRepartidor)
       throw new ConflictException('No imputar efectivo o recaudo de repartidor a banco');
+     if(p.referencia?.startsWith('PLATFORM_SETTLEMENT:'))
+      throw new ConflictException('El bruto de plataforma ya fue registrado por su neto');
      if(p.metodo==='TARJETA'&&!p.codigoAutorizacion?.trim()||
       p.metodo==='TRANSFERENCIA'&&!p.referencia?.trim()||
       p.metodo==='OTRO'&&!p.referencia?.trim())

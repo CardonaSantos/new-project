@@ -1,0 +1,876 @@
+{
+  "info": {
+    "name": "Gastro Core — DEL-A D2 Delivery (DEV)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Ejecución solamente en PostgreSQL DEV migrado. Se crean clientes, órdenes DELIVERY y entregas de prueba, sin salida a cocina ni cobros. Asignación directa, sin autorización adicional."
+  },
+  "item": [
+    {
+      "name": "00 Create DEV customer",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/customers",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"claveOperacion\": \"D2:{{deliveryRun}}:customer\",\n  \"nombre\": \"Cliente delivery DEV {{deliveryRun}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if(!pm.collectionVariables.get('deliveryRun'))pm.collectionVariables.set('deliveryRun',Date.now().toString(36));"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);pm.collectionVariables.set('customerId',pm.response.json().id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 Create DELIVERY order without kitchen dispatch",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/orders",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"modalidad\": \"DELIVERY\",\n  \"origen\": \"CAJA\",\n  \"claveOperacion\": \"D2:{{deliveryRun}}:order-one\",\n  \"enviarCocina\": false,\n  \"clienteId\": \"{{customerId}}\",\n  \"lineas\": [\n    {\n      \"varianteId\": \"{{varianteId}}\",\n      \"cantidad\": \"1.000\"\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "for(const key of ['sucursalId','varianteId','courierId','token'])if(!pm.collectionVariables.get(key))throw new Error('Falta configurar '+key);"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);const j=pm.response.json();",
+              "pm.expect(j.modalidad).to.equal('DELIVERY');pm.collectionVariables.set('deliveryOrderId',j.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Create & assign courier in ONE request (direct)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/deliveries",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"ordenId\": \"{{deliveryOrderId}}\",\n  \"claveOperacion\": \"D2:{{deliveryRun}}:create\",\n  \"direccionTexto\": \"Zona 1, Calle 3, casa de prueba DEV\",\n  \"telefonoContacto\": \"55550001\",\n  \"repartidorId\": \"{{courierId}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);const j=pm.response.json();",
+              "pm.expect(j.estado).to.equal('PENDIENTE');",
+              "pm.expect(j.repartidorId).to.equal(pm.collectionVariables.get('courierId'));",
+              "pm.collectionVariables.set('deliveryId',j.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 Retry creation: same key => same delivery",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/deliveries",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"ordenId\": \"{{deliveryOrderId}}\",\n  \"claveOperacion\": \"D2:{{deliveryRun}}:create\",\n  \"direccionTexto\": \"Zona 1, Calle 3, casa de prueba DEV\",\n  \"telefonoContacto\": \"55550001\",\n  \"repartidorId\": \"{{courierId}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "pm.expect(pm.response.json().id).to.equal(pm.collectionVariables.get('deliveryId'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Duplicate delivery for same order => 409",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/deliveries",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"ordenId\": \"{{deliveryOrderId}}\",\n  \"claveOperacion\": \"D2:{{deliveryRun}}:duplicate\",\n  \"direccionTexto\": \"Zona 1, Calle 3, casa de prueba DEV\",\n  \"telefonoContacto\": \"55550001\",\n  \"repartidorId\": \"{{courierId}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(409);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 Get delivery",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/deliveries/{{deliveryId}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "pm.expect(pm.response.json().direccionTexto).to.contain('Zona 1');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 Event history after direct assign",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/deliveries/{{deliveryId}}/events"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "pm.expect(pm.response.json().data.some(x=>x.accion==='DELIVERY_CREATED')).to.equal(true);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 Change destination while pending",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/deliveries/{{deliveryId}}/destination",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D2:{{deliveryRun}}:destination\",\n  \"direccionTexto\": \"Zona 2, Avenida 5, referencia DEV\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "pm.expect(pm.response.json().direccionTexto).to.contain('Zona 2');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 Dispatch directly (no approval)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/deliveries/{{deliveryId}}/dispatch",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D2:{{deliveryRun}}:dispatch\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "pm.expect(pm.response.json().estado).to.equal('EN_REPARTO');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 Reject destination change after dispatch",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/deliveries/{{deliveryId}}/destination",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D2:{{deliveryRun}}:late-destination\",\n  \"direccionTexto\": \"Zona 3, Calle 7 DEV\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(409);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 Complete delivery (no cash registered in D2)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/deliveries/{{deliveryId}}/complete",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D2:{{deliveryRun}}:complete\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "const j=pm.response.json();pm.expect(j.estado).to.equal('ENTREGADA');",
+              "pm.expect(j.cobrableContraEntrega).to.equal('0.00');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "11 Idempotent complete replay",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/deliveries/{{deliveryId}}/complete",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D2:{{deliveryRun}}:complete\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);pm.expect(pm.response.json().estado).to.equal('ENTREGADA');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "12 Do not reassign after delivery",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/deliveries/{{deliveryId}}/assign",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D2:{{deliveryRun}}:reassign-late\",\n  \"repartidorId\": \"{{courierId}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(409);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "13 Do not cancel delivered shipment",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/deliveries/{{deliveryId}}/cancel",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D2:{{deliveryRun}}:cancel-late\",\n  \"motivo\": \"Cancelar entrega después de terminar\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(409);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "14 List branch deliveries",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/deliveries?sucursalId={{sucursalId}}&page=1&limit=20"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);pm.expect(pm.response.json()).to.have.property('meta');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "15 Create second DELIVERY order",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/orders",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"modalidad\": \"DELIVERY\",\n  \"origen\": \"CAJA\",\n  \"claveOperacion\": \"D2:{{deliveryRun}}:order-two\",\n  \"enviarCocina\": false,\n  \"clienteId\": \"{{customerId}}\",\n  \"lineas\": [\n    {\n      \"varianteId\": \"{{varianteId}}\",\n      \"cantidad\": \"1.000\"\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "pm.collectionVariables.set('deliveryOrderId2',pm.response.json().id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "16 Register second delivery without courier",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/deliveries",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"ordenId\": \"{{deliveryOrderId2}}\",\n  \"claveOperacion\": \"D2:{{deliveryRun}}:create-two\",\n  \"direccionTexto\": \"Zona 1, Calle 9, domicilio DEV\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "pm.expect(pm.response.json().repartidorId).to.equal(null);",
+              "pm.collectionVariables.set('deliveryId2',pm.response.json().id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "17 Assign courier immediately to second delivery",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/deliveries/{{deliveryId2}}/assign",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D2:{{deliveryRun}}:assign-two\",\n  \"repartidorId\": \"{{courierId}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "pm.expect(pm.response.json().repartidorId).to.equal(pm.collectionVariables.get('courierId'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "18 Cancel pending delivery with reason (no approval)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/deliveries/{{deliveryId2}}/cancel",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D2:{{deliveryRun}}:cancel-two\",\n  \"motivo\": \"Pedido cancelado antes de despachar\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "pm.expect(pm.response.json().estado).to.equal('CANCELADA');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "19 Confirm delivery cancellation audit history",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/deliveries/{{deliveryId2}}/events"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const actions=pm.response.json().data.map(x=>x.accion);",
+              "pm.expect(actions).to.include('DELIVERY_ASSIGNED');",
+              "pm.expect(actions).to.include('DELIVERY_CANCELLED');"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "sucursalId",
+      "value": ""
+    },
+    {
+      "key": "varianteId",
+      "value": ""
+    },
+    {
+      "key": "courierId",
+      "value": ""
+    },
+    {
+      "key": "deliveryRun",
+      "value": ""
+    },
+    {
+      "key": "customerId",
+      "value": ""
+    },
+    {
+      "key": "deliveryOrderId",
+      "value": ""
+    },
+    {
+      "key": "deliveryId",
+      "value": ""
+    },
+    {
+      "key": "deliveryOrderId2",
+      "value": ""
+    },
+    {
+      "key": "deliveryId2",
+      "value": ""
+    }
+  ]
+}

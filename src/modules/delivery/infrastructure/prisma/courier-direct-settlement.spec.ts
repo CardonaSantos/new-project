@@ -61,6 +61,8 @@ describe('DEL-A one-step courier handover',()=>{
   })});
   expect(cashStore.shiftTx).toHaveBeenCalledOnce();
   expect(ctx.audit).toHaveBeenCalledOnce();
+  expect(ctx.atomic).toHaveBeenCalledOnce();
+  expect(response.lineas).toEqual([{pagoId:'p1',entregaId:'delivery-1',monto:'22.00'}]);
  });
  it('replay retains the original cash movement even if the shift closes',async()=>{
   const {store,tx,cashStore,command}=rig();

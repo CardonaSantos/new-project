@@ -186,4 +186,88 @@ export class ReportingStore extends ReportingPort{
     note:'Cada fila corresponde a una Venta/cuenta; los ticketsUnicos del resumen deduplican Orden.'};
   });
  }
+ async paymentsByMethod(u:Principal,q:ReportingQuery){
+  return this.read(async tx=>{
+   const b=await this.access(tx,u,q.sucursalId);
+   const p=this.period(q,b),span={gte:p.from,lt:p.to};
+   const [paid,refunded]=await Promise.all([
+    tx.pago.groupBy({by:['metodo'],
+     where:{cobradoEn:span,cuenta:{orden:{sucursalId:b.id}}},
+     _sum:{monto:true},_count:{id:true}}),
+    tx.$queryRaw<Array<{metodo:string;total:string;conteo:number}>>`
+      SELECT p."metodo"::text AS metodo,
+       COALESCE(SUM(r."monto"),0)::text AS total,COUNT(*)::int AS conteo
+      FROM "ReembolsoPago" r
+       JOIN "Pago" p ON p.id=r."pagoId"
+       JOIN "Cuenta" c ON c.id=p."cuentaId"
+       JOIN "Orden" o ON o.id=c."ordenId"
+      WHERE o."sucursalId"=${b.id} AND r."creadoEn">=${p.from} AND r."creadoEn"<${p.to}
+      GROUP BY p."metodo"`
+   ]);
+   const paidMap=new Map(paid.map(x=>[x.metodo,x]));
+   const refundMap=new Map(refunded.map(x=>[x.metodo,x]));
+   const methods=['EFECTIVO','TARJETA','TRANSFERENCIA','OTRO'] as const;
+   const data=methods.map(m=>{
+    const gross=dec(paidMap.get(m)?._sum.monto);
+    const returned=dec(refundMap.get(m)?.total);
+    return {metodo:m,cobrosBrutos:gross.toFixed(2),reembolsos:returned.toFixed(2),
+     neto:gross.minus(returned).toFixed(2),cantidadCobros:paidMap.get(m)?._count.id??0,
+     cantidadReembolsos:refundMap.get(m)?.conteo??0};
+   });
+   return {sucursal:b,periodo:{desde:p.desde,hasta:p.hasta},
+    generatedAt:new Date().toISOString(),currency:b.moneda,data,
+    definitions:{cobrosBrutos:'Pago.monto por fecha de cobro',
+     reembolsos:'ReembolsoPago.monto por fecha de reembolso, atribuido al método de pago original',
+     neto:'Cobros brutos menos reembolsos del período; NO es total de ventas'}};
+  });
+ }
+ async expensesByCategory(u:Principal,q:ReportingQuery){
+  return this.read(async tx=>{
+   const b=await this.access(tx,u,q.sucursalId);
+   const p=this.period(q,b);
+   const rows=await tx.gastoOperativo.groupBy({by:['categoria','tipo'],
+    where:{sucursalId:b.id,registradoEn:{gte:p.from,lt:p.to}},
+    _sum:{monto:true},_count:{id:true},orderBy:[{categoria:'asc'},{tipo:'asc'}]});
+   const data=rows.map(x=>({categoria:x.categoria??'SIN_CATEGORIA',tipo:x.tipo,
+    monto:money(x._sum.monto),registros:x._count.id}));
+   return {sucursal:b,periodo:{desde:p.desde,hasta:p.hasta},
+    currency:b.moneda,generatedAt:new Date().toISOString(),data,
+    totalRegistrado:rows.reduce((n,x)=>n.plus(x._sum.monto??0),new Prisma.Decimal(0)).toFixed(2),
+    definition:'GastoOperativo.monto en registradoEn; no equivale necesariamente a flujo de caja pagado'};
+  });
+ }
+ async cashShifts(u:Principal,q:TicketQuery){
+  ensurePage(q.page,q.limit);
+  return this.read(async tx=>{
+   const b=await this.access(tx,u,q.sucursalId);
+   const p=this.period(q,b);
+   const where:Prisma.TurnoCajaWhereInput={caja:{sucursalId:b.id},
+    fechaOperativa:{gte:new Date(p.desde+'T00:00:00Z'),lte:new Date(p.hasta+'T00:00:00Z')}};
+   const [rows,total]=await Promise.all([
+    tx.turnoCaja.findMany({where,skip:(q.page-1)*q.limit,take:q.limit,
+     orderBy:[{fechaOperativa:'desc'},{abiertaEn:'desc'},{id:'desc'}],
+     include:{caja:{select:{id:true,codigo:true,nombre:true}},
+      cajero:{select:{id:true,nombre:true}}}}),
+    tx.turnoCaja.count({where})
+   ]);
+   const groups=rows.length?await tx.movimientoCaja.groupBy({by:['turnoId','tipo'],
+    where:{turnoId:{in:rows.map(x=>x.id)}},_sum:{monto:true},_count:{id:true}}):[];
+   const breakdown=(id:string,type:'INGRESO'|'EGRESO')=>
+    groups.find(x=>x.turnoId===id&&x.tipo===type);
+   const data=rows.map(s=>({id:s.id,fechaOperativa:s.fechaOperativa.toISOString().slice(0,10),
+    caja:s.caja,cajero:s.cajero,abiertaEn:s.abiertaEn,cerradaEn:s.cerradaEn,
+    estado:s.cerradaEn?'CERRADO':'ABIERTO',fondoInicial:money(s.fondoInicial),
+    efectivoEsperado:s.efectivoEsperado===null?null:money(s.efectivoEsperado),
+    efectivoContado:s.efectivoContado===null?null:money(s.efectivoContado),
+    diferencia:s.diferencia===null?null:money(s.diferencia),
+    movimientos:{ingresos:money(breakdown(s.id,'INGRESO')?._sum.monto),
+     egresos:money(breakdown(s.id,'EGRESO')?._sum.monto),
+     cantidadIngresos:breakdown(s.id,'INGRESO')?._count.id??0,
+     cantidadEgresos:breakdown(s.id,'EGRESO')?._count.id??0}}));
+   return {sucursal:b,periodo:{desde:p.desde,hasta:p.hasta},data,
+    meta:{page:q.page,limit:q.limit,total,totalPages:Math.ceil(total/q.limit)},
+    note:'Los movimientos están dentro de caja; no son ingresos adicionales a las ventas o pagos.'};
+  });
+ }
+
 }

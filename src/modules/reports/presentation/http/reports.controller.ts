@@ -14,6 +14,18 @@ export class ReportsController{
  overview(@CurrentUser() u:Principal,@Query() q:ReportPeriodDto){
   return this.reports.overview(u,q);
  }
+ @Get('analytics/payments-by-method') @Header('Cache-Control','no-store')
+ paymentsByMethod(@CurrentUser() u:Principal,@Query() q:ReportPeriodDto){
+  return this.reports.paymentsByMethod(u,q);
+ }
+ @Get('analytics/expenses-by-category') @Header('Cache-Control','no-store')
+ expensesByCategory(@CurrentUser() u:Principal,@Query() q:ReportPeriodDto){
+  return this.reports.expensesByCategory(u,q);
+ }
+ @Get('analytics/cash-shifts') @Header('Cache-Control','no-store')
+ cashShifts(@CurrentUser() u:Principal,@Query() q:TicketsReportDto){
+  return this.reports.cashShifts(u,q);
+ }
  @Get('analytics/tickets') @Header('Cache-Control','no-store')
  tickets(@CurrentUser() u:Principal,@Query() q:TicketsReportDto){
   return this.reports.tickets(u,q);

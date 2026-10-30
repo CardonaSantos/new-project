@@ -3,5 +3,8 @@ import type {OperationalQuery,ReportingQuery,TicketQuery} from '../contracts/rep
 export abstract class ReportingPort{
  abstract overview(u:Principal,q:ReportingQuery):Promise<unknown>;
  abstract tickets(u:Principal,q:TicketQuery):Promise<unknown>;
+ abstract paymentsByMethod(u:Principal,q:ReportingQuery):Promise<unknown>;
+ abstract expensesByCategory(u:Principal,q:ReportingQuery):Promise<unknown>;
+ abstract cashShifts(u:Principal,q:TicketQuery):Promise<unknown>;
  abstract operational(u:Principal,q:OperationalQuery):Promise<unknown>;
 }

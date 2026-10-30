@@ -30,3 +30,8 @@ export class ConsolidatedReportDto{
  @IsOptional() @Matches(date) desde?:string;
  @IsOptional() @Matches(date) hasta?:string;
 }
+
+/** REP-2 exports full snapshot, not the requested page; hard cap 1000. */
+export class ReportExportDto extends ReportPeriodDto{
+ @IsEnum(['CSV','XLSX','PDF']) format!:'CSV'|'XLSX'|'PDF';
+}

@@ -67,7 +67,14 @@
               "pm.expect(r.porCategoria).to.be.an('array');",
               "const cents = v => {const m=/^(-?)(\\d+)\\.(\\d{2})$/.exec(String(v)); pm.expect(m).not.to.equal(null); return (m[1]==='-'?-1:1)*(Number(m[2])*100+Number(m[3]));};",
               "pm.expect(r.porProducto.reduce((acc,x)=>acc+cents(x.importe),0)).to.equal(cents(r.totales.importeLineas));",
-              "pm.expect(r.porCategoria.reduce((acc,x)=>acc+cents(x.importe),0)).to.equal(cents(r.totales.importeLineas));"
+              "pm.expect(r.porCategoria.reduce((acc,x)=>acc+cents(x.importe),0)).to.equal(cents(r.totales.importeLineas));",
+              "pm.expect(r.porVariante).to.be.an('array');",
+              "pm.expect(r.porModalidad).to.be.an('array');",
+              "pm.expect(r.porVariante.reduce((acc,x)=>acc+cents(x.importe),0)).to.equal(cents(r.totales.importeLineas));",
+              "pm.expect(r.porModalidad.reduce((acc,x)=>acc+cents(x.importe),0)).to.equal(cents(r.totales.importeLineas));",
+              "pm.expect(r.porVariante.reduce((acc,x)=>acc+cents(x.descuentos),0)).to.equal(cents(r.totales.descuentos));",
+              "pm.expect(r.porModalidad.reduce((acc,x)=>acc+cents(x.descuentos),0)).to.equal(cents(r.totales.descuentos));",
+              "pm.expect(r.porModalidad.every(x=>['MESA','MOSTRADOR','PARA_LLEVAR','DELIVERY'].includes(x.modalidad))).to.equal(true);"
             ]
           }
         }

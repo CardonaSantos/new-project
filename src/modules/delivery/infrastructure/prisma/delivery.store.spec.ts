@@ -28,7 +28,8 @@ function rig(){
    create:vi.fn().mockResolvedValue({})}
  };
  const db={$transaction:vi.fn(async run=>run(tx))} as unknown as PrismaService;
- return {store:new DeliveryStore(db),tx,row,order};
+ const payments={settle:vi.fn().mockResolvedValue({closed:true})};
+ return {store:new DeliveryStore(db,payments as never),tx,row,order,payments};
 }
 describe('DEL-A D2 transactional delivery',()=>{
  it('creates immediately assigned delivery without approval, cash or accounting writes',async()=>{

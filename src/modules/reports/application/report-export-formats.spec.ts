@@ -58,6 +58,14 @@ describe('REP-2 export renderers',()=>{
   const at=Number(text.match(/startxref\n(\d+)\n%%EOF/)?.[1]);
   expect(text.slice(at,at+4)).toBe('xref');
  });
+ it('preserves long PDF field values across wrapped lines',()=>{
+  const long='ABCDEFGHIJKLMNOPQRSTUVWXYZ'.repeat(4);
+  const pdf=renderPdf({...sample,data:[{descripcion:long}],meta:{total:1}}).toString('latin1');
+  expect(pdf).toContain('ABCDEFGHIJKLMNOPQRSTU');
+  expect(pdf).toContain('VWXYZABCDEFGHIJKLMNOP');
+  expect(pdf).toContain('PQRSTUVWXYZ');
+  expect(pdf).toContain('/Encoding /WinAnsiEncoding');
+ });
  it('exports empty datasets without inventing monetary totals',()=>{
   const obj={...sample,data:[],meta:{total:0}};
   expect(renderCsv(obj).toString('utf8')).toContain('sinRegistros');

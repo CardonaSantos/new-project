@@ -1,0 +1,451 @@
+{
+  "info": {
+    "name": "Gastro Core DEL-A UX — Liquidacion directa DEV",
+    "description": "Verificacion de fluidez de liquidacion en una sola operacion. Solo PostgreSQL DEV, genera una orden DELIVERY y efectivo sintetico Q22.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 Create synthetic DELIVERY order Q22",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/orders",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"modalidad\": \"DELIVERY\",\n  \"origen\": \"CAJA\",\n  \"claveOperacion\": \"D4UX:{{runId}}:order\",\n  \"enviarCocina\": false,\n  \"lineas\": [\n    {\n      \"varianteId\": \"{{varianteId}}\",\n      \"cantidad\": \"1.000\"\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if(!pm.collectionVariables.get('runId'))pm.collectionVariables.set('runId',Date.now().toString());",
+              "for(const name of ['token','sucursalId','courierId','varianteId','turnoCajaId']){",
+              " if(!pm.collectionVariables.get(name))throw Error('Configura '+name+' de DEV antes de ejecutar');",
+              "}"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Order created',()=>pm.response.to.have.status(201));",
+              "const j=pm.response.json();",
+              "pm.expect(String(j.total)).to.equal('22');",
+              "pm.collectionVariables.set('orderId',j.id);pm.collectionVariables.set('cuentaId',j.cuentasComoOrden[0].id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 Create delivery and assign courier in ONE action",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/deliveries",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"ordenId\": \"{{orderId}}\",\n  \"claveOperacion\": \"D4UX:{{runId}}:delivery\",\n  \"repartidorId\": \"{{courierId}}\",\n  \"direccionTexto\": \"Domicilio sintético DEV para prueba UX\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Courier assigned directly',()=>pm.response.to.have.status(201));",
+              "const j=pm.response.json();pm.expect(j.repartidorId).to.equal(pm.collectionVariables.get('courierId'));",
+              "pm.collectionVariables.set('entregaId',j.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Dispatch courier",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/deliveries/{{entregaId}}/dispatch",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D4UX:{{runId}}:dispatch\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Dispatched',()=>pm.response.to.have.status(201));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 Record cash received by courier WITHOUT opening cash drawer",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/deliveries/{{entregaId}}/collect-cash",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D4UX:{{runId}}:cash\",\n  \"cuentaId\": \"{{cuentaId}}\",\n  \"monto\": \"22.00\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Paid once',()=>pm.response.to.have.status(201));",
+              "pm.collectionVariables.set('pagoId',pm.response.json().pagoId);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Complete physical delivery",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/deliveries/{{entregaId}}/complete",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D4UX:{{runId}}:complete\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Delivery completed',()=>pm.response.to.have.status(201));",
+              "pm.expect(pm.response.json().estado).to.equal('ENTREGADA');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 ONE-STEP cash handover / no separate OPEN settlement",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/deliveries/settlements/couriers/close-direct",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D4UX:{{runId}}:direct\",\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"repartidorId\": \"{{courierId}}\",\n  \"pagoIds\": [\n    \"{{pagoId}}\"\n  ],\n  \"turnoCajaId\": \"{{turnoCajaId}}\",\n  \"totalEntregado\": \"22.00\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Direct cash close',()=>pm.response.to.have.status(201));",
+              "const j=pm.response.json();pm.expect(j.estado).to.equal('CERRADA');",
+              "pm.expect(j.totalEntregado).to.equal('22.00');pm.expect(j.movimientoCajaId).to.be.a('string');",
+              "pm.collectionVariables.set('liquidacionId',j.id);",
+              "pm.collectionVariables.set('movimientoId',j.movimientoCajaId);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 Replay direct handover returns SAME single cash movement",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/deliveries/settlements/couriers/close-direct",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D4UX:{{runId}}:direct\",\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"repartidorId\": \"{{courierId}}\",\n  \"pagoIds\": [\n    \"{{pagoId}}\"\n  ],\n  \"turnoCajaId\": \"{{turnoCajaId}}\",\n  \"totalEntregado\": \"22.00\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Idempotent replay',()=>pm.response.to.have.status(201));",
+              "pm.expect(pm.response.json().id).to.equal(pm.collectionVariables.get('liquidacionId'));",
+              "pm.expect(pm.response.json().movimientoCajaId).to.equal(pm.collectionVariables.get('movimientoId'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 New key cannot deposit same cash again",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/deliveries/settlements/couriers/close-direct",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D4UX:{{runId}}:duplicate\",\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"repartidorId\": \"{{courierId}}\",\n  \"pagoIds\": [\n    \"{{pagoId}}\"\n  ],\n  \"turnoCajaId\": \"{{turnoCajaId}}\",\n  \"totalEntregado\": \"22.00\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('No second deposit permitted',()=>pm.response.to.have.status(409));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 Verify closed settlement and correct original cash ID",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/deliveries/settlements/couriers/{{liquidacionId}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Settlement detail',()=>pm.response.to.have.status(200));",
+              "const j=pm.response.json();pm.expect(j.estado).to.equal('CERRADA');",
+              "pm.expect(j.movimientoCajaId).to.equal(pm.collectionVariables.get('movimientoId'));",
+              "pm.expect(j.lineas).to.have.lengthOf(1);"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "sucursalId",
+      "value": ""
+    },
+    {
+      "key": "courierId",
+      "value": ""
+    },
+    {
+      "key": "varianteId",
+      "value": ""
+    },
+    {
+      "key": "turnoCajaId",
+      "value": ""
+    },
+    {
+      "key": "runId",
+      "value": ""
+    },
+    {
+      "key": "orderId",
+      "value": ""
+    },
+    {
+      "key": "cuentaId",
+      "value": ""
+    },
+    {
+      "key": "entregaId",
+      "value": ""
+    },
+    {
+      "key": "pagoId",
+      "value": ""
+    },
+    {
+      "key": "liquidacionId",
+      "value": ""
+    },
+    {
+      "key": "movimientoId",
+      "value": ""
+    }
+  ]
+}

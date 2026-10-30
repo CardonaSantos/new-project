@@ -3,8 +3,8 @@ import {Prisma} from '../../../../generated/prisma/client.js';
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {CashStore} from '../../../payments/infrastructure/prisma/cash.store.js';
 import {DeliveryPaymentsPort} from '../../../payments/application/ports/delivery-payments.port.js';
-import {SettlementCommon,fmt,dec,zero} from './settlement-common.js';
-import type {CourierCashInput,CourierPending,CourierSettlementCreate,CourierSettlementClose,CourierDiscrepancy}
+import {SettlementCommon,fmt,dec,zero,type SettlementTx} from './settlement-common.js';
+import type {CourierCashInput,CourierPending,CourierSettlementCreate,CourierSettlementClose,CourierSettlementDirect,CourierDiscrepancy}
  from '../../application/ports/delivery-settlements.port.js';
 import {ensureExactCash} from '../../domain/settlement.policy.js';
 @Injectable()
@@ -56,30 +56,34 @@ export class CourierSettlementsStore{
     meta:{page:q.page,limit:q.limit,total,totalPages:Math.ceil(total/q.limit)}};
   });
  }
+ private async eligible(tx:SettlementTx,d:CourierSettlementCreate){
+  if(new Set(d.pagoIds).size!==d.pagoIds.length)
+   throw new BadRequestException('Pagos repetidos');
+  const payments=await tx.pago.findMany({where:{id:{in:d.pagoIds}},include:{
+   liquidacionRepartidorLineasComoPago:true,reembolsoPagosComoPago:true,
+   cuenta:{include:{orden:{include:{entregasComoOrden:true}}}}
+  }});
+  if(payments.length!==d.pagoIds.length)throw new NotFoundException('Pago inexistente');
+  const lines=payments.map(p=>{
+   const shipment=p.cuenta.orden.entregasComoOrden;
+   if(!shipment||shipment.estado!=='ENTREGADA'||shipment.canalExternoId||
+     shipment.repartidorId!==d.repartidorId||p.cobradoPorId!==d.repartidorId||
+     p.cuenta.orden.sucursalId!==d.sucursalId||p.metodo!=='EFECTIVO'||
+     !p.recibidoPorRepartidor||p.turnoId!==null||p.liquidacionRepartidorLineasComoPago||
+     p.reembolsoPagosComoPago.length)
+    throw new ConflictException('Pago no elegible o liquidado anteriormente');
+   return {pagoId:p.id,entregaId:shipment.id,monto:p.monto};
+  });
+  const sum=lines.reduce((v,l)=>v.plus(l.monto),zero());
+  if(sum.lte(0))throw new ConflictException('Importe esperado debe ser positivo');
+  return {lines,sum};
+ }
  async create(u:Principal,d:CourierSettlementCreate){
   return this.ctx.atomic(async tx=>{
    await this.ctx.branch(tx,d.sucursalId);
    await this.ctx.require(tx,u,d.sucursalId,'delivery.settlements.manage');
    return this.ctx.once(tx,u,'D3_COURIER_SETTLEMENT',d.claveOperacion,d,async()=>{
-    if(new Set(d.pagoIds).size!==d.pagoIds.length)
-     throw new BadRequestException('Pagos repetidos');
-    const payments=await tx.pago.findMany({where:{id:{in:d.pagoIds}},include:{
-     liquidacionRepartidorLineasComoPago:true,reembolsoPagosComoPago:true,
-     cuenta:{include:{orden:{include:{entregasComoOrden:true}}}}
-    }});
-    if(payments.length!==d.pagoIds.length)throw new NotFoundException('Pago inexistente');
-    const lines=payments.map(p=>{
-     const shipment=p.cuenta.orden.entregasComoOrden;
-     if(!shipment||shipment.estado!=='ENTREGADA'||shipment.canalExternoId||
-       shipment.repartidorId!==d.repartidorId||p.cobradoPorId!==d.repartidorId||
-       p.cuenta.orden.sucursalId!==d.sucursalId||p.metodo!=='EFECTIVO'||
-       !p.recibidoPorRepartidor||p.turnoId!==null||p.liquidacionRepartidorLineasComoPago||
-       p.reembolsoPagosComoPago.length)
-      throw new ConflictException('Pago no elegible o liquidado anteriormente');
-     return {pagoId:p.id,entregaId:shipment.id,monto:p.monto};
-    });
-    const sum=lines.reduce((v,l)=>v.plus(l.monto),zero());
-    if(sum.lte(0))throw new ConflictException('Importe esperado debe ser positivo');
+    const {lines,sum}=await this.eligible(tx,d);
     const row=await tx.liquidacionRepartidor.create({data:{
      sucursalId:d.sucursalId,repartidorId:d.repartidorId,
      estado:'ABIERTA',totalEsperado:sum,totalEntregado:zero(),
@@ -90,6 +94,41 @@ export class CourierSettlementsStore{
     return {id:row.id,estado:'ABIERTA',totalEsperado:fmt(sum)};
    });
   });
+ }
+ /** One operator confirmation, one SERIALIZABLE transaction, one cash movement.
+  * Use create/close separately only when documenting a discrepancy is necessary.
+  */
+ async closeDirect(u:Principal,d:CourierSettlementDirect){
+  const result=await this.ctx.atomic(async tx=>{
+   await this.ctx.branch(tx,d.sucursalId);
+   await this.ctx.require(tx,u,d.sucursalId,'delivery.settlements.manage');
+   await this.ctx.require(tx,u,d.sucursalId,'cash.manage');
+   return this.ctx.once(tx,u,'D3_COURIER_DIRECT_CLOSE',d.claveOperacion,d,async()=>{
+    const shift=await this.cashStore.shiftTx(tx,u,d.turnoCajaId,'cash.manage',false);
+    if(shift.caja.sucursalId!==d.sucursalId)
+     throw new ConflictException('Turno de otra sucursal');
+    const {lines,sum}=await this.eligible(tx,d);
+    const actual=dec(d.totalEntregado);
+    ensureExactCash(fmt(sum),fmt(actual));
+    const row=await tx.liquidacionRepartidor.create({data:{
+     sucursalId:d.sucursalId,repartidorId:d.repartidorId,
+     estado:'CERRADA',turnoCajaId:d.turnoCajaId,totalEsperado:sum,
+     totalEntregado:actual,cerradaEn:new Date(),
+     liquidacionRepartidorLineasComoLiquidacion:{create:lines}
+    }});
+    const movement=await tx.movimientoCaja.create({data:{
+     turnoId:d.turnoCajaId,tipo:'INGRESO',monto:actual,
+     motivo:'Efectivo entregado por repartidor',liquidacionRepartidorId:row.id,usuarioId:u.id
+    }});
+    await this.ctx.audit(tx,u,d.sucursalId,'COURIER_SETTLEMENT_DIRECT_CLOSED',
+     'LiquidacionRepartidor',row.id,{repartidorId:d.repartidorId,
+      turnoCajaId:d.turnoCajaId,totalEntregado:fmt(actual),
+      pagos:lines.length,movimientoCajaId:movement.id});
+    return {id:row.id,estado:'CERRADA',totalEsperado:fmt(sum),
+     totalEntregado:fmt(actual),movimientoCajaId:movement.id};
+   });
+  });
+  return {...result,detalle:await this.detail(u,result.id as string)};
  }
  async discrepancy(u:Principal,id:string,d:CourierDiscrepancy){
   return this.ctx.atomic(async tx=>{

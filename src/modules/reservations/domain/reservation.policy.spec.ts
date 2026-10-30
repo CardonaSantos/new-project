@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {validateWindow,validateCapacity,requireEditable,checkInWindow,noShowWindow} from './reservation.policy.js';
+import {validateWindow,validateCapacity,requireEditable,checkInWindow,noShowWindow,servicePhase} from './reservation.policy.js';
 describe('RSV-A booking policy',()=>{
  it('accepts a future interval and rejects reversed/short/long intervals',()=>{
   const now=new Date('2026-10-30T12:00:00Z');
@@ -21,6 +21,11 @@ describe('RSV-A booking policy',()=>{
   expect(()=>checkInWindow(start,end,new Date('2026-11-01T17:29:59Z'))).toThrow();
   expect(()=>checkInWindow(start,end,new Date('2026-11-01T17:30:00Z'))).not.toThrow();
   expect(()=>checkInWindow(start,end,new Date('2026-11-01T20:00:00Z'))).toThrow();
+ });
+ it('returns usable UI status for a checked-in guest without confusing dinner completion',()=>{
+  expect(servicePhase('COMPLETADA',true)).toBe('EN_MESA');
+  expect(servicePhase('COMPLETADA',false)).toBe('ATENCION_FINALIZADA');
+  expect(servicePhase('CONFIRMADA',false)).toBe('CONFIRMADA');
  });
  it('allows no-show only 15 minutes after scheduled arrival',()=>{
   const start=new Date('2026-11-01T18:00:00Z');

@@ -47,6 +47,8 @@ describe('RSV-A HTTP and enriched UI contracts',()=>{
   inicio:'2026-12-01T18:00:00Z',fin:'2026-12-01T20:00:00Z',claveOperacion:'RSV:HTTP:001'};
  it('creates confirmed reservation directly, without an extra approval',async()=>{
   await request(app.getHttpServer()).post('/api/reservations').send(valid).expect(201);
+  await request(app.getHttpServer()).post('/api/reservations')
+   .send({...valid,inicio:'2026-12-01T18:00:00',fin:'2026-12-01T20:00:00'}).expect(400);
   expect(svc.create).toHaveBeenCalledWith(actor,expect.objectContaining(valid));
   await request(app.getHttpServer()).post('/api/reservations')
    .send({...valid,personas:0}).expect(400);

@@ -41,3 +41,28 @@ npm run start:dev
 2. Usuario ejecuta Postman D4 00–26 en DEV y comparte estados/respuestas (sin secretos).
 3. Si es verde, documentar aceptación de DEL-A y actualizar issue/PR, entonces **solicitar autorización explícita para merge**; no ejecutar merge de forma autónoma.
 4. Siguiente módulo tras DEL-A: **RSV-A Reservaciones**, luego QR-A, REP-A.
+
+
+## Aceptación funcional D4 en DEV — 2026-10-30
+
+**Evidencia del usuario:** 27 respuestas consecutivas de la colección D4 (00–26), procedentes de su PostgreSQL DEV. Los JSON mostraron los resultados esperados; no se adjuntó informe global de Postman ni prueba paralela de concurrencia real.
+
+- **00–01:** entrega D3 anterior `cmvv3ns44000qfov4em3exkfg` ENTREGADA / Orden ABIERTA, `closure-readiness.blockers=['LINES_NOT_SENT']`; intentar cerrar devuelve 409 esperado.
+- **02:** ruta activa de cocina para variante `cmv9wfri60005kov4x7zq4yfz`.
+- **03–08:** Orden `cmvv5us2l00014gv40mpyw217`, Entrega `cmvv5v8i100094gv4afr2mdnf`; primero PENDIENTE con blockers entrega/sin cocina/sin pago; después envío a cocina, comanda `cmvv5vq2u000e4gv44elw0rao` PENDIENTE y luego LISTA, `cantidadEnviada=1` y `cantidadPreparada=1`.
+- **09–13:** entrega EN_REPARTO, PAY-A reconoce Pago `cmvv5wwka000z4gv46et2hkl3` de Q22 (`turnoId=null`, recibidoPorRepartidor); cierre prematuro de ORD-A rechazado 409, entrega ENTREGADA, `canFinalize=true` sin blockers.
+- **14–17:** acción directa de cierre de Orden usando PAY-A; replay devuelve `alreadyClosed=true` sin segundo cierre. Orden y Cuenta `cmvv5us2w00024gv4grrm99wh` CERRADAS; `pagado=22.00`, `saldo=0.00`; Venta `cmvv5y7xe00174gv4k9v72nve` de Q22 con una línea.
+- **18–20:** LiquidacionRepartidor `cmvv5zawd001e4gv47fd8x94w` ABIERTA Q22 -> CERRADA Q22 sobre turno `cmvv3hupg0009fov4ji0uaci8`; MovimientoCaja `cmvv5zkzs001j4gv4d8ew3bv9` único y mismo ID en replay.
+- **21–26:** cancelación de Orden CERRADA rechazada 409; segunda Orden `cmvv60jaq001n4gv4trspnze2` y Entrega `cmvv60tx9001v4gv4rs646d9d` PENDIENTE se cancelan en conjunto; Cuenta CERRADA y total 0, no recibió efectivo; evento `DELIVERY_CANCELLED_WITH_ORDER` con PENDIENTE -> CANCELADA y motivo auditado.
+
+**Resultado:** D4 funcional aceptado sobre una sucursal DEV con administrador; 27/27 respuestas coherentes, sin fallos de negocio inesperados. La CI anterior del código y documentación fue SUCCESS [41082226523](https://github.com/CardonaSantos/new-project/actions/runs/41082226523) con 207 unitarias y 76 HTTP, más smoke PostgreSQL. No se ha modificado ni fusionado `main`.
+
+### Observación y límites conservados
+
+- La línea de comanda figura `listaEn` y `cantidadPreparada=1`, pero `entregadaEn=null`; la entrega física global sí figura ENTREGADA y PAY-A cierra correctamente. El endpoint de cocina para entrega de línea es una acción separada; **no se probó su registro en D4**. Mantener como mejora de trazabilidad operacional, no afirmar entrega de cada línea comprobada por cocina.
+- No se observaron nuevas respuestas de retest manual para el fix D2 de teléfono/referencia omitidos; el fix tiene pruebas automatizadas CI.
+- No se probó identidad con solo `delivery.courier`, otra sucursal, ni concurrencia real simultánea sobre DEV. RBAC/aislamiento y unique constraints tuvieron cobertura CI pero no equivalen a pruebas multiusuario reales.
+- Reembolsos excepcionales de plataforma con reversa bancaria externa se mantienen bloqueados, **no disponibles para producción** hasta documentación de proceso externo de conciliación.
+- D4 no crea ni necesita nuevas migraciones o seed. El merge del PR #14 requiere **consentimiento expreso** posterior a esta revisión.
+
+**Estado de entrega:** D1–D4 desarrolladas; D1–D4 probadas funcionalmente en DEV en los escenarios definidos, PR #14 en DRAFT y pendiente decisión de merge. Después: RSV-A Reservaciones.

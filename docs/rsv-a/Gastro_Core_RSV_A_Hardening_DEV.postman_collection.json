@@ -1,0 +1,699 @@
+{
+  "info": {
+    "name": "Gastro Core RSV-A — QA Complementaria R1-R4 DEV",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "17 requests; fresh availability before/after, PENDIENTE->CONFIRMADA, cancel + replay, multi-table and cleanup. No SMS/email. DEV only."
+  },
+  "item": [
+    {
+      "name": "00 NEW future timeslot — must be free BEFORE booking",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reservations/availability?sucursalId={{sucursalId}}&inicio={{suiteStart}}&fin={{suiteEnd}}&personas=2"
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "for(const k of ['token','sucursalId'])if(!pm.collectionVariables.get(k))throw Error('Configura variable: '+k);",
+              "if(!pm.collectionVariables.get('runId'))pm.collectionVariables.set('runId',Date.now().toString());",
+              "if(!pm.collectionVariables.get('suiteStart')){",
+              " const start=new Date(Date.now()+150*60000);",
+              " pm.collectionVariables.set('suiteStart',start.toISOString());",
+              " pm.collectionVariables.set('suiteEnd',new Date(start.getTime()+90*60000).toISOString());",
+              "}"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const j=pm.response.json();",
+              "const found=j.mesas.find(x=>x.disponible&&x.capacidad>=2);",
+              "if(!found)throw Error('No free table for this NEW slot. Reset runId/suiteStart or configure a table.');",
+              "pm.collectionVariables.set('tableId',found.id);",
+              "pm.collectionVariables.set('roomId',found.sala.id);",
+              "pm.collectionVariables.set('baseCapacity',String(found.capacidad));",
+              "pm.collectionVariables.set('partyMulti',String(found.capacidad+1));",
+              "pm.test('Fresh table available',()=>pm.expect(found.motivo).to.equal(null));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 Create PENDIENTE; no extra approval required for normal CONFIRMADA",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reservations",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"nombreContacto\": \"RSV DEV pendiente\",\n  \"personas\": \"2\",\n  \"inicio\": \"{{suiteStart}}\",\n  \"fin\": \"{{suiteEnd}}\",\n  \"estadoInicial\": \"PENDIENTE\",\n  \"mesaIds\": [\n    \"{{tableId}}\"\n  ],\n  \"claveOperacion\": \"RSV-HARD:{{runId}}:pending\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);const j=pm.response.json();",
+              "pm.expect(j.estado).to.equal('PENDIENTE');",
+              "pm.collectionVariables.set('pendingId',j.id);",
+              "pm.expect(j.mesas[0].sala.nombre).to.be.a('string');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Availability now RESERVADA for the SAME time slot",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reservations/availability?sucursalId={{sucursalId}}&inicio={{suiteStart}}&fin={{suiteEnd}}&personas=2"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);const j=pm.response.json();",
+              "const row=j.mesas.find(t=>t.id===pm.collectionVariables.get('tableId'));",
+              "pm.expect(row.disponible).to.equal(false);",
+              "pm.expect(row.motivo).to.equal('RESERVADA');",
+              "pm.expect(row.reservaConflictoId).to.equal(pm.collectionVariables.get('pendingId'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 Confirm PENDIENTE directly",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reservations/{{pendingId}}/confirm",
+        "body": {
+          "mode": "raw",
+          "raw": "{}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);const j=pm.response.json();",
+              "pm.expect(j.estado).to.equal('CONFIRMADA');",
+              "pm.expect(j.eventos.filter(e=>e.accion==='RESERVATION_CONFIRMED')).to.have.length(1);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Confirmation replay — no duplicate audit event",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reservations/{{pendingId}}/confirm",
+        "body": {
+          "mode": "raw",
+          "raw": "{}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "pm.expect(pm.response.json().eventos.filter(e=>e.accion==='RESERVATION_CONFIRMED')).to.have.length(1);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 Cancel requires valid reason (400 expected)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reservations/{{pendingId}}/cancel",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"motivo\": \"No\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(400);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 Cancel CONFIRMADA; detailed reason and audit",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reservations/{{pendingId}}/cancel",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"motivo\": \"Cliente no llegará al restaurante\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);const j=pm.response.json();",
+              "pm.expect(j.estado).to.equal('CANCELADA');",
+              "const e=j.eventos.filter(e=>e.accion==='RESERVATION_CANCELLED');",
+              "pm.expect(e).to.have.length(1);",
+              "pm.expect(e[0].detalle).to.equal('Cliente no llegará al restaurante');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 Cancel replay — no duplicated event",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reservations/{{pendingId}}/cancel",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"motivo\": \"Cliente no llegará al restaurante\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "pm.expect(pm.response.json().eventos.filter(e=>e.accion==='RESERVATION_CANCELLED')).to.have.length(1);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 Availability restored after cancellation",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reservations/availability?sucursalId={{sucursalId}}&inicio={{suiteStart}}&fin={{suiteEnd}}&personas=2"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);const j=pm.response.json();",
+              "const row=j.mesas.find(t=>t.id===pm.collectionVariables.get('tableId'));",
+              "pm.expect(row.disponible).to.equal(true);",
+              "pm.expect(row.reservaConflictoId).to.equal(null);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 Create SECOND DEV table in same room, capacity 2",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/tables",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"salaId\": \"{{roomId}}\",\n  \"numero\": \"R{{runId}}\",\n  \"capacidad\": 2\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "const j=pm.response.json();",
+              "pm.collectionVariables.set('secondTableId',j.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 Create one reservation on TWO tables, combined capacity",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reservations",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"nombreContacto\": \"RSV DEV grupo de mesas\",\n  \"personas\": \"{{partyMulti}}\",\n  \"inicio\": \"{{suiteStart}}\",\n  \"fin\": \"{{suiteEnd}}\",\n  \"estadoInicial\": \"CONFIRMADA\",\n  \"mesaIds\": [\n    \"{{tableId}}\",\n    \"{{secondTableId}}\"\n  ],\n  \"claveOperacion\": \"RSV-HARD:{{runId}}:multi\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);const j=pm.response.json();",
+              "pm.expect(j.estado).to.equal('CONFIRMADA');",
+              "pm.expect(j.mesas).to.have.length(2);",
+              "pm.expect(j.capacidadAsignada).to.be.gte(Number(pm.collectionVariables.get('partyMulti')));",
+              "pm.collectionVariables.set('multiId',j.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "11 Availability blocks BOTH allocated tables",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reservations/availability?sucursalId={{sucursalId}}&inicio={{suiteStart}}&fin={{suiteEnd}}&personas=2"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);const j=pm.response.json();",
+              "for(const id of [pm.collectionVariables.get('tableId'),pm.collectionVariables.get('secondTableId')]){",
+              " const row=j.mesas.find(t=>t.id===id);",
+              " pm.expect(row.motivo).to.equal('RESERVADA');",
+              " pm.expect(row.reservaConflictoId).to.equal(pm.collectionVariables.get('multiId'));",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "12 Enriched detail contains both tables, room, and creator",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reservations/{{multiId}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);const j=pm.response.json();",
+              "pm.expect(j.mesas).to.have.length(2);",
+              "pm.expect(j.mesas[0].sala.nombre).to.be.a('string');",
+              "pm.expect(j.creadaPor.nombre).to.be.a('string');",
+              "pm.expect(j.eventos[0].actor.nombre).to.be.a('string');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "13 New booking of ONE allocated table rejected (409)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reservations",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"nombreContacto\": \"RSV DEV reserva duplicada\",\n  \"personas\": \"2\",\n  \"inicio\": \"{{suiteStart}}\",\n  \"fin\": \"{{suiteEnd}}\",\n  \"estadoInicial\": \"CONFIRMADA\",\n  \"mesaIds\": [\n    \"{{secondTableId}}\"\n  ],\n  \"claveOperacion\": \"RSV-HARD:{{runId}}:overlap\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(409);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "14 Cancel multi-table reservation and restore capacity",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reservations/{{multiId}}/cancel",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"motivo\": \"Liberar ambas mesas de prueba DEV\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);",
+              "pm.expect(pm.response.json().estado).to.equal('CANCELADA');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "15 Deactivate synthetic second table after cleanup",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/tables/{{secondTableId}}",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"activa\": false\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "pm.expect(pm.response.json().activa).to.equal(false);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "16 Base table free again; synthetic table not offered",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reservations/availability?sucursalId={{sucursalId}}&inicio={{suiteStart}}&fin={{suiteEnd}}&personas=2"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const j=pm.response.json();",
+              "pm.expect(j.mesas.find(x=>x.id===pm.collectionVariables.get('tableId')).disponible).to.equal(true);",
+              "pm.expect(j.mesas.some(x=>x.id===pm.collectionVariables.get('secondTableId'))).to.equal(false);"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "sucursalId",
+      "value": ""
+    },
+    {
+      "key": "runId",
+      "value": ""
+    },
+    {
+      "key": "suiteStart",
+      "value": ""
+    },
+    {
+      "key": "suiteEnd",
+      "value": ""
+    },
+    {
+      "key": "tableId",
+      "value": ""
+    },
+    {
+      "key": "roomId",
+      "value": ""
+    },
+    {
+      "key": "baseCapacity",
+      "value": ""
+    },
+    {
+      "key": "partyMulti",
+      "value": ""
+    },
+    {
+      "key": "pendingId",
+      "value": ""
+    },
+    {
+      "key": "secondTableId",
+      "value": ""
+    },
+    {
+      "key": "multiId",
+      "value": ""
+    }
+  ]
+}

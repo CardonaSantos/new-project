@@ -14,6 +14,14 @@ export class DeliveryController{
  create(@CurrentUser() u:Principal,@Body() d:DeliveryCreateDto){return this.delivery.create(u,d);}
  @Get(':id') @Header('Cache-Control','no-store')
  detail(@CurrentUser() u:Principal,@Param('id') id:string){return this.delivery.detail(u,id);}
+ @Get(':id/closure-readiness') @Header('Cache-Control','no-store')
+ closureReadiness(@CurrentUser() u:Principal,@Param('id') id:string){
+  return this.delivery.closureReadiness(u,id);
+ }
+ @Post(':id/finalize-order')
+ finalizeOrder(@CurrentUser() u:Principal,@Param('id') id:string){
+  return this.delivery.finalizeOrder(u,id);
+ }
  @Get(':id/events') @Header('Cache-Control','no-store')
  events(@CurrentUser() u:Principal,@Param('id') id:string){return this.delivery.events(u,id);}
  @Patch(':id/destination')

@@ -21,6 +21,8 @@ export abstract class DeliveryPort{
  abstract list(actor:Principal,query:DeliveryQuery):Promise<unknown>;
  abstract detail(actor:Principal,id:string):Promise<unknown>;
  abstract events(actor:Principal,id:string):Promise<unknown>;
+ abstract closureReadiness(actor:Principal,id:string):Promise<unknown>;
+ abstract finalizeOrder(actor:Principal,id:string):Promise<unknown>;
  abstract create(actor:Principal,input:DeliveryCreate):Promise<unknown>;
  abstract destination(actor:Principal,id:string,input:DeliveryDestination):Promise<unknown>;
  abstract assign(actor:Principal,id:string,input:DeliveryAssign):Promise<unknown>;

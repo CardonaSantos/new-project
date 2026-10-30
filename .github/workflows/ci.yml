@@ -21,6 +21,10 @@ jobs:
         run: npm test
       - name: HTTP tests
         run: npm run test:e2e
+      - name: REP-2B validate actual XLSX PDF CSV structure
+        run: |
+          npx tsx prisma/ci/rep-2b-format-fixture.ts
+          python3 prisma/ci/rep-2b-ooxml-validate.py
 
   migration-smoke:
     runs-on: ubuntu-latest

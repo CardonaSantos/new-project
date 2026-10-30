@@ -81,7 +81,8 @@ describe('REP-A source reports data and financial guardrails',()=>{
     consumoOrdenLineasComoConsumo:[{id:'dline1',articulo,ubicacionId:'loc1',
      loteId:null,cantidad:d('150.000000'),costoUnitario:d('0.010286'),movimientoId:'mov1',
      movimiento:{id:'mov1',creadoEn:new Date('2026-10-30T16:00:00Z'),tipo:'CONSUMO',
-      cantidad:d('-150.000000'),costoTotal:d('1.542857'),referenciaTipo:'CONSUMO_ORDEN',
+      cantidad:d('-150.000000'),costoTotal:d('1.542857'),articuloId:'art1',
+      ubicacionId:'loc1',loteId:null,referenciaTipo:'CONSUMO_ORDEN',
       referenciaId:'doc1'}}]},
    {id:'doc2',tipo:'EMPAQUE',creadoEn:new Date('2026-10-30T16:01:00Z'),
     orden:header,ordenLinea:null,comandaLineaId:null,recetaVersionId:null,cantidadPreparada:null,
@@ -90,13 +91,14 @@ describe('REP-A source reports data and financial guardrails',()=>{
      movimiento:null}]}
   ]);
   tx.$queryRaw.mockReset().mockResolvedValue([
-   {tipo:'RECETA',documentos:1,lineas:1,lineasSinMovimiento:0,costoRegistrado:'1.542857'},
-   {tipo:'EMPAQUE',documentos:1,lineas:1,lineasSinMovimiento:1,costoRegistrado:'0'}
+   {tipo:'RECETA',documentos:1,lineas:1,lineasSinMovimiento:0,documentosSinLineas:0,costoRegistrado:'1.542857'},
+   {tipo:'EMPAQUE',documentos:1,lineas:1,lineasSinMovimiento:1,documentosSinLineas:0,costoRegistrado:'0'}
   ]);
   const r=await store.records(actor,'PREPARATION_COSTS',{
    sucursalId:'s1',periodo:'DIA',fecha:'2026-10-30',page:1,limit:1}) as any;
   expect(r.meta).toMatchObject({total:2,page:1,limit:1});
   expect(r.totales).toMatchObject({documentos:2,lineas:2,lineasSinMovimiento:1,
+   documentosSinLineas:0,
    costoRegistrado:'1.542857'});
   expect(r.totales.porTipo).toHaveLength(2);
   expect(r.data[0]).toMatchObject({tipo:'RECETA',ordenLinea:{id:'ol1'},

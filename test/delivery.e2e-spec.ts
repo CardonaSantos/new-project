@@ -13,6 +13,8 @@ describe('DEL-A D2 HTTP contracts',()=>{
  let app:INestApplication<App>;
  const svc={list:vi.fn().mockResolvedValue({data:[],meta:{page:1,limit:20,total:0,totalPages:0}}),
   detail:vi.fn().mockResolvedValue({id:'d1'}),events:vi.fn().mockResolvedValue({data:[]}),
+  closureReadiness:vi.fn().mockResolvedValue({entregaId:'d1',canFinalize:true,blockers:[]}),
+  finalizeOrder:vi.fn().mockResolvedValue({entregaId:'d1',alreadyClosed:true}),
   create:vi.fn().mockResolvedValue({id:'d1',estado:'PENDIENTE',repartidorId:'courier'}),
   destination:vi.fn().mockResolvedValue({id:'d1'}),assign:vi.fn().mockResolvedValue({id:'d1',repartidorId:'courier'}),
   dispatch:vi.fn().mockResolvedValue({id:'d1',estado:'EN_REPARTO'}),
@@ -30,6 +32,14 @@ describe('DEL-A D2 HTTP contracts',()=>{
  });
  afterEach(async()=>app.close());
  const key={claveOperacion:'DEL:HTTP:001'};
+ it('offers financial closure readiness and a one-step PAY-A delegation',async()=>{
+  await request(app.getHttpServer()).get('/api/deliveries/d1/closure-readiness')
+   .expect(200).expect('Cache-Control','no-store');
+  expect(svc.closureReadiness).toHaveBeenCalledExactlyOnceWith(actor,'d1');
+  await request(app.getHttpServer()).post('/api/deliveries/d1/finalize-order')
+   .send({}).expect(201);
+  expect(svc.finalizeOrder).toHaveBeenCalledExactlyOnceWith(actor,'d1');
+ });
  it('creates a delivery with courier in ONE action',async()=>{
   await request(app.getHttpServer()).post('/api/deliveries').send({
    ...key,ordenId:'o1',direccionTexto:'Zona 1, Calle 3',repartidorId:'courier'

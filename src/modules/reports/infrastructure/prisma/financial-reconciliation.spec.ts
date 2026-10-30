@@ -1,5 +1,5 @@
 import {describe,expect,it,vi} from 'vitest';
-import {Prisma,Decimal} from '../../../../generated/prisma/client.js';
+import {Prisma} from '../../../../generated/prisma/client.js';
 import {paymentSalesReconciliation,supplierBalances,platformSettlements,bankMatchStatus}
  from './financial-reconciliation.js';
 const scope={id:'branch1',nombre:'Principal',moneda:'GTQ',desde:'2026-10-01',
@@ -39,7 +39,7 @@ describe('REP-A R5 finance ledger reconciliation',()=>{
   const tx={
    liquidacionCanalExterno:{findMany:vi.fn().mockResolvedValue([{id:'l1',
     canalId:'platform1',cuentaFinancieraId:null,periodoInicio:new Date(),
-    periodoFin:new Date(),referencia:null,totalBruto:new Decimal('100'),
+    periodoFin:new Date(),referencia:null,totalBruto:new Prisma.Decimal('100'),
     totalComision:new Prisma.Decimal('10'),totalNeto:new Prisma.Decimal('90'),
     recibidaEn:null,creadaEn:new Date(),
     liquidacionCanalExternoLineasComoLiquidacion:[{id:'line1',entregaId:'d1',

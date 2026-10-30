@@ -124,11 +124,14 @@ export class CourierSettlementsStore{
      'LiquidacionRepartidor',row.id,{repartidorId:d.repartidorId,
       turnoCajaId:d.turnoCajaId,totalEntregado:fmt(actual),
       pagos:lines.length,movimientoCajaId:movement.id});
-    return {id:row.id,estado:'CERRADA',totalEsperado:fmt(sum),
-     totalEntregado:fmt(actual),movimientoCajaId:movement.id};
+    return {id:row.id,estado:'CERRADA',sucursalId:d.sucursalId,
+     repartidorId:d.repartidorId,turnoCajaId:d.turnoCajaId,totalEsperado:fmt(sum),
+     totalEntregado:fmt(actual),movimientoCajaId:movement.id,
+     lineas:lines.map(l=>({pagoId:l.pagoId,entregaId:l.entregaId,monto:fmt(l.monto)}))};
    });
   });
-  return {...result,detalle:await this.detail(u,result.id as string)};
+  // No second DB transaction/readback: the first response is complete.
+  return result;
  }
  async discrepancy(u:Principal,id:string,d:CourierDiscrepancy){
   return this.ctx.atomic(async tx=>{

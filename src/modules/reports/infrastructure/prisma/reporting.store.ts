@@ -1,4 +1,4 @@
-import {BadRequestException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
+import {ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
 import {Prisma} from '../../../../generated/prisma/client.js';
 import {PrismaService} from '../../../../infrastructure/database/prisma/prisma.service.js';
 import {operationalDate} from '../../../payments/domain/payment.policy.js';
@@ -12,7 +12,6 @@ type Tx=Prisma.TransactionClient;
 type RawDay={dia:string;total:string;descuentos?:string;cuentas?:number;tickets?:number};
 const dec=(x:Prisma.Decimal|string|number|null|undefined)=>new Prisma.Decimal(x??0);
 const money=(x:Prisma.Decimal|string|number|null|undefined)=>dec(x).toFixed(2);
-const zero='0.00';
 @Injectable()
 export class ReportingStore extends ReportingPort{
  constructor(private readonly db:PrismaService){super();}
@@ -175,7 +174,7 @@ export class ReportingStore extends ReportingPort{
       id:true,numero:true,total:true,descuentoTotal:true,cerradaEn:true,
       cuenta:{select:{id:true,orden:{select:{id:true,numero:true,modalidad:true,
        origen:true,estado:true,usuario:{select:{id:true,nombre:true}},
-       cliente:{select:{id:true,nombre:true}}}}}}}
+       cliente:{select:{id:true,nombre:true}}}}}}
      }}),
     tx.venta.count({where})
    ]);

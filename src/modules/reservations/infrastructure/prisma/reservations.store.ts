@@ -208,11 +208,9 @@ export class ReservationsStore extends ReservationsPort{
   });
  }
  async create(u:Principal,d:ReservationCreateDto){
-  const {inicio,fin}=validateWindow(d.inicio,d.fin);
   const id=await this.tx(async tx=>{
    await this.authorize(tx,u,d.sucursalId,true);
    await this.branch(tx,d.sucursalId);
-   await this.customer(tx,d.sucursalId,d.clienteId);
    const operation='RSV:'+u.id+':'+d.claveOperacion;
    const digest=hash({actor:u.id,operation:'RESERVATION_CREATE',request:d});
    const previous=await tx.operacionIdempotente.findUnique({where:{clave:operation}});
@@ -222,6 +220,10 @@ export class ReservationsStore extends ReservationsPort{
      throw new ConflictException('Clave de operación reutilizada con otros datos');
     return (previous.resultado as {id:string}).id;
    }
+   // A valid replay stays idempotent even after its original booking time passes
+   // or customer information changes; permission is still checked above.
+   const {inicio,fin}=validateWindow(d.inicio,d.fin);
+   await this.customer(tx,d.sucursalId,d.clienteId);
    const tableIds=d.mesaIds?.length?d.mesaIds:
     await this.automaticTable(tx,d.sucursalId,d.personas,inicio,fin);
    await this.assertTables(tx,d.sucursalId,tableIds,d.personas,inicio,fin);

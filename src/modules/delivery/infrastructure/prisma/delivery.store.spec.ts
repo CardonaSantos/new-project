@@ -37,6 +37,13 @@ function rig(){
  return {store:new DeliveryStore(db,payments as never),tx,row,order,payments};
 }
 describe('DEL-A D2 transactional delivery',()=>{
+ it('prevents courier-only users reading order account readiness',async()=>{
+  const {store,tx,payments}=rig();
+  tx.usuarioRol.findFirst.mockResolvedValueOnce(null);
+  await expect(store.closureReadiness(user,'delivery-1')).rejects.toThrow('No puede gestionar');
+  expect(tx.cuenta.findMany).not.toHaveBeenCalled();
+  expect(payments.settle).not.toHaveBeenCalled();
+ });
  it('blocks premature accounting close and explains missing readiness conditions',async()=>{
   const {store,tx,row,payments}=rig();
   const readiness=await store.closureReadiness(user,'delivery-1') as any;

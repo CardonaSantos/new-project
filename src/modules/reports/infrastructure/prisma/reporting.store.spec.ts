@@ -10,11 +10,12 @@ function rig(){
   usuarioRol:{findFirst:vi.fn().mockResolvedValue({id:'role'})},
   venta:{aggregate:vi.fn().mockResolvedValue({_sum:{total:'100.00',descuentoTotal:'5.00'},_count:{id:3}}),
    findMany:vi.fn().mockResolvedValue([]),count:vi.fn().mockResolvedValue(0)},
-  pago:{aggregate:vi.fn().mockResolvedValue({_sum:{monto:'80.00'},_count:{id:2}})},
+  pago:{aggregate:vi.fn().mockResolvedValue({_sum:{monto:'80.00'},_count:{id:2}}),groupBy:vi.fn().mockResolvedValue([])},
   reembolsoPago:{aggregate:vi.fn().mockResolvedValue({_sum:{monto:'10.00'},_count:{id:1}})},
-  gastoOperativo:{aggregate:vi.fn().mockResolvedValue({_sum:{monto:'20.00'},_count:{id:1}})},
+  gastoOperativo:{aggregate:vi.fn().mockResolvedValue({_sum:{monto:'20.00'},_count:{id:1}}),groupBy:vi.fn().mockResolvedValue([])},
   turnoCaja:{aggregate:vi.fn().mockResolvedValue({_sum:{diferencia:null},_count:{id:0}}),
-   count:vi.fn().mockResolvedValue(0)},
+   count:vi.fn().mockResolvedValue(0),findMany:vi.fn().mockResolvedValue([])},
+  movimientoCaja:{groupBy:vi.fn().mockResolvedValue([])},
   $queryRaw:vi.fn().mockResolvedValueOnce([{total:2}])
    .mockResolvedValueOnce([{dia:'2026-10-30',total:'100.00',descuentos:'5.00',cuentas:3,tickets:2}])
    .mockResolvedValueOnce([{dia:'2026-10-30',total:'80.00'}])
@@ -48,6 +49,41 @@ describe('REP-1 sources and accounting guardrails',()=>{
   await expect(store.overview(admin,{sucursalId:'s1',periodo:'DIA',fecha:'2026-10-30'}))
    .rejects.toThrow('Sin permiso reports.read');
   expect(tx.venta.aggregate).not.toHaveBeenCalled();
+ });
+
+ it('groups payments and refunds by actual method without changing sales totals',async()=>{
+  const {store,tx}=rig();
+  tx.pago.groupBy.mockResolvedValue([{metodo:'EFECTIVO',_sum:{monto:'250.00'},_count:{id:3}}]);
+  tx.$queryRaw.mockReset().mockResolvedValue([{metodo:'EFECTIVO',total:'50.00',conteo:1}]);
+  const report=await store.paymentsByMethod(admin,{sucursalId:'s1',periodo:'DIA',fecha:'2026-10-30'}) as any;
+  expect(report.data.find((x:any)=>x.metodo==='EFECTIVO')).toMatchObject({
+   cobrosBrutos:'250.00',reembolsos:'50.00',neto:'200.00',
+   cantidadCobros:3,cantidadReembolsos:1});
+  expect(report.data.find((x:any)=>x.metodo==='TARJETA').neto).toBe('0.00');
+ });
+ it('returns expenses by category from expense records only',async()=>{
+  const {store,tx}=rig();
+  tx.gastoOperativo.groupBy.mockResolvedValue([
+   {categoria:'LIMPIEZA',tipo:'OPERATIVO',_sum:{monto:'45.50'},_count:{id:2}}]);
+  const report=await store.expensesByCategory(admin,{sucursalId:'s1',periodo:'DIA',fecha:'2026-10-30'}) as any;
+  expect(report.totalRegistrado).toBe('45.50');
+  expect(report.data[0]).toMatchObject({categoria:'LIMPIEZA',registros:2});
+ });
+ it('returns shift cash movements separately without treating them as new sales',async()=>{
+  const {store,tx}=rig();
+  tx.turnoCaja.count.mockResolvedValue(1);
+  tx.turnoCaja.findMany.mockResolvedValue([{id:'turno-1',
+   fechaOperativa:new Date('2026-10-30T00:00:00Z'),abiertaEn:new Date('2026-10-30T12:00:00Z'),
+   cerradaEn:new Date('2026-10-30T18:00:00Z'),fondoInicial:'100.00',
+   efectivoEsperado:'250.00',efectivoContado:'245.00',diferencia:'-5.00',
+   caja:{id:'caja',codigo:'01',nombre:'Caja principal'},cajero:{id:'cajero',nombre:'Ana'}}]);
+  tx.movimientoCaja.groupBy.mockResolvedValue([{turnoId:'turno-1',tipo:'INGRESO',
+   _sum:{monto:'200.00'},_count:{id:4}}]);
+  const report=await store.cashShifts(admin,{sucursalId:'s1',periodo:'DIA',
+   fecha:'2026-10-30',page:1,limit:20}) as any;
+  expect(report.data[0].diferencia).toBe('-5.00');
+  expect(report.data[0].movimientos.ingresos).toBe('200.00');
+  expect(report.meta.total).toBe(1);
  });
  it('rejects unbounded ticket listings before accessing the database',async()=>{
   const {store,db}=rig();

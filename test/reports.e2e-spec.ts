@@ -11,7 +11,10 @@ const user:Principal={id:'u1',nombre:'Administrador',email:'a@test.dev',sessionI
  versionAutorizacion:1,debeCambiarContrasena:false};
 const svc={operational:vi.fn().mockResolvedValue({kpis:{pedidosAbiertos:0}}),
  overview:vi.fn().mockResolvedValue({currency:'GTQ',kpis:{ventasNetas:'0.00'}}),
- tickets:vi.fn().mockResolvedValue({data:[],meta:{total:0}})};
+ tickets:vi.fn().mockResolvedValue({data:[],meta:{total:0}}),
+ paymentsByMethod:vi.fn().mockResolvedValue({data:[]}),
+ expensesByCategory:vi.fn().mockResolvedValue({data:[]}),
+ cashShifts:vi.fn().mockResolvedValue({data:[],meta:{total:0}})};
 describe('REP-1 read-only reporting HTTP contract',()=>{
  let app:INestApplication<App>;
  beforeEach(async()=>{
@@ -36,6 +39,16 @@ describe('REP-1 read-only reporting HTTP contract',()=>{
   await request(app.getHttpServer()).get('/api/reports/analytics/overview?sucursalId=s1&periodo=DIA&fecha=2026-10-30')
    .expect(200).expect('Cache-Control','no-store');
   expect(svc.overview).toHaveBeenCalledWith(user,expect.objectContaining({sucursalId:'s1',periodo:'DIA',fecha:'2026-10-30'}));
+ });
+ it('exposes cash, payment methods and expense categories through no-store routes',async()=>{
+  for(const route of ['payments-by-method','expenses-by-category','cash-shifts']){
+   await request(app.getHttpServer()).get('/api/reports/analytics/'+route+
+    '?sucursalId=s1&periodo=DIA&fecha=2026-10-30').expect(200)
+    .expect('Cache-Control','no-store');
+  }
+  expect(svc.paymentsByMethod).toHaveBeenCalledOnce();
+  expect(svc.expensesByCategory).toHaveBeenCalledOnce();
+  expect(svc.cashShifts).toHaveBeenCalledOnce();
  });
  it('rejects oversized ticket queries and allows page/limit',async()=>{
   await request(app.getHttpServer()).get('/api/reports/analytics/tickets?sucursalId=s1&periodo=DIA&limit=500')

@@ -163,6 +163,81 @@
       ]
     },
     {
+      "name": "06 Pagos por método de cobro",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reports/analytics/payments-by-method?sucursalId={{sucursalId}}&periodo=DIA&fecha={{fechaOperativa}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "pm.expect(pm.response.json().data).to.be.an('array');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 Gastos por categoría",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reports/analytics/expenses-by-category?sucursalId={{sucursalId}}&periodo=DIA&fecha={{fechaOperativa}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "pm.expect(pm.response.json().data).to.be.an('array');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 Turnos de caja y diferencias",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reports/analytics/cash-shifts?sucursalId={{sucursalId}}&periodo=DIA&fecha={{fechaOperativa}}&page=1&limit=20"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "pm.expect(pm.response.json().data).to.be.an('array');"
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "06 Sin sucursal (400 esperado)",
       "request": {
         "method": "GET",

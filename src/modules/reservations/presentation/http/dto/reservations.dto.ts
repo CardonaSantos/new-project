@@ -2,7 +2,7 @@ import {Type} from 'class-transformer';
 import {ArrayMaxSize,ArrayMinSize,ArrayUnique,IsArray,IsEmail,IsEnum,IsInt,IsOptional,IsString,Matches,Max,MaxLength,Min,MinLength,ValidateIf,IsISO8601} from 'class-validator';
 const key=/^[A-Za-z0-9][A-Za-z0-9:_.-]{5,119}$/;
 // Explicit offset is mandatory; the server timezone must never shift reservations.
-const timezone=/(?:Z|[+-](?:0\\d|1[0-4]):[0-5]\\d)$/;
+const timezone=/(?:Z|[+-](?:0\d|1[0-4]):[0-5]\d)$/;
 const states=['PENDIENTE','CONFIRMADA','CANCELADA','COMPLETADA','NO_ASISTIO'] as const;
 export class AvailabilityDto{
  @IsString() @MinLength(1) sucursalId!:string;

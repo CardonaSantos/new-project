@@ -15,7 +15,7 @@ Todos los períodos se interpretan como fecha **operativa** en America/Guatemala
 
 | source | Origen de cada fila | Fecha que agrupa | Medida agregada | Permiso adicional a reports.read |
 | --- | --- | --- | --- | --- |
-| `SALES_LINES` | VentaLinea → Venta → Cuenta → Orden → OrdenLinea → Variante/Producto | Venta.cerradaEn | Subtotal/descuentos/unidades de líneas, *no* suma independiente del total de venta sin conciliación | sales.read |
+| `SALES_LINES` | VentaLinea → Venta → Cuenta → Orden → OrdenLinea → Variante/Producto | Venta.cerradaEn | Subtotal/descuentos/unidades de líneas; gráficos `porProducto`, `porCategoria`, `porVariante`, `porModalidad` del período completo, sin sumar estos grupos entre sí | sales.read |
 | `INVENTORY_MOVEMENTS` | MovimientoInventario → Articulo/Ubicacion/Almacen; referenciaTipo/referenciaId | MovimientoInventario.creadoEn | Costo registrado **por tipo de movimiento**, no margen ni gasto de caja | inventory.reports.read |
 | `PURCHASE_INVOICES` | FacturaProveedor → Proveedor | FacturaProveedor.creadaEn | Documento total/subtotal/impuestos **por estado actual**, incluyendo borradores; no significa pago ni consumo | purchases.read |
 | `PURCHASE_RECEIPT_LINES` | RecepcionCompraLinea → RecepcionCompra CONFIRMADO → Proveedor/OrdenCompra; movimientoId | RecepcionCompra.recibidoEn | Costo contabilizado en líneas recepcionadas confirmadas y sus impuestos, separado de factura/pago | purchases.read |
@@ -23,6 +23,8 @@ Todos los períodos se interpretan como fecha **operativa** en America/Guatemala
 | `RESERVATION_EVENTS` | EventoReserva → Reserva/Actor | EventoReserva.creadoEn | Eventos auditados por acción; el estado de la reserva vinculado es el **actual** | reservations.read |
 | `SUPPLY_REQUESTS` | Requisicion → AlmacenDestino/Solicitante/Lineas | Requisicion.creadaEn | Requisiciones por **estado actual**, líneas solicitadas y atendidas; no es consumo | supply.read |
 | `SUPPLY_TRANSFERS` | TransferenciaInventario → almacenes origen/destino/usuario/líneas | TransferenciaInventario.despachadaEn del almacén **origen** | Despachos por estado actual, cantidades enviadas/recibidas y costo en tránsito, no ventas | supply.read |
+
+`porModalidad` distingue MESA, MOSTRADOR, PARA_LLEVAR y DELIVERY de `Orden.modalidad`, sin suponer que modalidad equivale a canal externo o método de cobro. Los cuatro agrupamientos de SALES_LINES representan **las mismas filas** desde distintas dimensiones; cada suma individual debe conciliar con `totales.importeLineas` y `totales.descuentos`, no sumar las cuatro perspectivas entre sí. Los importes proceden de `VentaLinea` y no deducen costo/margen.
 
 Para `SUPPLY_TRANSFERS`, la sede de origen autoriza el registro; los reportes de **recepciones** desde la perspectiva de destino deben filtrarse por destino y `recibidaEn` mediante una consulta adicional, no inferirlos de los despachos.
 

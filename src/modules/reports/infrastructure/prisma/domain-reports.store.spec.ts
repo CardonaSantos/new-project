@@ -12,6 +12,12 @@ function rig(){
    activa:true,zonaHoraria:'America/Guatemala',
    configuracionSucursalesComoSucursal:{moneda:'GTQ',horaCorteOperativo:'04:00'}})},
   usuarioRol:{findFirst:vi.fn().mockResolvedValue({id:'role1'})},
+  ventaLinea:{findMany:vi.fn().mockResolvedValue([]),count:vi.fn().mockResolvedValue(0),
+   aggregate:vi.fn().mockResolvedValue({_sum:{subtotal:d('33.50'),descuento:d('1.50'),cantidad:d('2.000')}})},
+  $queryRaw:vi.fn().mockResolvedValueOnce([{productoId:'prod1',nombre:'Café',categoriaId:'cat1',
+   unidades:'2.000',importe:'33.50',descuentos:'1.50'}])
+   .mockResolvedValueOnce([{categoriaId:'cat1',categoria:'Bebidas',
+    unidades:'2.000',importe:'33.50',descuentos:'1.50'}]),
   movimientoInventario:{
    findMany:vi.fn().mockResolvedValue([{id:'mov1',creadoEn:new Date('2026-10-30T17:00:00Z'),
     tipo:'CONSUMO',articulo:{id:'art1',codigo:'A1',nombre:'Harina'},
@@ -28,6 +34,18 @@ function rig(){
  return {store:new DomainReportsStore(db),tx,db};
 }
 describe('REP-A source reports data and financial guardrails',()=>{
+ it('aggregates sales charts over all matching rows, independent of pagination',async()=>{
+  const {store,tx}=rig();
+  tx.ventaLinea.count.mockResolvedValue(12);
+  const r=await store.records(actor,'SALES_LINES',{
+   sucursalId:'s1',periodo:'DIA',fecha:'2026-10-30',page:1,limit:1}) as any;
+  expect(r.meta.total).toBe(12);
+  expect(r.totales).toMatchObject({registros:12,importeLineas:'33.50',descuentos:'1.50'});
+  expect(r.porProducto).toEqual([{productoId:'prod1',nombre:'Café',categoriaId:'cat1',
+   unidades:'2.000',importe:'33.50',descuentos:'1.50'}]);
+  expect(r.porCategoria[0].importe).toBe('33.50');
+  expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+ });
  it('keeps inventory cost at actual recorded precision and references original movement',async()=>{
   const {store,tx}=rig();
   const x=await store.records(actor,'INVENTORY_MOVEMENTS',{

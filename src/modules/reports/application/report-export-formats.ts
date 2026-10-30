@@ -34,7 +34,7 @@ const xml=(v:string)=>v.replace(/&/g,'&amp;').replace(/</g,'&lt;')
  .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;')
  .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'');
 const column=(index:number)=>{
- let i=index+1,result='';
+ let i=index,result='';
  do{result=String.fromCharCode(65+i%26)+result;i=Math.floor(i/26)-1;}while(i>=0);
  return result;
 };

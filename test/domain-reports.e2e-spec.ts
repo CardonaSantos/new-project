@@ -25,7 +25,7 @@ describe('REP-A transversal evidence API',()=>{
   await app.init();
  });
  afterEach(async()=>app.close());
- it('exposes all ten source-specific ledgers including sale cost attribution with consistent period/pagination',async()=>{
+ it('exposes eleven source-specific ledgers including operational order cost outcomes with consistent period/pagination',async()=>{
   for(const source of REPORT_SOURCES){
    await request(app.getHttpServer()).get('/api/reports/analytics/sources/'+source+
     '?sucursalId=s1&periodo=DIA&fecha=2026-10-30&page=1&limit=20')

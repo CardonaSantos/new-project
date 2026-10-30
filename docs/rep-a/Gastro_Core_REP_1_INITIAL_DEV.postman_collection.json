@@ -359,7 +359,21 @@
               "pm.expect(r.data.filter(x=>x.tipo==='INGRESO').reduce((n,x)=>n+cents(x.monto),0)).to.equal(cents(r.totalesFiltro.ingresos));",
               "pm.expect(r.data.filter(x=>x.tipo==='EGRESO').reduce((n,x)=>n+cents(x.monto),0)).to.equal(cents(r.totalesFiltro.egresos));",
               "pm.expect(r.data.length).to.equal(r.meta.total);",
-              "}"
+              "}",
+              "for(const m of r.data){",
+              " if(m.fuente?.tipo==='LIQUIDACION_REPARTIDOR'){",
+              "  pm.expect(m.fuente.lineas).to.be.an('array');",
+              "  for(const l of m.fuente.lineas){",
+              "   pm.expect(l).to.have.property('liquidacionLineaId');",
+              "   pm.expect(l).to.have.property('pagoId');",
+              "   pm.expect(l).to.have.property('entregaId');",
+              "   pm.expect(l).to.have.property('ordenId');",
+              "   pm.expect(l.monto).to.match(/^\\d+\\.\\d{2}$/);",
+              "  }",
+              " }",
+              "}",
+              "pm.expect(r).not.to.have.property('definicion');",
+              "pm.expect(r).not.to.have.property('note');"
             ]
           }
         }

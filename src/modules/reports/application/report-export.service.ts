@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-import {Injectable} from '@nestjs/common';
+import {Injectable,PayloadTooLargeException} from '@nestjs/common';
 import type {Principal} from '../../auth/application/auth.service.js';
 import {PrismaService} from '../../../infrastructure/database/prisma/prisma.service.js';
 import {DomainReportsService} from './domain-reports.service.js';
@@ -24,7 +24,15 @@ export class ReportExportService{
   const render:Record<ExportFormat,(r:ExportPayload)=>Buffer>={
    CSV:renderCsv,XLSX:renderXlsx,PDF:renderPdf
   };
-  const buffer=render[q.format](snapshot);
+  if(Buffer.byteLength(JSON.stringify(snapshot),'utf8')>5_000_000)
+   throw new PayloadTooLargeException('Exportación supera 5 MB de datos; reduzca período');
+  let buffer:Buffer;
+  try{buffer=render[q.format](snapshot);}
+  catch(e){
+   if(e instanceof RangeError)
+    throw new PayloadTooLargeException('PDF excesivamente extenso; use CSV/XLSX o reduzca período');
+   throw e;
+  }
   const sha256=createHash('sha256').update(buffer).digest('hex');
   // Audit the exact delivered bytes; do not persist PII or financial records
   // in the audit table. Never send an unaudited attachment.

@@ -3,7 +3,7 @@ import {CurrentUser} from '../../../auth/presentation/http/decorators/auth.decor
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {DeliverySettlementsService} from '../../application/delivery-settlements.service.js';
 import {CloseCourierSettlementDto,CourierDiscrepancyDto,CreateCourierSettlementDto,CreatePlatformSettlementDto,
- CourierCashDto,PlatformChannelDto,SettlementBranchDto,SettlementPageDto} from './dto/delivery-settlements.dto.js';
+ CourierCashDto,DirectCourierSettlementDto,PlatformChannelDto,SettlementBranchDto,SettlementPageDto} from './dto/delivery-settlements.dto.js';
 
 @Controller('deliveries')
 export class DeliverySettlementsController{
@@ -17,6 +17,10 @@ export class DeliverySettlementsController{
  @Post('settlements/couriers')
  createCourier(@CurrentUser() u:Principal,@Body() d:CreateCourierSettlementDto){
   return this.svc.createCourier(u,d);
+ }
+ @Post('settlements/couriers/close-direct')
+ direct(@CurrentUser() u:Principal,@Body() d:DirectCourierSettlementDto){
+  return this.svc.closeCourierDirect(u,d);
  }
  @Post('settlements/couriers/:id/close')
  closeCourier(@CurrentUser() u:Principal,@Param('id') id:string,

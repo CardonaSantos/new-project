@@ -16,7 +16,8 @@ const permissions:Record<ReportSource,string>={
  SALES_LINES:'sales.read',INVENTORY_MOVEMENTS:'inventory.reports.read',
  PURCHASE_INVOICES:'purchases.read',PURCHASE_RECEIPT_LINES:'purchases.read',
  DELIVERY_EVENTS:'delivery.read',RESERVATION_EVENTS:'reservations.read',
- SUPPLY_REQUESTS:'supply.read',SUPPLY_TRANSFERS:'supply.read'
+ SUPPLY_REQUESTS:'supply.read',SUPPLY_TRANSFERS:'supply.read',
+ PREPARATION_COSTS:'inventory.costs.read'
 };
 @Injectable()
 export class DomainReportsStore extends DomainReportsPort{
@@ -141,6 +142,74 @@ export class DomainReportsStore extends DomainReportsPort{
        precioUnitario:money(x.precioUnitario),descuento:money(x.descuento),
        subtotal:money(x.subtotal)})),
       meta:meta(q.page,q.limit,total)};
+    }
+    case 'PREPARATION_COSTS':{
+     // A consumption-date ledger; not a sale-date margin or a double-counted expense.
+     const where:Prisma.ConsumoOrdenWhereInput={orden:{sucursalId:b.id},creadoEn:span};
+     const [rows,total,groups]=await Promise.all([
+      tx.consumoOrden.findMany({where,skip,take,
+       orderBy:[{creadoEn:'asc'},{id:'asc'}],
+       include:{
+        orden:{select:{id:true,numero:true,modalidad:true,estado:true}},
+        ordenLinea:{select:{id:true,nombreSnapshot:true,
+         variante:{select:{id:true,nombre:true,
+          producto:{select:{id:true,nombre:true}}}}}},
+        consumoOrdenLineasComoConsumo:{orderBy:{id:'asc'},
+         include:{articulo:{select:{id:true,codigo:true,nombre:true}},
+          movimiento:{select:{id:true,creadoEn:true,tipo:true,cantidad:true,
+           costoTotal:true,referenciaTipo:true,referenciaId:true}}}}
+       }}),
+      tx.consumoOrden.count({where}),
+      tx.$queryRaw<Array<{tipo:string;documentos:number;lineas:number;
+       lineasSinMovimiento:number;costoRegistrado:string}>>`
+       SELECT co.tipo::text AS tipo,
+        COUNT(DISTINCT co.id)::int AS documentos,
+        COUNT(cl.id)::int AS lineas,
+        COUNT(cl.id) FILTER (WHERE mi.id IS NULL)::int AS "lineasSinMovimiento",
+        COALESCE(SUM(mi."costoTotal"),0)::text AS "costoRegistrado"
+       FROM "ConsumoOrden" co
+        JOIN "Orden" o ON o.id=co."ordenId"
+        LEFT JOIN "ConsumoOrdenLinea" cl ON cl."consumoId"=co.id
+        LEFT JOIN "MovimientoInventario" mi ON mi.id=cl."movimientoId"
+         AND mi.tipo='CONSUMO' AND mi."referenciaTipo"='CONSUMO_ORDEN'
+         AND mi."referenciaId"=co.id
+       WHERE o."sucursalId"=${b.id} AND co."creadoEn">=${b.from}
+        AND co."creadoEn"<${b.to}
+       GROUP BY co.tipo ORDER BY co.tipo`
+     ]);
+     const categories=groups.map(g=>({tipo:g.tipo,documentos:g.documentos,
+      lineas:g.lineas,lineasSinMovimiento:g.lineasSinMovimiento,
+      costoRegistrado:new Prisma.Decimal(g.costoRegistrado).toFixed(6)}));
+     const sum=(field:'lineas'|'lineasSinMovimiento')=>
+      categories.reduce((n,c)=>n+c[field],0);
+     const totalCost=categories.reduce((n,c)=>n.plus(c.costoRegistrado),
+      new Prisma.Decimal(0));
+     return {...header,totales:{documentos:total,lineas:sum('lineas'),
+      lineasSinMovimiento:sum('lineasSinMovimiento'),
+      costoRegistrado:totalCost.toFixed(6),porTipo:categories},
+      data:rows.map(doc=>{
+       const lineas=doc.consumoOrdenLineasComoConsumo.map(l=>{
+        const m=l.movimiento;
+        const trazabilidadValida=!!m&&m.tipo==='CONSUMO'&&
+         m.referenciaTipo==='CONSUMO_ORDEN'&&m.referenciaId===doc.id;
+        return {id:l.id,articulo:l.articulo,ubicacionId:l.ubicacionId,
+         loteId:l.loteId,cantidad:decimal(l.cantidad),
+         costoUnitarioHistorico:decimal(l.costoUnitario),
+         movimientoId:l.movimientoId,trazabilidadValida,
+         costoMovimiento:trazabilidadValida?m!.costoTotal.toFixed(6):null,
+         movimiento:m?{id:m.id,fecha:m.creadoEn,tipo:m.tipo,
+          cantidad:decimal(m.cantidad),costoTotal:decimal(m.costoTotal),
+          referenciaTipo:m.referenciaTipo,referenciaId:m.referenciaId}:null};
+       });
+       const completo=lineas.length>0&&lineas.every(l=>l.trazabilidadValida);
+       const costo=completo?lineas.reduce((n,l)=>n.plus(l.costoMovimiento!),
+        new Prisma.Decimal(0)).toFixed(6):null;
+       return {id:doc.id,fecha:doc.creadoEn,tipo:doc.tipo,
+        orden:doc.orden,ordenLinea:doc.ordenLinea,comandaLineaId:doc.comandaLineaId,
+        recetaVersionId:doc.recetaVersionId,
+        cantidadPreparada:doc.cantidadPreparada?decimal(doc.cantidadPreparada):null,
+        costoRegistrado:costo,trazabilidadCompleta:completo,lineas};
+      }),meta:meta(q.page,q.limit,total)};
     }
     case 'INVENTORY_MOVEMENTS':{
      const where:Prisma.MovimientoInventarioWhereInput={

@@ -1,14 +1,15 @@
-import {ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
+import {BadRequestException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
 import {Prisma} from '../../../../generated/prisma/client.js';
 import {PrismaService} from '../../../../infrastructure/database/prisma/prisma.service.js';
 import {operationalDate} from '../../../payments/domain/payment.policy.js';
 import {financialBusinessWindow} from '../../../finance/domain/operational-close.policy.js';
 import {resolvePeriod,ensurePage} from '../../domain/report-period.policy.js';
 import type {Principal} from '../../../auth/application/auth.service.js';
-import type {TicketQuery} from '../../application/contracts/reporting.types.js';
+import type {TicketQuery,ConsolidatedQuery} from '../../application/contracts/reporting.types.js';
 import {salesCostAttribution} from './sales-cost-attribution.js';
 import {orderCostOutcomes} from './order-cost-outcomes.js';
 import {paymentSalesReconciliation,supplierBalances,platformSettlements,bankMatchStatus} from './financial-reconciliation.js';
+import {financialBranchRollup} from './branch-rollup.js';
 import {DomainReportsPort,type ReportSource} from '../../application/ports/domain-reports.port.js';
 
 type Tx=Prisma.TransactionClient;
@@ -55,6 +56,31 @@ export class DomainReportsStore extends DomainReportsPort{
    zonaHoraria,corte,desde:days.desde,hasta:days.hasta,
    from:financialBusinessWindow(days.desde,zonaHoraria,corte).from,
    to:financialBusinessWindow(days.hasta,zonaHoraria,corte).to};
+ }
+ async consolidated(u:Principal,q:ConsolidatedQuery){
+  const ids=q.sucursalIds.split(',');
+  if(ids.length<1||ids.length>10||ids.some(id=>!id||!/^[a-zA-Z0-9_-]+$/.test(id))||
+   new Set(ids).size!==ids.length)
+   throw new BadRequestException('sucursalIds requiere 1 a 10 IDs únicos');
+  return this.read(async tx=>{
+   const scopes=[];
+   for(const id of ids){
+    const b=await this.context(tx,u,'SALES_LINES',{...q,sucursalId:id,page:1,limit:1});
+    // Explicit payments permission: users with sales-only roles cannot infer cash.
+    const authorized=await tx.usuarioRol.findFirst({where:{
+     usuarioId:u.id,usuario:{activo:true},OR:[
+      {sucursalId:null,rol:{activo:true,alcance:'GLOBAL',
+       rolPermisosComoRol:{some:{permiso:{codigo:'payments.read'}}}}},
+      {sucursalId:id,rol:{activo:true,alcance:'SUCURSAL',
+       rolPermisosComoRol:{some:{permiso:{codigo:'payments.read'}}}}}]
+    },select:{id:true}});
+    if(!authorized)throw new ForbiddenException('Permiso payments.read insuficiente');
+    scopes.push(b);
+   }
+   return {source:'BRANCH_ROLLUP',generatedAt:new Date().toISOString(),
+    sucursalesSolicitadas:ids.length,
+    ...await financialBranchRollup(tx,scopes)};
+  });
  }
  async records(u:Principal,kind:ReportSource,q:TicketQuery){
   ensurePage(q.page,q.limit);

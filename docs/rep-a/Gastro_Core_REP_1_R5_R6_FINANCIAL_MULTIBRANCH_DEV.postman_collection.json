@@ -1,0 +1,578 @@
+{
+  "info": {
+    "name": "Gastro Core REP-A R5+R6 — Finanzas y multi-sucursal DEV",
+    "description": "Validación conjunta R5 (PAYMENT_SALES_RECON, SUPPLIER_BALANCES, PLATFORM_SETTLEMENTS, BANK_MATCH_STATUS) y R6 BRANCH_ROLLUP. Los resultados son fuentes con momentos de reconocimiento independientes. Requiere permisos reportes más permisos financieros de cada módulo. La diferencia cobros/ventas NO implica error contable automático. No sumar monedas distintas.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "R5.1 Pagos contra ventas (mes, cuentas sin venta)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/reports/analytics/sources/PAYMENT_SALES_RECON?sucursalId={{sucursalId}}&periodo=PERSONALIZADO&desde={{desde}}&hasta={{hasta}}&page=1&limit=100",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "reports",
+            "analytics",
+            "sources",
+            "PAYMENT_SALES_RECON"
+          ],
+          "query": [
+            {
+              "key": "sucursalId",
+              "value": "{{sucursalId}}"
+            },
+            {
+              "key": "periodo",
+              "value": "PERSONALIZADO"
+            },
+            {
+              "key": "desde",
+              "value": "{{desde}}"
+            },
+            {
+              "key": "hasta",
+              "value": "{{hasta}}"
+            },
+            {
+              "key": "page",
+              "value": "1"
+            },
+            {
+              "key": "limit",
+              "value": "100"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();\nconst cents=s=>{const m=/^(-?)(\\d+)\\.(\\d{2})$/.exec(String(s));pm.expect(m).not.to.equal(null);return (m[1]==='-'?-1n:1n)*(BigInt(m[2])*100n+BigInt(m[3]));};\n",
+              "pm.expect(r.data).to.be.an('array');\npm.expect(r.meta.total).to.be.at.least(0);\npm.expect(r.data.length).to.be.at.most(r.meta.limit);\npm.expect(r.meta.totalPages).to.equal(Math.ceil(r.meta.total/r.meta.limit));\npm.expect(r.sucursal.id).to.equal(pm.collectionVariables.get('sucursalId'));\n",
+              "pm.expect(r.source).to.equal('PAYMENT_SALES_RECON');\npm.expect(r.totales.cuentasConVenta+r.totales.cuentasSinVenta).to.equal(r.totales.cuentas);\npm.expect(cents(r.totales.cobrado)-cents(r.totales.reembolsadoHistorico)).to.equal(cents(r.totales.netoHistorico));\nfor(const c of r.data){\n pm.expect(c.reconocimientoVenta).to.equal(c.ventaId?'CON_VENTA':'SIN_VENTA');\n pm.expect(cents(c.cobrado)-cents(c.reembolsadoHistorico)).to.equal(cents(c.netoHistorico));\n}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "R5.2 Pagos vs ventas del día de diferencia Q88 / Q22",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/reports/analytics/sources/PAYMENT_SALES_RECON?sucursalId={{sucursalId}}&periodo=DIA&fecha={{fecha}}&page=1&limit=100",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "reports",
+            "analytics",
+            "sources",
+            "PAYMENT_SALES_RECON"
+          ],
+          "query": [
+            {
+              "key": "sucursalId",
+              "value": "{{sucursalId}}"
+            },
+            {
+              "key": "periodo",
+              "value": "DIA"
+            },
+            {
+              "key": "fecha",
+              "value": "{{fecha}}"
+            },
+            {
+              "key": "page",
+              "value": "1"
+            },
+            {
+              "key": "limit",
+              "value": "100"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();\nconst cents=s=>{const m=/^(-?)(\\d+)\\.(\\d{2})$/.exec(String(s));pm.expect(m).not.to.equal(null);return (m[1]==='-'?-1n:1n)*(BigInt(m[2])*100n+BigInt(m[3]));};\n",
+              "pm.expect(r.data).to.be.an('array');\npm.expect(r.meta.total).to.be.at.least(0);\npm.expect(r.data.length).to.be.at.most(r.meta.limit);\npm.expect(r.meta.totalPages).to.equal(Math.ceil(r.meta.total/r.meta.limit));\npm.expect(r.sucursal.id).to.equal(pm.collectionVariables.get('sucursalId'));\n",
+              "pm.expect(r.source).to.equal('PAYMENT_SALES_RECON');\npm.expect(r.totales.cuentasConVenta+r.totales.cuentasSinVenta).to.equal(r.totales.cuentas);\npm.expect(cents(r.totales.cobrado)-cents(r.totales.reembolsadoHistorico)).to.equal(cents(r.totales.netoHistorico));\npm.collectionVariables.set('r5_cobrado_dia',r.totales.cobrado);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "R5.3 Saldo de facturas de proveedor confirmado",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/reports/analytics/sources/SUPPLIER_BALANCES?sucursalId={{sucursalId}}&periodo=PERSONALIZADO&desde={{desde}}&hasta={{hasta}}&page=1&limit=100",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "reports",
+            "analytics",
+            "sources",
+            "SUPPLIER_BALANCES"
+          ],
+          "query": [
+            {
+              "key": "sucursalId",
+              "value": "{{sucursalId}}"
+            },
+            {
+              "key": "periodo",
+              "value": "PERSONALIZADO"
+            },
+            {
+              "key": "desde",
+              "value": "{{desde}}"
+            },
+            {
+              "key": "hasta",
+              "value": "{{hasta}}"
+            },
+            {
+              "key": "page",
+              "value": "1"
+            },
+            {
+              "key": "limit",
+              "value": "100"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();\nconst cents=s=>{const m=/^(-?)(\\d+)\\.(\\d{2})$/.exec(String(s));pm.expect(m).not.to.equal(null);return (m[1]==='-'?-1n:1n)*(BigInt(m[2])*100n+BigInt(m[3]));};\n",
+              "pm.expect(r.data).to.be.an('array');\npm.expect(r.meta.total).to.be.at.least(0);\npm.expect(r.data.length).to.be.at.most(r.meta.limit);\npm.expect(r.meta.totalPages).to.equal(Math.ceil(r.meta.total/r.meta.limit));\npm.expect(r.sucursal.id).to.equal(pm.collectionVariables.get('sucursalId'));\n",
+              "pm.expect(r.source).to.equal('SUPPLIER_BALANCES');\npm.expect(cents(r.totales.facturado)-cents(r.totales.pagosAplicados)-cents(r.totales.creditosAplicados)).to.equal(cents(r.totales.saldo));\nfor(const f of r.data){pm.expect(cents(f.total)-cents(f.pagosAplicados)-cents(f.creditosAplicados)).to.equal(cents(f.saldo));}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "R5.4 Liquidaciones de plataformas y comisiones",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/reports/analytics/sources/PLATFORM_SETTLEMENTS?sucursalId={{sucursalId}}&periodo=PERSONALIZADO&desde={{desde}}&hasta={{hasta}}&page=1&limit=100",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "reports",
+            "analytics",
+            "sources",
+            "PLATFORM_SETTLEMENTS"
+          ],
+          "query": [
+            {
+              "key": "sucursalId",
+              "value": "{{sucursalId}}"
+            },
+            {
+              "key": "periodo",
+              "value": "PERSONALIZADO"
+            },
+            {
+              "key": "desde",
+              "value": "{{desde}}"
+            },
+            {
+              "key": "hasta",
+              "value": "{{hasta}}"
+            },
+            {
+              "key": "page",
+              "value": "1"
+            },
+            {
+              "key": "limit",
+              "value": "100"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();\nconst cents=s=>{const m=/^(-?)(\\d+)\\.(\\d{2})$/.exec(String(s));pm.expect(m).not.to.equal(null);return (m[1]==='-'?-1n:1n)*(BigInt(m[2])*100n+BigInt(m[3]));};\n",
+              "pm.expect(r.data).to.be.an('array');\npm.expect(r.meta.total).to.be.at.least(0);\npm.expect(r.data.length).to.be.at.most(r.meta.limit);\npm.expect(r.meta.totalPages).to.equal(Math.ceil(r.meta.total/r.meta.limit));\npm.expect(r.sucursal.id).to.equal(pm.collectionVariables.get('sucursalId'));\n",
+              "pm.expect(r.source).to.equal('PLATFORM_SETTLEMENTS');\npm.expect(cents(r.totales.bruto)-cents(r.totales.comisiones)).to.equal(cents(r.totales.neto));\nfor(const l of r.data){pm.expect(cents(l.bruto)-cents(l.comision)).to.equal(cents(l.neto));}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "R5.5 Extractos bancarios pendientes y conciliados",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/reports/analytics/sources/BANK_MATCH_STATUS?sucursalId={{sucursalId}}&periodo=PERSONALIZADO&desde={{desde}}&hasta={{hasta}}&page=1&limit=100",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "reports",
+            "analytics",
+            "sources",
+            "BANK_MATCH_STATUS"
+          ],
+          "query": [
+            {
+              "key": "sucursalId",
+              "value": "{{sucursalId}}"
+            },
+            {
+              "key": "periodo",
+              "value": "PERSONALIZADO"
+            },
+            {
+              "key": "desde",
+              "value": "{{desde}}"
+            },
+            {
+              "key": "hasta",
+              "value": "{{hasta}}"
+            },
+            {
+              "key": "page",
+              "value": "1"
+            },
+            {
+              "key": "limit",
+              "value": "100"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();\nconst cents=s=>{const m=/^(-?)(\\d+)\\.(\\d{2})$/.exec(String(s));pm.expect(m).not.to.equal(null);return (m[1]==='-'?-1n:1n)*(BigInt(m[2])*100n+BigInt(m[3]));};\n",
+              "pm.expect(r.data).to.be.an('array');\npm.expect(r.meta.total).to.be.at.least(0);\npm.expect(r.data.length).to.be.at.most(r.meta.limit);\npm.expect(r.meta.totalPages).to.equal(Math.ceil(r.meta.total/r.meta.limit));\npm.expect(r.sucursal.id).to.equal(pm.collectionVariables.get('sucursalId'));\n",
+              "pm.expect(r.source).to.equal('BANK_MATCH_STATUS');\npm.expect(r.totales.conciliadas+r.totales.pendientes).to.equal(r.totales.lineas);\nfor(const l of r.data){pm.expect(l.conciliado).to.equal(l.movimientoFinancieroId!==null);}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "R5.6 Paginación pagos limit 1 (totales no dependen de página)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/reports/analytics/sources/PAYMENT_SALES_RECON?sucursalId={{sucursalId}}&periodo=PERSONALIZADO&desde={{desde}}&hasta={{hasta}}&page=1&limit=1",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "reports",
+            "analytics",
+            "sources",
+            "PAYMENT_SALES_RECON"
+          ],
+          "query": [
+            {
+              "key": "sucursalId",
+              "value": "{{sucursalId}}"
+            },
+            {
+              "key": "periodo",
+              "value": "PERSONALIZADO"
+            },
+            {
+              "key": "desde",
+              "value": "{{desde}}"
+            },
+            {
+              "key": "hasta",
+              "value": "{{hasta}}"
+            },
+            {
+              "key": "page",
+              "value": "1"
+            },
+            {
+              "key": "limit",
+              "value": "1"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();\npm.expect(r.source).to.equal('PAYMENT_SALES_RECON');\npm.expect(r.data.length).to.be.at.most(1);\npm.expect(r.meta.limit).to.equal(1);\npm.expect(r.meta.total).to.equal(r.totales.cuentas);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "R6.1 Consolidado multi-sucursal (una sucursal autorizada)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/reports/analytics/sources/consolidated?sucursalIds={{sucursalId}}&periodo=PERSONALIZADO&desde={{desde}}&hasta={{hasta}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "reports",
+            "analytics",
+            "sources",
+            "consolidated"
+          ],
+          "query": [
+            {
+              "key": "sucursalIds",
+              "value": "{{sucursalId}}"
+            },
+            {
+              "key": "periodo",
+              "value": "PERSONALIZADO"
+            },
+            {
+              "key": "desde",
+              "value": "{{desde}}"
+            },
+            {
+              "key": "hasta",
+              "value": "{{hasta}}"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();\nconst cents=s=>{const m=/^(-?)(\\d+)\\.(\\d{2})$/.exec(String(s));pm.expect(m).not.to.equal(null);return (m[1]==='-'?-1n:1n)*(BigInt(m[2])*100n+BigInt(m[3]));};\n",
+              "pm.expect(r.source).to.equal('BRANCH_ROLLUP');\npm.expect(r.sucursalesSolicitadas).to.equal(1);\npm.expect(r.data).to.have.lengthOf(1);\npm.expect(r.data[0].sucursal.id).to.equal(pm.collectionVariables.get('sucursalId'));\npm.expect(r.totalesPorMoneda).to.be.an('array').that.has.lengthOf(1);\npm.expect(r.totalesPorMoneda[0].currency).to.equal(r.data[0].currency);\npm.expect(cents(r.data[0].cobrado)-cents(r.data[0].ingresos)).to.equal(cents(r.data[0].diferenciaCobrosVsVentas));\npm.expect(r.data[0].cobrado).to.equal(r.totalesPorMoneda[0].cobrado);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "R6.2 Consolidado diario (validar fecha distinta por caja/ventas)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/reports/analytics/sources/consolidated?sucursalIds={{sucursalId}}&periodo=DIA&fecha={{fecha}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "reports",
+            "analytics",
+            "sources",
+            "consolidated"
+          ],
+          "query": [
+            {
+              "key": "sucursalIds",
+              "value": "{{sucursalId}}"
+            },
+            {
+              "key": "periodo",
+              "value": "DIA"
+            },
+            {
+              "key": "fecha",
+              "value": "{{fecha}}"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();\nconst cents=s=>{const m=/^(-?)(\\d+)\\.(\\d{2})$/.exec(String(s));pm.expect(m).not.to.equal(null);return (m[1]==='-'?-1n:1n)*(BigInt(m[2])*100n+BigInt(m[3]));};\n",
+              "pm.expect(r.source).to.equal('BRANCH_ROLLUP');\npm.expect(r.data).to.have.lengthOf(1);\nconst line=r.data[0];\npm.expect(cents(line.cobrado)-cents(line.ingresos)).to.equal(cents(line.diferenciaCobrosVsVentas));\nif(pm.collectionVariables.get('r5_cobrado_dia'))pm.expect(line.cobrado).to.equal(pm.collectionVariables.get('r5_cobrado_dia'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "R6.3 Rechazar sucursal duplicada (400, sin filtrar datos)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/reports/analytics/sources/consolidated?sucursalIds={{sucursalId}},{{sucursalId}}&periodo=DIA&fecha={{fecha}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "reports",
+            "analytics",
+            "sources",
+            "consolidated"
+          ],
+          "query": [
+            {
+              "key": "sucursalIds",
+              "value": "{{sucursalId}},{{sucursalId}}"
+            },
+            {
+              "key": "periodo",
+              "value": "DIA"
+            },
+            {
+              "key": "fecha",
+              "value": "{{fecha}}"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(400);",
+              "const r=pm.response.json();\npm.expect(r.statusCode||r.status).to.equal(400);"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "sucursalId",
+      "value": "cmv8p4k3x0001u4v4xor2zgqu"
+    },
+    {
+      "key": "desde",
+      "value": "2026-10-01"
+    },
+    {
+      "key": "hasta",
+      "value": "2026-10-30"
+    },
+    {
+      "key": "fecha",
+      "value": "2026-10-30"
+    }
+  ]
+}

@@ -121,6 +121,16 @@ describe('REP-A source reports data and financial guardrails',()=>{
    .rejects.toThrow('inventory.costs.read');
   expect(tx.consumoOrden.findMany).not.toHaveBeenCalled();
  });
+ it('requires reports, sales and historical inventory cost permissions for sale margins',async()=>{
+  const {store,tx}=rig();
+  tx.usuarioRol.findFirst.mockResolvedValueOnce({id:'reports'})
+   .mockResolvedValueOnce({id:'sales'}).mockResolvedValueOnce(null);
+  await expect(store.records(actor,'SALES_COSTS',{
+   sucursalId:'s1',periodo:'DIA',fecha:'2026-10-30',page:1,limit:20}))
+   .rejects.toThrow('inventory.costs.read');
+  expect(tx.usuarioRol.findFirst).toHaveBeenCalledTimes(3);
+  expect(tx.$queryRaw).not.toHaveBeenCalled();
+ });
  it('keeps inventory cost at actual recorded precision and references original movement',async()=>{
   const {store,tx}=rig();
   const x=await store.records(actor,'INVENTORY_MOVEMENTS',{

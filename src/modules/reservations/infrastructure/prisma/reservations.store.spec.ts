@@ -126,7 +126,7 @@ describe('RSV-A serializable reservation invariants',()=>{
  it('allows a read-only branch role to list but forbids booking mutations',async()=>{
   const {store,tx}=rig();
   tx.usuarioRol.findFirst.mockImplementation(async ({where}:any)=>
-   where.OR.some((x:any)=>x.rol?.rolPermisosComoRol?.some?.codigo==='reservations.read')
+   where.OR.some((x:any)=>x.rol?.rolPermisosComoRol?.some?.permiso?.codigo==='reservations.read')
    ?{id:'read-only'}:null);
   await expect(store.list(u,{sucursalId:'branch',page:1,limit:20}))
    .resolves.toHaveProperty('data');

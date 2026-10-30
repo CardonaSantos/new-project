@@ -30,7 +30,8 @@ const [one,two]=await Promise.all([
  request('/api/reservations','POST',{...payload,claveOperacion:'RSV:RACE:'+nonce+':TWO'})
 ]);
 console.log('Two simultaneous reservations:',one.status,two.status);
-const winner=[one,two].find(x=>x.status===201)?.data;
+const winners=[one,two].filter(x=>x.status===201&&x.data?.id).map(x=>x.data);
+const winner=winners[0];
 try{
  if(!winner?.id)throw Error('Neither request succeeded; inspect HTTP responses');
  if(![one.status,two.status].includes(409)||
@@ -42,10 +43,10 @@ try{
   throw Error('Availability does not reflect the single winning reservation');
  console.log('PASS: one winner, one conflict; availability linked to winner');
 }finally{
- if(winner?.id){
-  const cleanup=await request('/api/reservations/'+encodeURIComponent(winner.id)+'/cancel',
+ for(const entry of winners){
+  const cleanup=await request('/api/reservations/'+encodeURIComponent(entry.id)+'/cancel',
    'POST',{motivo:'Fin de prueba concurrente DEV'});
-  console.log('Cleanup reservation:',winner.id,'HTTP',cleanup.status);
+  console.log('Cleanup reservation:',entry.id,'HTTP',cleanup.status);
   if(cleanup.status!==201)process.exitCode=1;
  }
 }

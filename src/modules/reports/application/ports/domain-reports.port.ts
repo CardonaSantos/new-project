@@ -9,5 +9,6 @@ export const REPORT_SOURCES=[
 export type ReportSource=typeof REPORT_SOURCES[number];
 export abstract class DomainReportsPort{
  abstract records(u:Principal,source:ReportSource,q:TicketQuery):Promise<unknown>;
+ abstract exportRecords(u:Principal,source:ReportSource,q:TicketQuery):Promise<unknown>;
  abstract consolidated(u:Principal,q:ConsolidatedQuery):Promise<unknown>;
 }

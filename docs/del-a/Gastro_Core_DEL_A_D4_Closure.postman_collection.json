@@ -1,0 +1,1127 @@
+{
+  "info": {
+    "name": "Gastro Core DEL-A D4 Integración y cierre DEV",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "D4 prueba las invariantes de cierre, cocina, cobro, entrega, Venta, caja y cancelación sincronizada. NO utilizar en producción."
+  },
+  "item": [
+    {
+      "name": "00 Previous D3 delivered but UNSENT order cannot be finalized",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/deliveries/{{historicDeliveryId}}/closure-readiness",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if(!pm.collectionVariables.get('runId'))pm.collectionVariables.set('runId',Date.now().toString());"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);pm.expect(pm.response.json().blockers).to.include('LINES_NOT_SENT');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 Finalization of historical D3 test is blocked",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/deliveries/{{historicDeliveryId}}/finalize-order",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(409);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 List kitchen routes — ensure variant has a route",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/kitchen/routes?sucursalId={{sucursalId}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "for(const k of ['token','sucursalId','courierId','varianteId','turnoCajaId'])if(!pm.collectionVariables.get(k))throw new Error('Variable faltante '+k);"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 Create new DELIVERY order, no kitchen send yet",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/orders",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"modalidad\": \"DELIVERY\",\n  \"origen\": \"CAJA\",\n  \"claveOperacion\": \"D4:{{runId}}:order-ready\",\n  \"enviarCocina\": false,\n  \"lineas\": [\n    {\n      \"varianteId\": \"{{varianteId}}\",\n      \"cantidad\": \"1.000\"\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);const j=pm.response.json();pm.collectionVariables.set('orderId',j.id);pm.collectionVariables.set('accountId',j.cuentasComoOrden[0].id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Create and assign delivery instantly",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/deliveries",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"ordenId\": \"{{orderId}}\",\n  \"claveOperacion\": \"D4:{{runId}}:delivery\",\n  \"repartidorId\": \"{{courierId}}\",\n  \"direccionTexto\": \"Zona 1, domicilio sintético D4\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);pm.collectionVariables.set('deliveryId',pm.response.json().id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 Readiness explains missing delivery, kitchen and payment",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/deliveries/{{deliveryId}}/closure-readiness",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);const b=pm.response.json().blockers;pm.expect(b).to.include('DELIVERY_NOT_COMPLETED');pm.expect(b).to.include('LINES_NOT_SENT');pm.expect(b).to.include('ACCOUNTS_UNPAID');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 Send prepared products to kitchen",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/orders/{{orderId}}/send",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D4:{{runId}}:send\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);const j=pm.response.json();pm.expect(j.comandasComoOrden.length).to.be.greaterThan(0);pm.collectionVariables.set('ticketId',j.comandasComoOrden[0].id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 Readiness blocks while the kitchen is working",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/deliveries/{{deliveryId}}/closure-readiness",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);pm.expect(pm.response.json().blockers).to.include('KITCHEN_PENDING');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 Mark kitchen ticket READY",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/kitchen/tickets/{{ticketId}}/ready",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 Dispatch courier",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/deliveries/{{deliveryId}}/dispatch",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D4:{{runId}}:dispatch\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);pm.expect(pm.response.json().estado).to.equal('EN_REPARTO');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 Courier receives Q22 in street, no caja ingress yet",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/deliveries/{{deliveryId}}/collect-cash",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D4:{{runId}}:cash\",\n  \"cuentaId\": \"{{accountId}}\",\n  \"monto\": \"22.00\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);pm.collectionVariables.set('paymentId',pm.response.json().pagoId);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "11 Even if PAID, cannot close before handover",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/orders/{{orderId}}/close",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(409);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "12 Complete delivery",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/deliveries/{{deliveryId}}/complete",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D4:{{runId}}:complete\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);pm.expect(pm.response.json().estado).to.equal('ENTREGADA');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "13 Ready for one-click order close",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/deliveries/{{deliveryId}}/closure-readiness",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);const j=pm.response.json();pm.expect(j.canFinalize).to.equal(true);pm.expect(j.blockers).to.have.lengthOf(0);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "14 Finalize through PAY-A, no duplicate accounting path",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/deliveries/{{deliveryId}}/finalize-order",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);pm.expect(pm.response.json().alreadyClosed).to.equal(true);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "15 Finalize again: idempotent, no second sale",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/deliveries/{{deliveryId}}/finalize-order",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);pm.expect(pm.response.json().alreadyClosed).to.equal(true);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "16 Verify ORDER closed and account closed",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/orders/{{orderId}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);const j=pm.response.json();pm.expect(j.estado).to.equal('CERRADA');pm.expect(j.cuentasComoOrden[0].estado).to.equal('CERRADA');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "17 Verify PAY-A recorded one internal sale for the account",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/accounts/{{accountId}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);const j=pm.response.json();pm.expect(j.venta).to.exist;pm.collectionVariables.set('saleId',j.venta.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "18 Create courier settlement (cash still in courier custody)",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/deliveries/settlements/couriers",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D4:{{runId}}:settlement\",\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"repartidorId\": \"{{courierId}}\",\n  \"pagoIds\": [\n    \"{{paymentId}}\"\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);pm.collectionVariables.set('settlementId',pm.response.json().id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "19 Handover Q22 once into current cash shift",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/deliveries/settlements/couriers/{{settlementId}}/close",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D4:{{runId}}:settle\",\n  \"turnoCajaId\": \"{{turnoCajaId}}\",\n  \"totalEntregado\": \"22.00\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);pm.collectionVariables.set('cashMovementId',pm.response.json().movimientoCajaId);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "20 Repeat settlement closure: same MovimientoCaja",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/deliveries/settlements/couriers/{{settlementId}}/close",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D4:{{runId}}:settle\",\n  \"turnoCajaId\": \"{{turnoCajaId}}\",\n  \"totalEntregado\": \"22.00\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);pm.expect(pm.response.json().movimientoCajaId).to.equal(pm.collectionVariables.get('cashMovementId'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "21 Cancel already completed order rejected",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/orders/{{orderId}}/cancel",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"motivo\": \"Cancelación inválida posterior al cierre\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(409);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "22 Create second order for pending cancellation",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/orders",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sucursalId\": \"{{sucursalId}}\",\n  \"modalidad\": \"DELIVERY\",\n  \"origen\": \"CAJA\",\n  \"claveOperacion\": \"D4:{{runId}}:order-cancel\",\n  \"enviarCocina\": false,\n  \"lineas\": [\n    {\n      \"varianteId\": \"{{varianteId}}\",\n      \"cantidad\": \"1.000\"\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);pm.collectionVariables.set('cancelOrderId',pm.response.json().id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "23 Create pending delivery for that order",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/deliveries",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"claveOperacion\": \"D4:{{runId}}:pending-delivery\",\n  \"ordenId\": \"{{cancelOrderId}}\",\n  \"direccionTexto\": \"Zona 2, domicilio DEV cancelación\",\n  \"repartidorId\": \"{{courierId}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);pm.collectionVariables.set('cancelDeliveryId',pm.response.json().id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "24 Cancel order directly; pending delivery automatically cancelled",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/orders/{{cancelOrderId}}/cancel",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"motivo\": \"Cliente canceló antes de iniciar el reparto\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(201);pm.expect(pm.response.json().estado).to.equal('CANCELADA');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "25 Verify pending delivery is cancelled, not orphaned",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/deliveries/{{cancelDeliveryId}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);pm.expect(pm.response.json().estado).to.equal('CANCELADA');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "26 Verify synchronized audit history",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/deliveries/{{cancelDeliveryId}}/events",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-sucursal-id",
+            "value": "{{sucursalId}}"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);pm.expect(pm.response.json().data.map(e=>e.accion)).to.include('DELIVERY_CANCELLED_WITH_ORDER');"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "sucursalId",
+      "value": ""
+    },
+    {
+      "key": "courierId",
+      "value": ""
+    },
+    {
+      "key": "varianteId",
+      "value": ""
+    },
+    {
+      "key": "turnoCajaId",
+      "value": ""
+    },
+    {
+      "key": "runId",
+      "value": ""
+    },
+    {
+      "key": "historicDeliveryId",
+      "value": ""
+    },
+    {
+      "key": "orderId",
+      "value": ""
+    },
+    {
+      "key": "accountId",
+      "value": ""
+    },
+    {
+      "key": "deliveryId",
+      "value": ""
+    },
+    {
+      "key": "ticketId",
+      "value": ""
+    },
+    {
+      "key": "paymentId",
+      "value": ""
+    },
+    {
+      "key": "saleId",
+      "value": ""
+    },
+    {
+      "key": "settlementId",
+      "value": ""
+    },
+    {
+      "key": "cashMovementId",
+      "value": ""
+    },
+    {
+      "key": "cancelOrderId",
+      "value": ""
+    },
+    {
+      "key": "cancelDeliveryId",
+      "value": ""
+    }
+  ]
+}

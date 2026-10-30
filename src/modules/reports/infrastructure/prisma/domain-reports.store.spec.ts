@@ -28,6 +28,7 @@ function rig(){
     {modalidad:'MESA',unidades:'1.000',importe:'22.00',descuentos:'1.00'},
     {modalidad:'DELIVERY',unidades:'1.000',importe:'11.50',descuentos:'0.50'}
    ]),
+  consumoOrden:{findMany:vi.fn().mockResolvedValue([]),count:vi.fn().mockResolvedValue(0)},
   movimientoInventario:{
    findMany:vi.fn().mockResolvedValue([{id:'mov1',creadoEn:new Date('2026-10-30T17:00:00Z'),
     tipo:'CONSUMO',articulo:{id:'art1',codigo:'A1',nombre:'Harina'},
@@ -66,6 +67,57 @@ describe('REP-A source reports data and financial guardrails',()=>{
    expect(descuentos.toFixed(2)).toBe(r.totales.descuentos);
   }
   expect(tx.$queryRaw).toHaveBeenCalledTimes(4);
+ });
+ it('traces historical recipe/direct/packaging costs to real movement totals, not rounded unit price',async()=>{
+  const {store,tx}=rig();
+  tx.consumoOrden.count.mockResolvedValue(2);
+  const header={id:'order1',numero:'ORD-1',modalidad:'MESA',estado:'CERRADA'};
+  const article={id:'art1',codigo:'MILK',nombre:'Leche'};
+  tx.consumoOrden.findMany.mockResolvedValue([
+   {id:'doc1',tipo:'RECETA',creadoEn:new Date('2026-10-30T16:00:00Z'),
+    orden:header,ordenLinea:{id:'ol1',nombreSnapshot:'Café',variante:{
+     id:'v1',nombre:'Mediano',producto:{id:'p1',nombre:'Café'}}},
+    comandaLineaId:'cl1',recetaVersionId:'rv1',cantidadPreparada:d('1.000'),
+    consumoOrdenLineasComoConsumo:[{id:'dline1',articulo,ubicacionId:'loc1',
+     loteId:null,cantidad:d('150.000000'),costoUnitario:d('0.010286'),movimientoId:'mov1',
+     movimiento:{id:'mov1',creadoEn:new Date('2026-10-30T16:00:00Z'),tipo:'CONSUMO',
+      cantidad:d('-150.000000'),costoTotal:d('1.542857'),referenciaTipo:'CONSUMO_ORDEN',
+      referenciaId:'doc1'}}]},
+   {id:'doc2',tipo:'EMPAQUE',creadoEn:new Date('2026-10-30T16:01:00Z'),
+    orden:header,ordenLinea:null,comandaLineaId:null,recetaVersionId:null,cantidadPreparada:null,
+    consumoOrdenLineasComoConsumo:[{id:'dline2',articulo,ubicacionId:'loc1',
+     loteId:null,cantidad:d('1.000000'),costoUnitario:d('0.200000'),movimientoId:null,
+     movimiento:null}]}
+  ]);
+  tx.$queryRaw.mockReset().mockResolvedValue([
+   {tipo:'RECETA',documentos:1,lineas:1,lineasSinMovimiento:0,costoRegistrado:'1.542857'},
+   {tipo:'EMPAQUE',documentos:1,lineas:1,lineasSinMovimiento:1,costoRegistrado:'0'}
+  ]);
+  const r=await store.records(actor,'PREPARATION_COSTS',{
+   sucursalId:'s1',periodo:'DIA',fecha:'2026-10-30',page:1,limit:1}) as any;
+  expect(r.meta).toMatchObject({total:2,page:1,limit:1});
+  expect(r.totales).toMatchObject({documentos:2,lineas:2,lineasSinMovimiento:1,
+   costoRegistrado:'1.542857'});
+  expect(r.totales.porTipo).toHaveLength(2);
+  expect(r.data[0]).toMatchObject({tipo:'RECETA',ordenLinea:{id:'ol1'},
+   trazabilidadCompleta:true,costoRegistrado:'1.542857'});
+  expect(r.data[1]).toMatchObject({tipo:'EMPAQUE',ordenLinea:null,
+   trazabilidadCompleta:false,costoRegistrado:null});
+  expect(r.data[0].lineas[0]).toMatchObject({movimientoId:'mov1',
+   costoUnitarioHistorico:'0.010286',costoMovimiento:'1.542857',trazabilidadValida:true});
+  expect(tx.consumoOrden.findMany).toHaveBeenCalledWith(expect.objectContaining({
+   where:{orden:{sucursalId:'s1'},creadoEn:expect.any(Object)},take:1,skip:0
+  }));
+  expect(tx.usuarioRol.findFirst).toHaveBeenCalledTimes(2);
+  expect(r).not.toHaveProperty('note');
+ });
+ it('rejects missing historical cost permission without querying consumption ledger',async()=>{
+  const {store,tx}=rig();
+  tx.usuarioRol.findFirst.mockResolvedValueOnce({id:'reports'}).mockResolvedValueOnce(null);
+  await expect(store.records(actor,'PREPARATION_COSTS',{
+   sucursalId:'s1',periodo:'DIA',fecha:'2026-10-30',page:1,limit:20}))
+   .rejects.toThrow('inventory.costs.read');
+  expect(tx.consumoOrden.findMany).not.toHaveBeenCalled();
  });
  it('keeps inventory cost at actual recorded precision and references original movement',async()=>{
   const {store,tx}=rig();

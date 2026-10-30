@@ -2,6 +2,8 @@ import {createHash} from 'node:crypto';
 import {BadRequestException,ConflictException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';
 import {Prisma} from '../../../../generated/prisma/client.js';
 import {PrismaService} from '../../../../infrastructure/database/prisma/prisma.service.js';
+import {PaymentsService} from '../../../payments/application/payments.service.js';
+import {closureReadiness} from '../../domain/closure-readiness.policy.js';
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {DeliveryPort} from '../../application/ports/delivery.port.js';
 import type {DeliveryAction,DeliveryCancel,DeliveryAssign,DeliveryCreate,DeliveryDestination,DeliveryQuery} from '../../application/ports/delivery.port.js';
@@ -17,7 +19,7 @@ const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(value))
 
 @Injectable()
 export class DeliveryStore extends DeliveryPort{
- constructor(private readonly db:PrismaService){super();}
+ constructor(private readonly db:PrismaService,private readonly payments:PaymentsService){super();}
  private async atomic<T>(run:(tx:Tx)=>Promise<T>):Promise<T>{
   for(let attempt=0;attempt<3;attempt++)try{
    return await this.db.$transaction(run,{isolationLevel:Prisma.TransactionIsolationLevel.Serializable,timeout:20000});

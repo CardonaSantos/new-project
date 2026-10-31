@@ -114,16 +114,7 @@ function dailyPages(r:ExportPayload,pages:Page[]){
  const headings=keys.length>1?keys:['fecha','registros'];
  const widths=tableWidths(headings,inner);
  const pageSize=10;
- if(!rows.length){
-  return;
-  const p:Page={content:[]};pages.push(p);commonHeader(p,r,'INFORMACIÓN DIARIA');
-  write(p,'Resumen diario',M,105,19,'F2');
-  rect(p,M,125,inner,80,pale);
-  write(p,r.periodo.desde===r.periodo.hasta?
-   'Sin movimientos fechados en esta fuente para el día.':'Sin desglose por día verificable para este origen.',M+18,153,12,'F2');
-  wrap(d.note,inner-36,10).slice(0,3).forEach((a,i)=>write(p,a,M+18,177+i*14,10,'F1',muted));
-  return;
- }
+ if(!rows.length)return;
  for(let i=0;i<rows.length;i+=pageSize){
   const p:Page={content:[]};pages.push(p);commonHeader(p,r,'INFORMACIÓN DIARIA');
   write(p,r.periodo.desde===r.periodo.hasta?'Detalle del día':'Evolución diaria',

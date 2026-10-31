@@ -57,7 +57,8 @@ const important:Record<string,string[]>={
  PLATFORM_SETTLEMENTS:['bruto','comisiones','neto','liquidaciones'],
  BANK_MATCH_STATUS:['lineas','conciliadas','pendientes','movimientoExtracto']
 };
-export const isMoney=(key:string)=>/ingreso|costo|margen|saldo|cobrad|reembols|neto|bruto|total|comision|monto|importe|facturad|pagosAplicados|creditosAplicados/i.test(key);
+export const isMoney=(key:string)=>!/^(lineas|ordenes|documentos|cuentas|registros|pagos$|ventas$|facturas$|liquidaciones$|reembolsos$)/i.test(key)&&
+ /ingreso|costo|margen|saldo|cobrad|reembols|neto|bruto|total|comision|monto|importe|facturad|pagosAplicados|creditosAplicados/i.test(key);
 const currency=(v:unknown,dp:number)=>new Prisma.Decimal(String(v??0)).toFixed(dp);
 export const reportTitle=(r:ExportPayload)=>titles[r.source]??r.source.replace(/_/g,' ');
 export const fieldLabel=(key:string)=>labels[key]??

@@ -53,8 +53,8 @@ describe('REP-2B professional export renderers',()=>{
   expect(summary).toContain('RESULTADOS PRINCIPALES');
   expect(summary).toContain('REPORTE DEL PERÍODO');
   expect(summary).toContain('Costos y margen de ventas');
-  expect(daily).toContain('2026-10-16');
-  expect(daily).toContain('2026-10-30');
+  expect(daily).toContain('16/10/2026');
+  expect(daily).toContain('30/10/2026');
   expect(detail).toContain('<cols><col min="1"');
   expect(detail).toContain('width="');
   expect(detail).toContain('autoFilter ref="A4:');

@@ -94,6 +94,15 @@ describe('REP-2B professional export renderers',()=>{
   expect(reportMetrics(sample)[0].key).toBe('ingresos');
   expect(businessColumns(sample)).toContain('numeroOrden');
  });
+ it('respects 04:00 branch day cutoff and does not invent missing margins',()=>{
+  const z=reportDaily({...sample,data:[
+   {fecha:'2026-10-30T09:59:00.000Z',ingreso:'12.00',costoDirecto:null},
+   {fecha:'2026-10-30T10:00:00.000Z',ingreso:'22.00',costoDirecto:'1.234567'}
+  ],meta:{total:2}});
+  expect(z.rows.map(x=>x.fecha)).toEqual(['2026-10-29','2026-10-30']);
+  expect(z.rows[0].costoDirecto).toBeUndefined();
+  expect(z.rows[1].costoDirecto).toBe('1.234567');
+ });
  it('supports empty financial datasets without invented monetary totals',()=>{
   const r={...sample,data:[],meta:{total:0}};
   expect(renderCsv(r).toString()).toContain('sinRegistros');

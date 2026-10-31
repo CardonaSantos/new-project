@@ -30,11 +30,13 @@ describe('REP-2B professional export renderers',()=>{
  it('retains RFC CSV, UTF8 BOM, full source detail and spreadsheet injection protection',()=>{
   const csv=renderCsv(sample);
   expect(csv.subarray(0,3)).toEqual(Buffer.from([0xef,0xbb,0xbf]));
-  expect(csv.toString('utf8')).toContain('"o1","ORD-1"');
+  expect(csv.toString('utf8')).toContain('"ORD-1"');
+  expect(csv.toString('utf8')).not.toContain('ordenId');
+  expect(csv.toString('utf8')).toContain('"Ingresos (Q)"');
   expect(csv.toString('utf8')).toContain('"\'=1+2"');
   expect(csv.toString('utf8')).toContain('"\'+SUM(A1)"');
   expect(csv.toString('utf8')).toContain('\r\n');
-  expect(exportTable(sample).headers).toEqual(['ordenId','numeroOrden','fecha','ingreso',
+  expect(exportTable(sample).headers).toEqual(['numeroOrden','fecha','ingreso',
    'costoDirecto','detalle']);
  });
  it('generates validly ordered OOXML styles and three human-readable XLSX worksheets',()=>{
@@ -48,7 +50,8 @@ describe('REP-2B professional export renderers',()=>{
   expect(wb).toContain('name="Resumen"');
   expect(wb).toContain('name="Diario"');
   expect(wb).toContain('name="Detalle"');
-  expect(summary).toContain('INDICADORES PRINCIPALES');
+  expect(summary).toContain('RESULTADOS PRINCIPALES');
+  expect(summary).toContain('REPORTE DEL PERÍODO');
   expect(summary).toContain('Costos y margen de ventas');
   expect(daily).toContain('2026-10-16');
   expect(daily).toContain('2026-10-30');
@@ -57,7 +60,7 @@ describe('REP-2B professional export renderers',()=>{
   expect(detail).toContain('autoFilter ref="A4:');
   expect(detail).toContain('<f>SUM(');
   expect(detail).toContain('t="inlineStr"><is><t xml:space="preserve">=1+2</t>');
-  expect(styles).toContain('formatCode="#,##0.000000"');
+  expect(styles).toContain('formatCode="&quot;Q&quot; #,##0.000000"');
   expect(styles.indexOf('<numFmts')).toBeLessThan(styles.indexOf('<fonts'));
   expect(styles.indexOf('<fonts')).toBeLessThan(styles.indexOf('<fills'));
   expect(styles.indexOf('<fills')).toBeLessThan(styles.indexOf('<borders'));
@@ -69,7 +72,7 @@ describe('REP-2B professional export renderers',()=>{
   const t=pdf.toString('latin1');
   expect(t.startsWith('%PDF-1.4')).toBe(true);
   expect(t).toContain('/Count 3');
-  expect(t).toContain('INDICADORES DEL PER');
+  expect(t).toContain('RESUMEN DEL PER');
   expect(t).toContain('INFORMACI');
   expect(t).toContain('DETALLE OPERATIVO');
   expect(t).toContain('ORD-1');
@@ -103,10 +106,28 @@ describe('REP-2B professional export renderers',()=>{
   expect(z.rows[0].costoDirecto).toBeUndefined();
   expect(z.rows[1].costoDirecto).toBe('1.234567');
  });
+ it('formats monetary values as operative Excel numbers with Q, not strings',()=>{
+  const sheet=unzipEntry(renderXlsx(sample),'xl/worksheets/sheet3.xml');
+  const styles=unzipEntry(renderXlsx(sample),'xl/styles.xml');
+  expect(styles).toContain('formatCode="&quot;Q&quot; #,##0.00"');
+  expect(styles).toContain('formatCode="&quot;Q&quot; #,##0.000000"');
+  expect(sheet).toContain('<v>0.771429</v>');
+  expect(sheet).not.toContain('ordenId');
+  expect(sheet).not.toContain('o1');
+  expect(sheet).toContain('<f>SUM(');
+ });
+ it('puts date in daily PDF heading without adding redundant daily page',()=>{
+  const daily={...sample,periodo:{...sample.periodo,desde:'2026-10-30'}};
+  const pdf=renderPdf(daily).toString('latin1');
+  expect(pdf).toContain('REPORTE DEL D');
+  expect(pdf).toContain('30/10/2026');
+  expect(pdf).toContain('/Count 2');
+  expect(pdf).not.toContain('Datos t');
+ });
  it('supports empty financial datasets without invented monetary totals',()=>{
   const r={...sample,data:[],meta:{total:0}};
   expect(renderCsv(r).toString()).toContain('sinRegistros');
   expect(renderXlsx(r).subarray(0,2).toString()).toBe('PK');
-  expect(renderPdf(r).toString('latin1')).toContain('Sin desglose');
+  expect(renderPdf(r).toString('latin1')).toContain('/Count 1');
  });
 });

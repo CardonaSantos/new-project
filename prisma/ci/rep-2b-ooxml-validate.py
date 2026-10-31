@@ -54,21 +54,25 @@ with ZipFile(xlsx) as archive:
     summary = archive.read("xl/worksheets/sheet1.xml").decode()
     diario = archive.read("xl/worksheets/sheet2.xml").decode()
     detalle = archive.read("xl/worksheets/sheet3.xml").decode()
-    assert "INDICADORES PRINCIPALES" in summary
-    assert "RESUMEN DEL D" in diario
+    assert "RESULTADOS PRINCIPALES" in summary
+    assert "REPORTE DEL D" in diario
     assert "2026-10-30" in diario
     assert "autoFilter" in detalle and "<f>SUM(" in detalle
-    assert "0.000000" in archive.read("xl/styles.xml").decode()
+    assert "&quot;Q&quot; #,##0.000000" in archive.read("xl/styles.xml").decode()
     assert "=bad_formula()" in detalle and "<f>bad_formula()" not in detalle
+    assert "ventaLineaId" not in detalle and "ORD-1" in detalle
+    assert "&quot;Q&quot; #,##0.00" in archive.read("xl/styles.xml").decode()
 raw = pdf.read_bytes()
 assert raw.startswith(b"%PDF-1.4")
 assert raw.rstrip().endswith(b"%%EOF")
 xref_match = re.search(rb"startxref\n(\d+)\n%%EOF", raw)
 assert xref_match, "Missing PDF xref"
 assert raw[int(xref_match.group(1)):].startswith(b"xref")
-for content in (b"INDICADORES DEL PER", b"INFORMACI", b"DETALLE OPERATIVO", b"ORD-1"):
+for content in (b"RESULTADOS DEL D", b"MOVIMIENTOS DEL D", b"DETALLE OPERATIVO", b"ORD-1"):
     assert content in raw, "Missing PDF section: " + content.decode()
 assert b"Columnas 1-6 de" not in raw, "Legacy technical panels in PDF"
+assert b"/Count 2" in raw, "Daily report should be two pages, cover and detail"
+assert b"30/10/2026" in raw, "Daily report needs prominent date"
 assert csv.read_bytes().startswith(b"\xef\xbb\xbf")
 assert b"'=bad_formula()" in csv.read_bytes()
 print("REP-2B valid: XML/OOXML order, 3 styled sheets, numeric styles, PDF layout and CSV safety")

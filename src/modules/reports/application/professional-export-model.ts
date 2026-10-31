@@ -201,6 +201,7 @@ export function presentationValue(v:unknown,field:string,zone='America/Guatemala
   }
  }
  const value=str(v);
- return /^[A-ZÁÉÍÓÚ_]+$/.test(value)?value.replaceAll('_',' ').toLowerCase()
-  .replace(/^./,c=>c.toUpperCase()):value;
+ if(/^(estado|modalidad|cobertura)/i.test(field)&&/^[A-ZÁÉÍÓÚ_]+$/.test(value))
+  return value.replaceAll('_',' ').toLowerCase().replace(/^./,c=>c.toUpperCase());
+ return value;
 }

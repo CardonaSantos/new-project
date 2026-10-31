@@ -1,9 +1,9 @@
 import type {ExportPayload} from './report-export-formats.js';
-import {businessColumns,fieldLabel,presentationValue,reportDaily,reportMetrics,reportTitle} from './professional-export-model.js';
+import {businessColumns,fieldLabel,formatMoney,isMoney,presentationValue,reportDaily,reportMetrics,reportPeriodLabel,reportTitle} from './professional-export-model.js';
 
 type Page={content:string[]};
 const W=842,H=595,M=38,inner=W-2*M;
-const navy='#152A3D',teal='#087B77',pale='#EAF4F3',paper='#FFFFFF',
+const navy='#263747',teal='#263747',pale='#F5F7F9',paper='#FFFFFF',
  ink='#182D42',muted='#5B6C79',line='#DCE6EB',stripe='#F4F7F9';
 const rgb=(hex:string)=>[1,3,5].map(i=>(parseInt(hex.slice(i,i+2),16)/255).toFixed(3)).join(' ');
 const coord=(y:number)=>H-y;
@@ -49,26 +49,26 @@ function wrap(text:string,max:number,size=9){
  if(current)result.push(current);
  return result.length?result:[''];
 }
+const isDay=(r:ExportPayload)=>r.periodo.desde===r.periodo.hasta;
+const reportMoney=(key:string,value:string,r:ExportPayload)=>isMoney(key)?formatMoney(value,r.currency,2):value;
 const coverHeader=(p:Page,r:ExportPayload)=>{
  rect(p,0,0,W,122,navy);
- rect(p,M,34,5,53,teal);
- write(p,'GASTRO CORE   /   ANALÍTICA OPERATIVA',M+19,40,10,'F2','#98D9D3');
+ rect(p,M,34,4,55,'#FFFFFF');
+ write(p,'GASTRO CORE   /   INFORME OPERATIVO',M+19,40,10,'F2','#FFFFFF');
  write(p,reportTitle(r),M+19,72,23,'F2',paper);
- write(p,r.periodo.desde===r.periodo.hasta?'REPORTE DIARIO':'REPORTE DE PERÍODO',
-  W-194,40,9,'F2',paper);
- write(p,r.sucursal.nombre+'  |  '+r.periodo.desde+' al '+r.periodo.hasta+
-  '  |  '+r.currency,M+19,99,10,'F1',paper);
+ write(p,reportPeriodLabel(r),W-275,40,9,'F2',paper);
+ write(p,r.sucursal.nombre+'  |  Moneda '+r.currency,M+19,99,10,'F1',paper);
 };
 const commonHeader=(p:Page,r:ExportPayload,category:string)=>{
  rect(p,0,0,W,68,navy);
  write(p,'GASTRO CORE  /  '+category,M,29,11,'F2',paper);
  write(p,shorten(reportTitle(r),430,11),M,48,10,'F1','#C7D9E5');
- write(p,shorten(r.sucursal.nombre+'  |  '+r.periodo.desde+' - '+r.periodo.hasta,
-  330,9),W-362,48,9,'F1',paper);
+ write(p,shorten(isDay(r)?'DÍA '+r.periodo.desde.split('-').reverse().join('/'):
+  r.periodo.desde+' a '+r.periodo.hasta,300,9),W-335,48,9,'F1',paper);
 };
 const footer=(p:Page,index:number,length:number)=>{
  rule(p,M,554,inner);
- write(p,'Documento operativo  |  '+ 'Datos técnicos completos en XLSX / CSV',M,572,8,'F1',muted);
+ write(p,'Gastro Core | Reporte para revisión administrativa',M,572,8,'F1',muted);
  write(p,'Gastro Core  -  '+index+' / '+length,W-140,572,8,'F2',muted);
 };
 const pdfTable=(p:Page,headers:string[],rows:string[][],
@@ -115,6 +115,7 @@ function dailyPages(r:ExportPayload,pages:Page[]){
  const widths=tableWidths(headings,inner);
  const pageSize=10;
  if(!rows.length){
+  return;
   const p:Page={content:[]};pages.push(p);commonHeader(p,r,'INFORMACIÓN DIARIA');
   write(p,'Resumen diario',M,105,19,'F2');
   rect(p,M,125,inner,80,pale);
@@ -129,7 +130,7 @@ function dailyPages(r:ExportPayload,pages:Page[]){
    M,103,20,'F2');
   write(p,'Cada fila corresponde a una fecha operativa documentada.',M,123,9,'F1',muted);
   pdfTable(p,headings.map(fieldLabel),rows.slice(i,i+pageSize).map(row=>
-   headings.map(k=>presentationValue(row[k],k,r.periodo.zonaHoraria))),M,160,widths,9,525);
+   headings.map(k=>presentationValue(row[k],k,r.periodo.zonaHoraria,r.currency))),M,160,widths,9,525);
   const note=wrap(d.note,inner,8);
   note.slice(0,2).forEach((l,j)=>write(p,l,M,513+j*11,8,'F1',muted));
  }
@@ -138,12 +139,12 @@ function detailPages(r:ExportPayload,pages:Page[]){
  const fields=businessColumns(r);
  if(!fields.length)return;
  const widths=tableWidths(fields,inner);
- const rows=r.data.map(row=>fields.map(k=>presentationValue(row[k],k,r.periodo.zonaHoraria)));
+ const rows=r.data.map(row=>fields.map(k=>presentationValue(row[k],k,r.periodo.zonaHoraria,r.currency)));
  let index=0;
  while(index<rows.length){
   const p:Page={content:[]};pages.push(p);commonHeader(p,r,'DETALLE OPERATIVO');
   write(p,'Movimientos y documentos',M,101,19,'F2');
-  write(p,'Se muestran los campos de negocio prioritarios. IDs íntegros en XLSX/CSV.',
+  write(p,'Solo datos necesarios para seguimiento comercial y de caja.',
    M,121,9,'F1',muted);
   let y=152,shown=0;
   rect(p,M,y-15,inner,37,navy);
@@ -174,33 +175,51 @@ function detailPages(r:ExportPayload,pages:Page[]){
 export function renderProfessionalPdf(r:ExportPayload):Buffer{
  const pages:Page[]=[{content:[]}],p=pages[0];
  coverHeader(p,r);
- write(p,'INDICADORES DEL PERÍODO',M,152,10,'F2',teal);
- const metrics=reportMetrics(r).slice(0,8);
+ write(p,isDay(r)?'RESULTADOS DEL DÍA':'RESUMEN DEL PERÍODO',M,149,12,'F2',navy);
+ const metrics=reportMetrics(r).slice(0,6);
  const cards=metrics.slice(0,4);
- const boxWidth=(inner-33)/4;
- for(let i=0;i<4;i++){
-  const k=cards[i],x=M+i*(boxWidth+11);
-  rect(p,x,167,boxWidth,84,i===0?pale:stripe);
-  write(p,shorten(k?.label??'',boxWidth-18,9),x+11,189,9,'F1',muted);
-  write(p,shorten(k?.value??'',boxWidth-18,16),x+11,222,16,'F2',ink);
+ const boxWidth=(inner-36)/4;
+ for(let i=0;i<cards.length;i++){
+  const k=cards[i],x=M+i*(boxWidth+12);
+  rect(p,x,168,boxWidth,80,stripe);
+  write(p,shorten(k.label,boxWidth-20,9),x+10,190,9,'F1',muted);
+  write(p,shorten(reportMoney(k.key,k.value,r),boxWidth-20,16),x+10,223,16,'F2',ink);
  }
- write(p,'PANORAMA',M,289,12,'F2',teal);
- rect(p,M,304,inner,102,stripe);
- const summary=metrics.slice(4,8);
- if(summary.length){
-  summary.forEach((k,i)=>{
-   const x=M+18+(i%2)*375,y=332+Math.floor(i/2)*34;
-   write(p,k.label,x,y,10,'F1',muted);
-   write(p,k.value,x+245,y,11,'F2',ink);
+ const extras=metrics.slice(4,6);
+ if(extras.length){
+  write(p,'OTROS DATOS',M,283,10,'F2',navy);
+  extras.forEach((k,i)=>{
+   const xx=M+i*(inner/2);
+   write(p,shorten(k.label,210,10),xx,309,10,'F1',muted);
+   write(p,shorten(reportMoney(k.key,k.value,r),116,11),xx+233,309,11,'F2',ink);
   });
- }else{
-  write(p,'Registros exportados: '+r.meta.total,M+18,338,11,'F2',ink);
  }
- write(p,'CONTENIDO DEL INFORME',M,446,12,'F2',teal);
- write(p,'1. Información diaria por fecha operativa verificada',M,473,11);
- write(p,'2. Detalle operativo con los principales campos de negocio',M,494,11);
- write(p,'3. Trazabilidad y todos los identificadores: CSV / XLSX',M,515,10,'F1',muted);
- dailyPages(r,pages);
+ if(isDay(r)){
+  write(p,'MOVIMIENTOS DEL DÍA '+r.periodo.desde.split('-').reverse().join('/'),
+   M,363,13,'F2',navy);
+  rule(p,M,375,inner);
+  const daily=reportDaily(r).rows.filter(v=>v.fecha===r.periodo.desde);
+  if(daily.length){
+   const fields=Object.keys(daily[0]).filter(k=>k!=='fecha').slice(0,4);
+   fields.forEach((key,i)=>{
+    const xx=M+(i%2)*370,yy=408+Math.floor(i/2)*41;
+    write(p,shorten(fieldLabel(key),200,10),xx,yy,10,'F1',muted);
+    write(p,shorten(presentationValue(daily[0][key],key,r.periodo.zonaHoraria,r.currency),132,12),
+     xx+224,yy,12,'F2',ink);
+   });
+  }else{
+   write(p,'No hay movimientos fechados para este día.',M,405,11,'F1',muted);
+  }
+  write(p,'Detalle de operaciones en la siguiente sección.',M,525,9,'F1',muted);
+ }else{
+  write(p,'INFORMACIÓN DIARIA',M,358,12,'F2',navy);
+  rule(p,M,369,inner);
+  write(p,'El informe incluye una tabla con movimientos agrupados por fecha operativa.',
+   M,399,11,'F1',ink);
+  write(p,'Detalle de ventas, pagos o consumos en las siguientes páginas.',
+   M,426,10,'F1',muted);
+ }
+ if(!isDay(r))dailyPages(r,pages);
  detailPages(r,pages);
  if(pages.length>500)throw new RangeError('PDF excede 500 páginas');
  pages.forEach((page,i)=>footer(page,i+1,pages.length));

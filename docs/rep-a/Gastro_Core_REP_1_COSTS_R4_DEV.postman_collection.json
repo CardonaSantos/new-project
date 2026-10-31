@@ -1,0 +1,126 @@
+{
+  "info": {
+    "name": "Gastro Core REP-1 R4 — costos históricos DEV",
+    "description": "Lectura de costos históricos trazables de preparaciones, inventariables y empaque. Requiere reports.read + inventory.costs.read. No es un reporte de margen por venta.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 Consumos y empaque - costo histórico, fuente origen",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/reports/analytics/sources/PREPARATION_COSTS?sucursalId={{sucursalId}}&periodo=PERSONALIZADO&desde={{desde}}&hasta={{hasta}}&page=1&limit=100",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "reports",
+            "analytics",
+            "sources",
+            "PREPARATION_COSTS"
+          ],
+          "query": [
+            {
+              "key": "sucursalId",
+              "value": "{{sucursalId}}"
+            },
+            {
+              "key": "periodo",
+              "value": "PERSONALIZADO"
+            },
+            {
+              "key": "desde",
+              "value": "{{desde}}"
+            },
+            {
+              "key": "hasta",
+              "value": "{{hasta}}"
+            },
+            {
+              "key": "page",
+              "value": "1"
+            },
+            {
+              "key": "limit",
+              "value": "100"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
+              "pm.expect(r.source).to.equal('PREPARATION_COSTS');",
+              "pm.expect(r.sucursal.id).to.equal(pm.collectionVariables.get('sucursalId'));",
+              "pm.expect(r.totales.documentos).to.equal(r.meta.total);",
+              "pm.expect(r.totales.porTipo).to.be.an('array');",
+              "pm.expect(r.data).to.be.an('array');",
+              "const cost = value => { const m=/^(\\d+)\\.(\\d{6})$/.exec(String(value)); pm.expect(m).not.to.equal(null); return BigInt(m[1])*1000000n+BigInt(m[2]); };",
+              "const summed = r.totales.porTipo.reduce((n,t)=>n+cost(t.costoRegistrado),0n);",
+              "pm.expect(summed.toString()).to.equal(cost(r.totales.costoRegistrado).toString());",
+              "pm.expect(r.totales.porTipo.reduce((n,t)=>n+t.documentos,0)).to.equal(r.totales.documentos);",
+              "pm.expect(r.totales.porTipo.reduce((n,t)=>n+t.lineas,0)).to.equal(r.totales.lineas);",
+              "pm.expect(r.totales.porTipo.reduce((n,t)=>n+t.lineasSinMovimiento,0)).to.equal(r.totales.lineasSinMovimiento);",
+              "pm.expect(r.totales.porTipo.reduce((n,t)=>n+t.documentosSinLineas,0)).to.equal(r.totales.documentosSinLineas);",
+              "for (const d of r.data){",
+              " pm.expect(d).to.have.property('id'); pm.expect(d).to.have.property('orden');",
+              " pm.expect(d).to.have.property('tipo'); pm.expect(d.lineas).to.be.an('array');",
+              " if(d.trazabilidadCompleta){",
+              "  pm.expect(d.lineas.length).to.be.greaterThan(0);",
+              "  const v=d.lineas.reduce((n,l)=>n+cost(l.costoMovimiento),0n);",
+              "  pm.expect(v.toString()).to.equal(cost(d.costoRegistrado).toString());",
+              " }else{pm.expect(d.costoRegistrado).to.equal(null);}",
+              " for(const l of d.lineas){if(l.trazabilidadValida){",
+              "  pm.expect(l.movimientoId).to.equal(l.movimiento.id);",
+              "  pm.expect(l.movimiento.referenciaId).to.equal(d.id);",
+              "  pm.expect(l.movimiento.referenciaTipo).to.equal('CONSUMO_ORDEN');",
+              "  pm.expect(l.movimiento.tipo).to.equal('CONSUMO');",
+              "  pm.expect(l.movimiento.articuloId).to.equal(l.articulo.id);",
+              "  pm.expect(l.movimiento.ubicacionId).to.equal(l.ubicacionId);",
+              "  pm.expect(l.movimiento.loteId).to.equal(l.loteId);",
+              " }}",
+              "}",
+              "pm.expect(r).not.to.have.property('note');",
+              "pm.expect(r).not.to.have.property('definitions');"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "sucursalId",
+      "value": "cmv8p4k3x0001u4v4xor2zgqu"
+    },
+    {
+      "key": "desde",
+      "value": "2026-10-01"
+    },
+    {
+      "key": "hasta",
+      "value": "2026-10-30"
+    }
+  ]
+}

@@ -1,0 +1,529 @@
+{
+  "info": {
+    "name": "Gastro Core REP-1 — Analytics DEV inicial",
+    "description": "Primer corte REP-1, sin importes simulados: dashboard operativo, resumen por fechas y detalle paginado de tickets; requiere token y reports.read en la sucursal. Includes cross-request consistency checks, assumes a quiet DEV database during execution. Evidence upgrade: 13 requests; cash provenance by movement ID, daily payment and expense rows. Requires token with reports.read/cash.read/payments.read/finance.expenses.read. Do not run while modifying DEV data.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 Dashboard operativo",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reports/operational/dashboard?sucursalId={{sucursalId}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
+              "pm.expect(r.freshness).to.equal('LIVE_READ');",
+              "pm.expect(r.kpis.pedidosAbiertos).to.be.a('number');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 Overview DIA operativo",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reports/analytics/overview?sucursalId={{sucursalId}}&periodo=DIA&fecha={{fechaOperativa}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
+              "pm.expect(r.kpis.ventasNetas).to.match(/^-?\\d+\\.\\d{2}$/);",
+              "pm.expect(r.kpis.margenBruto).to.equal(null);",
+              "pm.expect(r.serieDiaria).to.have.length(1);",
+              "const cents = value => {",
+              " const s = String(value); const m = /^(-?)(\\d+)\\.(\\d{2})$/.exec(s);",
+              " pm.expect(m, 'importe monetario exacto').not.to.equal(null);",
+              " return (m[1] === '-' ? -1 : 1) * (Number(m[2])*100 + Number(m[3]));",
+              "};",
+              "const totals = key => r.serieDiaria.reduce((a,d) => a+cents(d[key]),0);",
+              "for(const key of ['ventasNetas','cobrosBrutos','reembolsos','cobrosNetos','gastosRegistrados'])",
+              " pm.expect(totals(key), 'KPI coincide con serie '+key).to.equal(cents(r.kpis[key]));",
+              "pm.expect(r.kpis.cobrosNetos).to.equal(((cents(r.kpis.cobrosBrutos)-cents(r.kpis.reembolsos))/100).toFixed(2));",
+              "pm.collectionVariables.set('REP_QA_DAY_SNAPSHOT',JSON.stringify({",
+              " ventasNetas:r.kpis.ventasNetas,cobrosBrutos:r.kpis.cobrosBrutos,",
+              " cobrosNetos:r.kpis.cobrosNetos,gastos:r.kpis.gastosRegistrados,",
+              " cuentas:r.kpis.cuentasCerradas,turnosAbiertos:r.kpis.turnosCajaActualmenteAbiertos",
+              "}));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Overview SEMANA",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reports/analytics/overview?sucursalId={{sucursalId}}&periodo=SEMANA&fecha={{fechaOperativa}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
+              "pm.expect(pm.response.json().serieDiaria).to.have.length(7);",
+              "const cents = value => {",
+              " const s = String(value); const m = /^(-?)(\\d+)\\.(\\d{2})$/.exec(s);",
+              " pm.expect(m, 'importe monetario exacto').not.to.equal(null);",
+              " return (m[1] === '-' ? -1 : 1) * (Number(m[2])*100 + Number(m[3]));",
+              "};",
+              "for(const key of ['ventasNetas','cobrosBrutos','reembolsos','cobrosNetos','gastosRegistrados'])",
+              " pm.expect(r.serieDiaria.reduce((a,d)=>a+cents(d[key]),0)).to.equal(cents(r.kpis[key]));",
+              "pm.expect(r.periodo.desde).to.match(/^\\d{4}-\\d{2}-\\d{2}$/);",
+              "pm.expect(r.serieDiaria.map(d=>d.fechaOperativa)[0]).to.equal(r.periodo.desde);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 Overview MES",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reports/analytics/overview?sucursalId={{sucursalId}}&periodo=MES&fecha={{fechaOperativa}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
+              "pm.expect(pm.response.json().serieDiaria.length).to.be.gte(28);",
+              "const cents = value => {",
+              " const s = String(value); const m = /^(-?)(\\d+)\\.(\\d{2})$/.exec(s);",
+              " pm.expect(m, 'importe monetario exacto').not.to.equal(null);",
+              " return (m[1] === '-' ? -1 : 1) * (Number(m[2])*100 + Number(m[3]));",
+              "};",
+              "for(const key of ['ventasNetas','cobrosBrutos','reembolsos','cobrosNetos','gastosRegistrados'])",
+              " pm.expect(r.serieDiaria.reduce((a,d)=>a+cents(d[key]),0)).to.equal(cents(r.kpis[key]));",
+              "pm.collectionVariables.set('REP_QA_MONTH_SNAPSHOT',JSON.stringify({",
+              " desde:r.periodo.desde,hasta:r.periodo.hasta,ventasNetas:r.kpis.ventasNetas,",
+              " cobrosNetos:r.kpis.cobrosNetos,gastos:r.kpis.gastosRegistrados,",
+              " ticketsUnicos:r.kpis.ticketsUnicos",
+              "}));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Overview personalizado",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reports/analytics/overview?sucursalId={{sucursalId}}&periodo=PERSONALIZADO&desde={{desde}}&hasta={{hasta}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
+              "pm.expect(pm.response.json().periodo.tipo).to.equal('PERSONALIZADO');",
+              "const cents = value => {",
+              " const s = String(value); const m = /^(-?)(\\d+)\\.(\\d{2})$/.exec(s);",
+              " pm.expect(m, 'importe monetario exacto').not.to.equal(null);",
+              " return (m[1] === '-' ? -1 : 1) * (Number(m[2])*100 + Number(m[3]));",
+              "};",
+              "for(const key of ['ventasNetas','cobrosBrutos','reembolsos','cobrosNetos','gastosRegistrados'])",
+              " pm.expect(r.serieDiaria.reduce((a,d)=>a+cents(d[key]),0)).to.equal(cents(r.kpis[key]));",
+              "const month=JSON.parse(pm.collectionVariables.get('REP_QA_MONTH_SNAPSHOT')||'null');",
+              "if(month&&month.desde===r.periodo.desde&&month.hasta===r.periodo.hasta){",
+              " pm.expect(r.kpis.ventasNetas).to.equal(month.ventasNetas);",
+              " pm.expect(r.kpis.cobrosNetos).to.equal(month.cobrosNetos);",
+              " pm.expect(r.kpis.gastosRegistrados).to.equal(month.gastos);",
+              " pm.expect(r.kpis.ticketsUnicos).to.equal(month.ticketsUnicos);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 Tickets del día",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reports/analytics/tickets?sucursalId={{sucursalId}}&periodo=DIA&fecha={{fechaOperativa}}&page=1&limit=20"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
+              "pm.expect(r.data).to.be.an('array');",
+              "pm.expect(r.meta).to.have.property('total');",
+              "const day=JSON.parse(pm.collectionVariables.get('REP_QA_DAY_SNAPSHOT')||'null');",
+              "if(day) { pm.expect(r.meta.total).to.equal(day.cuentas);",
+              " if(r.meta.total<=20){",
+              " const cents = s => {const m=/^(-?)(\\d+)\\.(\\d{2})$/.exec(s); return (m[1]==='-'?-1:1)*(Number(m[2])*100+Number(m[3]));};",
+              " pm.expect(r.data.reduce((a,x)=>a+cents(x.total),0)).to.equal(cents(day.ventasNetas));",
+              " }}",
+              "pm.expect(r.data.every(x=>x.orden&&x.cuentaId)).to.equal(true);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 Pagos por método de cobro",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reports/analytics/payments-by-method?sucursalId={{sucursalId}}&periodo=DIA&fecha={{fechaOperativa}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
+              "pm.expect(pm.response.json().data).to.be.an('array');",
+              "const cents = value => {",
+              " const s = String(value); const m = /^(-?)(\\d+)\\.(\\d{2})$/.exec(s);",
+              " pm.expect(m, 'importe monetario exacto').not.to.equal(null);",
+              " return (m[1] === '-' ? -1 : 1) * (Number(m[2])*100 + Number(m[3]));",
+              "};",
+              "const day=JSON.parse(pm.collectionVariables.get('REP_QA_DAY_SNAPSHOT')||'null');",
+              "if(day){",
+              " pm.expect(r.data.reduce((a,x)=>a+cents(x.cobrosBrutos),0)).to.equal(cents(day.cobrosBrutos));",
+              " pm.expect(r.data.reduce((a,x)=>a+cents(x.neto),0)).to.equal(cents(day.cobrosNetos));",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 Gastos por categoría",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reports/analytics/expenses-by-category?sucursalId={{sucursalId}}&periodo=DIA&fecha={{fechaOperativa}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
+              "pm.expect(pm.response.json().data).to.be.an('array');",
+              "const cents = value => {",
+              " const s = String(value); const m = /^(-?)(\\d+)\\.(\\d{2})$/.exec(s);",
+              " pm.expect(m, 'importe monetario exacto').not.to.equal(null);",
+              " return (m[1] === '-' ? -1 : 1) * (Number(m[2])*100 + Number(m[3]));",
+              "};",
+              "pm.expect(r.data.reduce((a,x)=>a+cents(x.monto),0)).to.equal(cents(r.totalRegistrado));",
+              "const day=JSON.parse(pm.collectionVariables.get('REP_QA_DAY_SNAPSHOT')||'null');",
+              "if(day)pm.expect(cents(r.totalRegistrado)).to.equal(cents(day.gastos));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 Turnos de caja y diferencias",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reports/analytics/cash-shifts?sucursalId={{sucursalId}}&periodo=DIA&fecha={{fechaOperativa}}&page=1&limit=20"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
+              "pm.expect(pm.response.json().data).to.be.an('array');",
+              "const day=JSON.parse(pm.collectionVariables.get('REP_QA_DAY_SNAPSHOT')||'null');",
+              "if(day)pm.expect(r.data.filter(x=>x.estado==='ABIERTO').length).to.be.at.most(day.turnosAbiertos);",
+              "for(const shift of r.data){",
+              " if(shift.cerradaEn===null){",
+              " pm.expect(shift.efectivoContado).to.equal(null);",
+              " pm.expect(shift.diferencia).to.equal(null);",
+              " }}",
+              "if(r.data.length){pm.collectionVariables.set('REP_CASH_SHIFT_ID',r.data[0].id);}",
+              "pm.expect(r.meta.total).to.be.a('number');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 Evidencia por movimiento de caja",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const id=pm.collectionVariables.get('REP_CASH_SHIFT_ID');",
+              "if(!id){pm.execution.skipRequest();}"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
+              "pm.expect(r.version).to.equal('REP_EVIDENCE_V1');",
+              "pm.expect(r.turno.id).to.equal(pm.collectionVariables.get('REP_CASH_SHIFT_ID'));",
+              "pm.expect(r.data).to.be.an('array');",
+              "for(const x of r.data){pm.expect(x).to.have.property('movimientoId');",
+              "pm.expect(x).to.have.property('motivo');pm.expect(x).to.have.property('registradoPor');",
+              "pm.expect(x.fuente).to.have.property('tipo');pm.expect(x.fuente).to.have.property('id');",
+              "pm.expect(x.referenciaIds).to.be.an('object');}",
+              "const cents = v => {const m=/^(-?)(\\d+)\\.(\\d{2})$/.exec(String(v));",
+              "pm.expect(m).not.to.equal(null);return (m[1]==='-'?-1:1)*(Number(m[2])*100+Number(m[3]));};",
+              "if(r.meta.total<=100&&r.filtro.tipo===null){",
+              "pm.expect(r.data.filter(x=>x.tipo==='INGRESO').reduce((n,x)=>n+cents(x.monto),0)).to.equal(cents(r.totalesFiltro.ingresos));",
+              "pm.expect(r.data.filter(x=>x.tipo==='EGRESO').reduce((n,x)=>n+cents(x.monto),0)).to.equal(cents(r.totalesFiltro.egresos));",
+              "pm.expect(r.data.length).to.equal(r.meta.total);",
+              "}",
+              "for(const m of r.data){",
+              " if(m.fuente?.tipo==='LIQUIDACION_REPARTIDOR'){",
+              "  pm.expect(m.fuente.lineas).to.be.an('array');",
+              "  for(const l of m.fuente.lineas){",
+              "   pm.expect(l).to.have.property('liquidacionLineaId');",
+              "   pm.expect(l).to.have.property('pagoId');",
+              "   pm.expect(l).to.have.property('cuentaId');",
+              "   pm.expect(l).to.have.property('entregaId');",
+              "   pm.expect(l).to.have.property('ordenId');",
+              "   pm.expect(l.pagoId).to.be.a('string').and.not.empty;",
+              "   pm.expect(l.cuentaId).to.be.a('string').and.not.empty;",
+              "   pm.expect(l.entregaId).to.be.a('string').and.not.empty;",
+              "   pm.expect(l.ordenId).to.be.a('string').and.not.empty;",
+              "   pm.expect(l.monto).to.match(/^\\d+\\.\\d{2}$/);",
+              "  }",
+              "  pm.expect(m.fuente.estado).to.equal('CERRADA');",
+              "  pm.expect(m.tipo).to.equal('INGRESO');",
+              "  pm.expect(cents(m.monto)).to.equal(cents(m.fuente.totalEntregado));",
+              "  pm.expect(m.fuente.lineas.reduce((sum,l)=>sum+cents(l.monto),0))",
+              "   .to.equal(cents(m.fuente.totalEsperado));",
+              "  pm.expect(new Set(m.fuente.lineas.map(l=>l.pagoId)).size)",
+              "   .to.equal(m.fuente.lineas.length);",
+              " }",
+              "}",
+              "pm.expect(r).not.to.have.property('definicion');",
+              "pm.expect(r).not.to.have.property('note');"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reports/analytics/cash-shifts/{{REP_CASH_SHIFT_ID}}/evidence?sucursalId={{sucursalId}}&page=1&limit=100"
+      }
+    },
+    {
+      "name": "10 Evidencia de cobros individuales",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
+              "pm.expect(r.version).to.equal('REP_EVIDENCE_V1');",
+              "for(const x of r.data){pm.expect(x).to.have.property('pagoId');",
+              "pm.expect(x).to.have.property('cuentaId');pm.expect(x).to.have.property('ordenId');",
+              "pm.expect(x).to.have.property('importe');pm.expect(x).to.have.property('metodo');}",
+              "const cents = v => {const m=/^(-?)(\\d+)\\.(\\d{2})$/.exec(String(v));",
+              "pm.expect(m).not.to.equal(null);return (m[1]==='-'?-1:1)*(Number(m[2])*100+Number(m[3]));};",
+              "const day=JSON.parse(pm.collectionVariables.get('REP_QA_DAY_SNAPSHOT')||'null');",
+              "if(day&&r.meta.total<=100){",
+              "pm.expect(r.data.reduce((n,x)=>n+cents(x.importe),0)).to.equal(cents(day.cobrosBrutos));",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reports/analytics/payments/records?sucursalId={{sucursalId}}&periodo=DIA&fecha={{fechaOperativa}}&page=1&limit=100"
+      }
+    },
+    {
+      "name": "11 Evidencia de gastos individuales",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
+              "pm.expect(r.version).to.equal('REP_EVIDENCE_V1');",
+              "for(const x of r.data){pm.expect(x).to.have.property('gastoId');",
+              "pm.expect(x).to.have.property('descripcion');pm.expect(x).to.have.property('registradoPor');}",
+              "const cents = v => {const m=/^(-?)(\\d+)\\.(\\d{2})$/.exec(String(v));",
+              "pm.expect(m).not.to.equal(null);return (m[1]==='-'?-1:1)*(Number(m[2])*100+Number(m[3]));};",
+              "const day=JSON.parse(pm.collectionVariables.get('REP_QA_DAY_SNAPSHOT')||'null');",
+              "if(day&&r.meta.total<=100){",
+              "pm.expect(r.data.reduce((n,x)=>n+cents(x.importe),0)).to.equal(cents(day.gastos));",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reports/analytics/expenses/records?sucursalId={{sucursalId}}&periodo=DIA&fecha={{fechaOperativa}}&page=1&limit=100"
+      }
+    },
+    {
+      "name": "12 Sin sucursal (400 esperado)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/reports/analytics/overview?periodo=DIA&fecha={{fechaOperativa}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(400);",
+              "pm.expect(pm.response.json().statusCode).to.equal(400);"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "sucursalId",
+      "value": ""
+    },
+    {
+      "key": "fechaOperativa",
+      "value": "2026-10-30"
+    },
+    {
+      "key": "desde",
+      "value": "2026-10-01"
+    },
+    {
+      "key": "hasta",
+      "value": "2026-10-30"
+    },
+    {
+      "key": "REP_CASH_SHIFT_ID",
+      "value": ""
+    }
+  ]
+}

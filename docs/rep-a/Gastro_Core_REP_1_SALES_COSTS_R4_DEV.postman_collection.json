@@ -1,0 +1,195 @@
+{
+  "info": {
+    "name": "Gastro Core REP-1 R4/B — costos directos de venta DEV",
+    "description": "Verifica la asignación de costos de consumo registrados a VentaLinea. Margen ANTES de empaque; cobertura incompleta deja margen en null. Triple RBAC: reports.read, sales.read, inventory.costs.read.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 Costo directo de ventas y cobertura (período completo)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/reports/analytics/sources/SALES_COSTS?sucursalId={{sucursalId}}&periodo=PERSONALIZADO&desde={{desde}}&hasta={{hasta}}&page=1&limit=100",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "reports",
+            "analytics",
+            "sources",
+            "SALES_COSTS"
+          ],
+          "query": [
+            {
+              "key": "sucursalId",
+              "value": "{{sucursalId}}"
+            },
+            {
+              "key": "periodo",
+              "value": "PERSONALIZADO"
+            },
+            {
+              "key": "desde",
+              "value": "{{desde}}"
+            },
+            {
+              "key": "hasta",
+              "value": "{{hasta}}"
+            },
+            {
+              "key": "page",
+              "value": "1"
+            },
+            {
+              "key": "limit",
+              "value": "100"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
+              "pm.expect(r.source).to.equal('SALES_COSTS');",
+              "pm.expect(r.sucursal.id).to.equal(pm.collectionVariables.get('sucursalId'));",
+              "pm.expect(r.totales.registros).to.equal(r.meta.total);",
+              "pm.expect(r.data).to.be.an('array');",
+              "pm.expect(r.porProducto).to.be.an('array');",
+              "const micro=v=>{const m=/^(-?)(\\d+)\\.(\\d{6})$/.exec(String(v));pm.expect(m).not.to.equal(null);return (m[1]==='-'?-1n:1n)*(BigInt(m[2])*1000000n+BigInt(m[3]));};",
+              "const cents=v=>{const m=/^(-?)(\\d+)\\.(\\d{2})$/.exec(String(v));pm.expect(m).not.to.equal(null);return (m[1]==='-'?-1n:1n)*(BigInt(m[2])*100n+BigInt(m[3]));};",
+              "pm.expect(r.porProducto.reduce((n,p)=>n+p.registros,0)).to.equal(r.totales.registros);",
+              "pm.expect(r.porProducto.reduce((n,p)=>n+p.lineasConCosto,0)).to.equal(r.totales.lineasConCosto);",
+              "pm.expect(r.porProducto.reduce((n,p)=>n+p.lineasSinCosto,0)).to.equal(r.totales.lineasSinCosto);",
+              "pm.expect(r.porProducto.reduce((n,p)=>n+p.lineasNoAplicables,0)).to.equal(r.totales.lineasNoAplicables);",
+              "pm.expect(r.totales.lineasConCosto+r.totales.lineasSinCosto+r.totales.lineasNoAplicables).to.equal(r.totales.registros);",
+              "pm.expect(r.porProducto.reduce((n,p)=>n+cents(p.ingresos),0n).toString()).to.equal(cents(r.totales.ingresos).toString());",
+              "pm.expect(r.porProducto.reduce((n,p)=>n+micro(p.costoDirectoIdentificado),0n).toString()).to.equal(micro(r.totales.costoDirectoIdentificado).toString());",
+              "for(const row of r.data){",
+              " pm.expect(row).to.have.property('ventaLineaId');",
+              " pm.expect(row).to.have.property('ordenLineaId');",
+              " pm.expect(row).to.have.property('documentosConsumo');",
+              " pm.expect(row.documentosConsumo).to.be.an('array');",
+              " if(row.cobertura==='COMPLETO'){",
+              "  pm.expect(micro(row.costoDirecto)).to.be.a('bigint');",
+              "  pm.expect(micro(row.margenAntesEmpaque)+micro(row.costoDirecto)).to.equal(cents(row.ingreso)*10000n);",
+              " } else {",
+              "  pm.expect(row.costoDirecto).to.equal(null);",
+              "  pm.expect(row.margenAntesEmpaque).to.equal(null);",
+              " }",
+              "}",
+              "if(r.totales.lineasSinCosto+r.totales.lineasNoAplicables>0)pm.expect(r.totales.margenAntesEmpaque).to.equal(null);",
+              "if(r.meta.total<=100){",
+              " pm.expect(r.data.reduce((n,x)=>n+(x.costoDirecto===null?0n:micro(x.costoDirecto)),0n).toString()).to.equal(micro(r.totales.costoDirectoIdentificado).toString());",
+              "}",
+              "pm.expect(r).not.to.have.property('note');",
+              "pm.expect(r).not.to.have.property('definition');",
+              "pm.expect(r).not.to.have.property('definitions');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 Paginación limit 1 conserva agregados globales",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/reports/analytics/sources/SALES_COSTS?sucursalId={{sucursalId}}&periodo=PERSONALIZADO&desde={{desde}}&hasta={{hasta}}&page=1&limit=1",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "reports",
+            "analytics",
+            "sources",
+            "SALES_COSTS"
+          ],
+          "query": [
+            {
+              "key": "sucursalId",
+              "value": "{{sucursalId}}"
+            },
+            {
+              "key": "periodo",
+              "value": "PERSONALIZADO"
+            },
+            {
+              "key": "desde",
+              "value": "{{desde}}"
+            },
+            {
+              "key": "hasta",
+              "value": "{{hasta}}"
+            },
+            {
+              "key": "page",
+              "value": "1"
+            },
+            {
+              "key": "limit",
+              "value": "1"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
+              "pm.expect(r.source).to.equal('SALES_COSTS');",
+              "pm.expect(r.data.length).to.be.at.most(1);",
+              "pm.expect(r.meta.total).to.equal(r.totales.registros);",
+              "pm.expect(r.porProducto.reduce((n,p)=>n+p.registros,0)).to.equal(r.meta.total);"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "sucursalId",
+      "value": "cmv8p4k3x0001u4v4xor2zgqu"
+    },
+    {
+      "key": "desde",
+      "value": "2026-10-01"
+    },
+    {
+      "key": "hasta",
+      "value": "2026-10-30"
+    }
+  ]
+}

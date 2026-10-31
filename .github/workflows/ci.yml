@@ -21,6 +21,10 @@ jobs:
         run: npm test
       - name: HTTP tests
         run: npm run test:e2e
+      - name: REP-2B validate actual XLSX PDF CSV structure
+        run: |
+          npx tsx prisma/ci/rep-2b-format-fixture.ts
+          python3 prisma/ci/rep-2b-ooxml-validate.py
 
   migration-smoke:
     runs-on: ubuntu-latest
@@ -61,3 +65,9 @@ jobs:
         run: npx prisma db execute --file prisma/ci/del-a-d4-integrity.sql
       - name: Reapply safely without creating duplicate objects
         run: npm run prisma:deploy
+      - name: Generate Prisma client for REP-A SQL smoke
+        run: npm run prisma:generate
+      - name: Execute REP-A R4B/R4C reporting SQL on PostgreSQL
+        run: npx tsx prisma/ci/rep-a-r4c-query-smoke.ts
+      - name: Execute REP-A R5/R6 reconciliation and multi-branch SQL on PostgreSQL
+        run: npx tsx prisma/ci/rep-a-r5-r6-query-smoke.ts

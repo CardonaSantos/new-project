@@ -1,0 +1,201 @@
+{
+  "info": {
+    "name": "Gastro Core REP-1 R4/C — conciliación de empaques y cancelaciones DEV",
+    "description": "Costo de consumos por fecha de preparación, clasificación por estado ACTUAL de orden. NO es costo de ventas ni margen neto. Requiere reports.read + inventory.costs.read + orders.read.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 Consumos por orden, empaque y cancelados",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/reports/analytics/sources/ORDER_COST_OUTCOMES?sucursalId={{sucursalId}}&periodo=PERSONALIZADO&desde={{desde}}&hasta={{hasta}}&page=1&limit=100",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "reports",
+            "analytics",
+            "sources",
+            "ORDER_COST_OUTCOMES"
+          ],
+          "query": [
+            {
+              "key": "sucursalId",
+              "value": "{{sucursalId}}"
+            },
+            {
+              "key": "periodo",
+              "value": "PERSONALIZADO"
+            },
+            {
+              "key": "desde",
+              "value": "{{desde}}"
+            },
+            {
+              "key": "hasta",
+              "value": "{{hasta}}"
+            },
+            {
+              "key": "page",
+              "value": "1"
+            },
+            {
+              "key": "limit",
+              "value": "100"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
+              "pm.expect(r.source).to.equal('ORDER_COST_OUTCOMES');",
+              "pm.expect(r.sucursal.id).to.equal(pm.collectionVariables.get('sucursalId'));",
+              "pm.expect(r.periodo.zonaHoraria).to.equal('America/Guatemala');",
+              "pm.expect(r.periodo.corte).to.equal('04:00');",
+              "pm.expect(r.meta.total).to.equal(r.totales.ordenes);",
+              "pm.expect(r.porEstado).to.be.an('array');",
+              "pm.expect(r.data).to.be.an('array');",
+              "const micro=v=>{const m=/^(-?)(\\d+)\\.(\\d{6})$/.exec(String(v));pm.expect(m).not.to.equal(null);return (m[1]==='-'?-1n:1n)*(BigInt(m[2])*1000000n+BigInt(m[3]));};",
+              "pm.expect(r.totales.documentosReceta+r.totales.documentosDirecto+r.totales.documentosEmpaque).to.equal(r.totales.documentos);",
+              "pm.expect(r.porEstado.reduce((n,g)=>n+g.ordenes,0)).to.equal(r.totales.ordenes);",
+              "pm.expect(r.porEstado.reduce((n,g)=>n+g.documentos,0)).to.equal(r.totales.documentos);",
+              "pm.expect(r.porEstado.reduce((n,g)=>n+micro(g.costoIdentificado),0n).toString()).to.equal(micro(r.totales.costoIdentificado).toString());",
+              "const byStatus={};for(const g of r.porEstado)byStatus[g.estadoActual]=micro(g.costoIdentificado);",
+              "pm.expect((byStatus.CANCELADA||0n).toString()).to.equal(micro(r.totales.costoCanceladasIdentificado).toString());",
+              "pm.expect((byStatus.CERRADA||0n).toString()).to.equal(micro(r.totales.costoCerradasIdentificado).toString());",
+              "pm.expect((byStatus.ABIERTA||0n).toString()).to.equal(micro(r.totales.costoAbiertasIdentificado).toString());",
+              "pm.expect(r.totales.empaqueRegistrado).to.equal(r.totales.documentosEmpaque>0);",
+              "if(r.totales.ordenesIncompletas>0||r.totales.ordenes===0)pm.expect(r.totales.costoCompleto).to.equal(null);",
+              "else pm.expect(micro(r.totales.costoCompleto).toString()).to.equal(micro(r.totales.costoIdentificado).toString());",
+              "for(const o of r.data){",
+              " pm.expect(o).to.have.property('ordenId');",
+              " pm.expect(o).to.have.property('numeroOrden');",
+              " pm.expect(o).to.have.property('estadoActual');",
+              " pm.expect(o.documentosConsumo).to.be.an('array');",
+              " pm.expect(o.documentosConsumo.length).to.equal(o.documentos);",
+              " pm.expect(o.documentosReceta+o.documentosDirecto+o.documentosEmpaque).to.equal(o.documentos);",
+              " pm.expect(o.empaqueRegistrado).to.equal(o.documentosEmpaque>0);",
+              " pm.expect((micro(o.costoRecetasIdentificado)+micro(o.costoDirectoIdentificado)+micro(o.costoEmpaqueIdentificado)).toString()).to.equal(micro(o.costoIdentificado).toString());",
+              " if(o.documentosIncompletos>0)pm.expect(o.costoCompleto).to.equal(null);",
+              " else pm.expect(micro(o.costoCompleto).toString()).to.equal(micro(o.costoIdentificado).toString());",
+              "}",
+              "if(r.meta.total<=100){",
+              " pm.expect(r.data.reduce((n,o)=>n+micro(o.costoIdentificado),0n).toString()).to.equal(micro(r.totales.costoIdentificado).toString());",
+              " pm.expect(r.data.reduce((n,o)=>n+o.documentos,0)).to.equal(r.totales.documentos);",
+              "}",
+              "pm.expect(r).not.to.have.property('note');",
+              "pm.expect(r).not.to.have.property('definitions');",
+              "pm.expect(r).not.to.have.property('definicion');"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 Paginación limit 1 conserva costos globales",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/reports/analytics/sources/ORDER_COST_OUTCOMES?sucursalId={{sucursalId}}&periodo=PERSONALIZADO&desde={{desde}}&hasta={{hasta}}&page=1&limit=1",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "reports",
+            "analytics",
+            "sources",
+            "ORDER_COST_OUTCOMES"
+          ],
+          "query": [
+            {
+              "key": "sucursalId",
+              "value": "{{sucursalId}}"
+            },
+            {
+              "key": "periodo",
+              "value": "PERSONALIZADO"
+            },
+            {
+              "key": "desde",
+              "value": "{{desde}}"
+            },
+            {
+              "key": "hasta",
+              "value": "{{hasta}}"
+            },
+            {
+              "key": "page",
+              "value": "1"
+            },
+            {
+              "key": "limit",
+              "value": "1"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.response.to.have.status(200);",
+              "const r=pm.response.json();",
+              "pm.expect(r.source).to.equal('ORDER_COST_OUTCOMES');",
+              "pm.expect(r.meta.limit).to.equal(1);",
+              "pm.expect(r.data.length).to.be.at.most(1);",
+              "pm.expect(r.meta.total).to.equal(r.totales.ordenes);",
+              "pm.expect(r.meta.totalPages).to.equal(r.meta.total);",
+              "pm.expect(r.porEstado.reduce((n,x)=>n+x.ordenes,0)).to.equal(r.totales.ordenes);"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "sucursalId",
+      "value": "cmv8p4k3x0001u4v4xor2zgqu"
+    },
+    {
+      "key": "desde",
+      "value": "2026-10-01"
+    },
+    {
+      "key": "hasta",
+      "value": "2026-10-30"
+    }
+  ]
+}

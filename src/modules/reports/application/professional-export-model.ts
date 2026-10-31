@@ -185,14 +185,14 @@ export function reportDaily(r:ExportPayload):{rows:Daily[];note:string}{
 export function presentationValue(v:unknown,field:string,zone='America/Guatemala',currency='GTQ'){
  if(v===null||v===undefined)return 'Sin dato';
  if(typeof v==='boolean')return v?'Sí':'No';
- if(isMoney(field)&&/^-?\\d+(?:\\.\\d+)?$/.test(String(v)))
+ if(isMoney(field)&&/^-?\d+(?:\.\d+)?$/.test(String(v)))
   return formatMoney(v,currency,2);
  if(field==='cobertura')return String(v).replaceAll('_',' ');
  if(field==='reconocimientoVenta')return v==='CON_VENTA'?'Sí':'Pendiente';
  if(/fecha|En$|creadaEn|cerradaEn|canceladaEn|recibidaEn/i.test(field)){
   const raw=v instanceof Date?v.toISOString():String(v);
-  if(/^\\d{4}-\\d{2}-\\d{2}$/.test(raw))return raw.split('-').reverse().join('/');
-  if(/^\\d{4}-\\d{2}-\\d{2}T/.test(raw)){
+  if(/^\d{4}-\d{2}-\d{2}$/.test(raw))return raw.split('-').reverse().join('/');
+  if(/^\d{4}-\d{2}-\d{2}T/.test(raw)){
    const date=new Date(raw);
    if(!Number.isNaN(date.getTime()))return new Intl.DateTimeFormat('es-GT',{timeZone:zone,
     year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',

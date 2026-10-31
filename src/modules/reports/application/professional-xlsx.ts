@@ -168,7 +168,7 @@ function summarySheet(r:ExportPayload):Worksheet{
  }
  full('MOVIMIENTOS Y DETALLE',2,30);
  full('La hoja Diario agrupa los registros por fecha. La hoja Detalle muestra los documentos.',5,34);
- if(r.diarioNota)full(r.diarioNota,5,45);
+ full('Importes según registros originales. Las diferencias de cobro y venta requieren conciliación.',5,31);
  return {name:'Resumen',lines,widths:[36,25,36,25],merges,freeze:3};
 }
 function dailySheet(r:ExportPayload):Worksheet{
@@ -178,7 +178,7 @@ function dailySheet(r:ExportPayload):Worksheet{
  const title=r.periodo.desde===r.periodo.hasta?'REPORTE DEL DÍA: '+r.periodo.desde.split('-').reverse().join('/'):'MOVIMIENTOS DIARIOS DEL PERÍODO';
  const lines:Line[]=[row([tag(title,1)],43),
   row([tag(r.periodo.desde+' al '+r.periodo.hasta+'  |  '+r.sucursal.nombre,3)],31),
-  row([tag(d.note||'Desglose por fecha operativa verificable.',15)],36),
+  row([tag('Movimientos agrupados por fecha operativa. El detalle conserva sus importes.',5)],31),
   row(columns.map(k=>tag(fieldLabel(k),7)),36)];
  for(let i=0;i<d.rows.length;i++){
   const item=d.rows[i];lines.push(row(columns.map(k=>numericCell(item[k],k,i%2===1,r.currency)),27));

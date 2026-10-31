@@ -17,6 +17,7 @@ const titles:Record<string,string>={
  SUPPLY_REQUESTS:'Requisiciones',SUPPLY_TRANSFERS:'Transferencias'
 };
 const labels:Record<string,string>={
+ sinRegistros:'Sin registros',
  numeroOrden:'Orden',fecha:'Fecha operativa',producto:'Producto',
  variante:'Variante',descripcion:'Descripción',modalidad:'Modalidad',
  cantidad:'Cantidad',ingreso:'Ingresos',ingresos:'Ingresos',

@@ -1,6 +1,6 @@
 import {deflateRawSync} from 'node:zlib';
 import type {ExportPayload} from './report-export-formats.js';
-import {fieldLabel,reportDaily,reportMetrics,reportTitle,sourceKeys,str} from './professional-export-model.js';
+import {fieldLabel,isMoney,presentationValue,reportDaily,reportMetrics,reportPeriodLabel,reportTitle,sourceKeys,str} from './professional-export-model.js';
 type Cell={v:string;kind?:'text'|'number'|'formula';style?:number};
 type Line={cells:Cell[];height?:number};
 type Worksheet={name:string;lines:Line[];widths:number[];merges?:string[];filter?:string;freeze?:number};
@@ -14,19 +14,20 @@ const alpha=(n:number)=>{let result='';for(let x=n+1;x>0;x=Math.floor((x-1)/26))
 const decimal=/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/;
 const id=(k:string)=>/id$/i.test(k)||/documentosConsumo/.test(k);
 const fractional=(v:string)=>v.includes('.')?v.split('.')[1].length:0;
-function numericCell(value:unknown,key:string,rowBand=false):Cell{
+function numericCell(value:unknown,key:string,rowBand=false,currency='GTQ'):Cell{
  if(value==null)return tag('',rowBand?6:5);
  const v=str(value);
- if((typeof value==='number'||decimal.test(v))&&!id(key)&&
-  v.length<=18&&decimal.test(v)){
-  const dp=fractional(v);
-  return tag(v,dp>2?(rowBand?11:10):dp>0?(rowBand?9:8):(rowBand?13:12),'number');
+ if((typeof value==='number'||decimal.test(v))&&!id(key)&&v.length<=18&&decimal.test(v)){
+  const dp=fractional(v),money=isMoney(key);
+  if(money&&currency==='GTQ')return tag(v,dp>2?(rowBand?11:10):(rowBand?9:8),'number');
+  if(money&&currency==='USD')return tag(v,dp>2?(rowBand?25:24):(rowBand?23:22),'number');
+  return tag(v,dp>2?(rowBand?19:18):dp>0?(rowBand?21:20):(rowBand?13:12),'number');
  }
- return tag(v,id(key)?14:rowBand?6:5);
+ return tag(presentationValue(value,key),rowBand?6:5);
 }
 function row(cells:Cell[],height=23):Line{return {cells,height};}
-const colors={navy:'FF142638',navy2:'FF223C54',teal:'FF087B77',
- pale:'FFEAF4F4',line:'FFDCE5ED',gray:'FFF4F7FA',white:'FFFFFFFF',
+const colors={navy:'FF142638',navy2:'FF223C54',teal:'FF34475A',
+ pale:'FFF4F6F8',line:'FFE2E7EC',gray:'FFF7F8F9',white:'FFFFFFFF',
  muted:'FF53677B',ink:'FF172B3C',gold:'FFB77938'};
 const font=(size:number,bold=false,color=colors.ink)=>'<font>'+
  (bold?'<b/>':'')+'<sz val="'+size+'"/><color rgb="'+color+
@@ -43,9 +44,13 @@ const border='<border><left style="hair"><color rgb="'+colors.line+
 // The prior exporter emitted numFmts after cellStyleXfs, which Excel repaired.
 const styles=xmlHead+
  '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'+
- '<numFmts count="3"><numFmt numFmtId="164" formatCode="#,##0.00"/>'+
- '<numFmt numFmtId="165" formatCode="#,##0.000000"/>'+
- '<numFmt numFmtId="166" formatCode="#,##0"/></numFmts>'+
+ '<numFmts count="7"><numFmt numFmtId="164" formatCode="&quot;Q&quot; #,##0.00"/>'+
+ '<numFmt numFmtId="165" formatCode="&quot;Q&quot; #,##0.000000"/>'+
+ '<numFmt numFmtId="166" formatCode="#,##0"/>'+
+ '<numFmt numFmtId="167" formatCode="#,##0.000000"/>'+
+ '<numFmt numFmtId="168" formatCode="#,##0.00"/>'+
+ '<numFmt numFmtId="169" formatCode="&quot;USD&quot; #,##0.00"/>'+
+ '<numFmt numFmtId="170" formatCode="&quot;USD&quot; #,##0.000000"/></numFmts>'+
  '<fonts count="6">'+font(11)+font(19,true,colors.white)+font(11,true,colors.white)+
  font(11,true,colors.navy)+font(11,true,colors.teal)+font(10,false,colors.muted)+'</fonts>'+
  '<fills count="7"><fill><patternFill patternType="none"/></fill>'+
@@ -54,7 +59,7 @@ const styles=xmlHead+
  '</fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>'+
  border+'</borders>'+
  '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'+
- '<cellXfs count="18">'+[
+ '<cellXfs count="26">'+[
   [0,0,2,0,'left',false],  // 0
   [0,1,3,0,'left',false],  // 1 title
   [0,2,4,0,'left',false],  // 2 section
@@ -72,7 +77,15 @@ const styles=xmlHead+
   [0,5,6,1,'left',true],   // 14 technical id
   [0,4,4,0,'left',true],   // 15 highlight
   [164,3,6,1,'right',false], // 16 total
-  [165,3,6,1,'right',false]  // 17 total micro
+  [165,3,6,1,'right',false], // 17 total Q micro
+  [167,0,2,1,'right',false], // 18 decimal nonmonetary
+  [167,0,5,1,'right',false], // 19 alternate
+  [168,0,2,1,'right',false], // 20 decimal nonmonetary
+  [168,0,5,1,'right',false], // 21 alternate
+  [169,0,2,1,'right',false], // 22 USD
+  [169,0,5,1,'right',false], // 23 alternate USD
+  [170,0,2,1,'right',false], // 24 USD 6 decimals
+  [170,0,5,1,'right',false]  // 25 alternate USD
  ].map(([num,f,fi,b,align,wrap])=>'<xf numFmtId="'+num+'" fontId="'+f+
   '" fillId="'+fi+'" borderId="'+b+'" xfId="0" applyAlignment="1" applyNumberFormat="1">'+
   '<alignment horizontal="'+align+'" vertical="center" wrapText="'+(wrap?'1':'0')+'"/>'+
@@ -138,43 +151,37 @@ function zip(files:{name:string;content:string}[]){
  return Buffer.concat([...blocks,directory,end]);
 }
 function summarySheet(r:ExportPayload):Worksheet{
- const metrics=reportMetrics(r),title=reportTitle(r),lines:Line[]=[],merges:string[]=[];
- const full=(text:string,style=1,height=42)=>{
-  lines.push(row([tag(text,style),...Array.from({length:7},()=>tag('',style))],height));
-  merges.push('A'+lines.length+':H'+lines.length);
+ const metrics=reportMetrics(r).slice(0,8),lines:Line[]=[],merges:string[]=[];
+ const full=(value:string,style=0,height=30)=>{
+  lines.push(row([tag(value,style),tag(''),tag(''),tag('')],height));
+  merges.push('A'+lines.length+':D'+lines.length);
  };
- full('GASTRO CORE    |    REPORTES Y ANALÍTICA',1,48);
- full(title,2,40);
- full('Sucursal: '+r.sucursal.nombre+'    •    '+r.currency+
-  '    •    '+r.periodo.desde+' al '+r.periodo.hasta,3,32);
- lines.push(row([tag('Tipo',3),tag(r.periodo.desde===r.periodo.hasta?'Informe diario':'Informe de período',4),
-  tag('Origen',3),tag(r.source,4),tag('Registros',3),
-  tag(String(r.meta.total),12,'number'),tag('Moneda',3),tag(r.currency,4)],30));
- full('INDICADORES PRINCIPALES',2,34);
- for(let i=0;i<Math.min(metrics.length,16);i+=2){
-  const a=metrics[i],b=metrics[i+1];
-  lines.push(row([tag(a?.label??'',3),tag(a?.value??'',4),
-   tag(b?.label??'',3),tag(b?.value??'',4)],29));
+ full('GASTRO CORE  /  INFORMES',1,43);
+ full(reportTitle(r),3,39);
+ full(reportPeriodLabel(r),3,31);
+ full('Sucursal: '+r.sucursal.nombre+'  |  Moneda: '+r.currency,5,29);
+ full('RESULTADOS PRINCIPALES',2,31);
+ for(let i=0;i<metrics.length;i+=2){
+  const m=metrics[i],n=metrics[i+1];
+  lines.push(row([tag(m.label,3),numericCell(m.value,m.key,false,r.currency),
+   tag(n?.label??'',3),n?numericCell(n.value,n.key,false,r.currency):tag('')],34));
  }
- full('LECTURA Y TRAZABILIDAD',2,32);
- full('El período usa la fecha operativa de la sucursal. Consultas consistentes con REPEATABLE READ.',15,34);
- full('Costos identificados y fechas de reconocimiento pueden diferir de cobros y resultados contables.',15,34);
- if(r.diarioNota)full(r.diarioNota,15,42);
- full('Las hojas Diario y Detalle contienen la evidencia; los identificadores técnicos se conservan en Detalle.',15,42);
- return {name:'Resumen',lines,widths:[26,25,25,26,24,20,23,23],
-  merges,freeze:2};
+ full('MOVIMIENTOS Y DETALLE',2,30);
+ full('La hoja Diario agrupa los registros por fecha. La hoja Detalle muestra los documentos.',5,34);
+ if(r.diarioNota)full(r.diarioNota,5,45);
+ return {name:'Resumen',lines,widths:[36,25,36,25],merges,freeze:3};
 }
 function dailySheet(r:ExportPayload):Worksheet{
  const d=reportDaily(r);const keys=[...new Set(d.rows.flatMap(x=>Object.keys(x)))];
  const fields=['fecha',...keys.filter(k=>k!=='fecha')];
  const columns=fields.length>1?fields:['fecha','registros'];
- const title=r.periodo.desde===r.periodo.hasta?'RESUMEN DEL DÍA':'RESUMEN DIARIO DEL PERÍODO';
+ const title=r.periodo.desde===r.periodo.hasta?'REPORTE DEL DÍA: '+r.periodo.desde.split('-').reverse().join('/'):'MOVIMIENTOS DIARIOS DEL PERÍODO';
  const lines:Line[]=[row([tag(title,1)],43),
   row([tag(r.periodo.desde+' al '+r.periodo.hasta+'  |  '+r.sucursal.nombre,3)],31),
   row([tag(d.note||'Desglose por fecha operativa verificable.',15)],36),
   row(columns.map(k=>tag(fieldLabel(k),7)),36)];
  for(let i=0;i<d.rows.length;i++){
-  const item=d.rows[i];lines.push(row(columns.map(k=>numericCell(item[k],k,i%2===1)),27));
+  const item=d.rows[i];lines.push(row(columns.map(k=>numericCell(item[k],k,i%2===1,r.currency)),27));
  }
  if(!d.rows.length)
   lines.push(row([tag('No hay movimientos con fecha operativa verificable en esta fuente y período.',15)],36));
@@ -185,13 +192,13 @@ function dailySheet(r:ExportPayload):Worksheet{
 function detailSheet(r:ExportPayload):Worksheet{
  const keys=sourceKeys(r),last=keys.length;
  const lines:Line[]=[
-  row([tag('DETALLE Y TRAZABILIDAD  |  '+reportTitle(r),1)],48),
+  row([tag('DETALLE  |  '+reportTitle(r),1)],43),
   row([tag('Sucursal '+r.sucursal.nombre+'  •  '+r.periodo.desde+' / '+r.periodo.hasta,3)],30),
-  row([tag('Los campos ID y documentos originales permanecen disponibles para auditoría.',15)],32),
+  row([tag('Detalle de operaciones. Montos editables y sumables.',5)],29),
   row(keys.map(k=>tag(fieldLabel(k),7)),37)
  ];
  for(let i=0;i<r.data.length;i++)
-  lines.push(row(keys.map(k=>numericCell(r.data[i][k],k,i%2===1)),
+  lines.push(row(keys.map(k=>numericCell(r.data[i][k],k,i%2===1,r.currency)),
    keys.some(k=>/descripcion|documentosConsumo/i.test(k))?34:27));
  const endRow=lines.length;
  if(r.data.length){
@@ -201,7 +208,7 @@ function detailSheet(r:ExportPayload):Worksheet{
     !id(k)&&!/fecha|estado|codigo|numero/i.test(k);
    if(numeric){
     const c=alpha(i);return tag('SUM('+c+'5:'+c+endRow+')',
-     r.data.some(x=>fractional(str(x[k]))>2)?17:16,'formula');
+     isMoney(k)?(r.currency==='GTQ'?(r.data.some(x=>fractional(str(x[k]))>2)?17:16):22):12,'formula');
    }
    return tag(i===0?'TOTAL (VERIFICACIÓN)':'',3);
   });

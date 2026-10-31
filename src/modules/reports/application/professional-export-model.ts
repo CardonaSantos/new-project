@@ -57,12 +57,26 @@ const important:Record<string,string[]>={
  PLATFORM_SETTLEMENTS:['bruto','comisiones','neto','liquidaciones'],
  BANK_MATCH_STATUS:['lineas','conciliadas','pendientes','movimientoExtracto']
 };
-const isMoney=(key:string)=>/ingreso|costo|margen|saldo|cobrad|reembols|neto|bruto|total|comision|monto|importe|facturad|pagosAplicados|creditosAplicados/i.test(key);
+export const isMoney=(key:string)=>/ingreso|costo|margen|saldo|cobrad|reembols|neto|bruto|total|comision|monto|importe|facturad|pagosAplicados|creditosAplicados/i.test(key);
 const currency=(v:unknown,dp:number)=>new Prisma.Decimal(String(v??0)).toFixed(dp);
 export const reportTitle=(r:ExportPayload)=>titles[r.source]??r.source.replace(/_/g,' ');
-export const fieldLabel=(key:string)=>labels[key]??key.replace(/([a-z])([A-Z])/g,'$1 $2');
+export const fieldLabel=(key:string)=>labels[key]??
+ (key.replace(/([a-z])([A-Z])/g,'$1 $2').replace(/_/g,' ').replace(/^./,c=>c.toUpperCase()));
+// Reports target cashiers/managers, not developers. Retain internal identifiers
+// only in the authorized database source, never in delivered CSV/XLSX/PDF.
+export const isVisibleField=(key:string)=>!(/(^id$|Id$|Ids$|documentosConsumo|^movimientoFinancieroId$)/i.test(key));
+export const formatMoney=(value:unknown,currency='GTQ',digits=2)=>{
+ if(value===null||value===undefined||value==='')return 'Sin dato';
+ const valueNumber=new Prisma.Decimal(String(value));
+ const prefix=currency==='GTQ'?'Q ':currency+' ';
+ return prefix+valueNumber.toFixed(digits).replace(/\B(?=(\d{3})+(?!\d))/g,',');
+};
+export const reportPeriodLabel=(r:ExportPayload)=>r.periodo.desde===r.periodo.hasta?
+ 'REPORTE DEL DÍA • '+r.periodo.desde.split('-').reverse().join('/'):
+ 'REPORTE DEL PERÍODO • '+r.periodo.desde.split('-').reverse().join('/')+' AL '+
+ r.periodo.hasta.split('-').reverse().join('/');
 export function sourceKeys(r:ExportPayload){
- const existing=[...new Set(r.data.flatMap(row=>Object.keys(row)))];
+ const existing=[...new Set(r.data.flatMap(row=>Object.keys(row)))].filter(isVisibleField);
  if(!existing.length)return ['sinRegistros'];
  const preferred=favorites[r.source]??[];
  const used=preferred.filter(k=>existing.includes(k));
@@ -99,7 +113,15 @@ export function businessColumns(r:ExportPayload):string[]{
  const fav=favorites[r.source]??[];
  const main=fav.filter(k=>keys.includes(k)&&!k.endsWith('Id'));
  const remaining=keys.filter(k=>!main.includes(k)&&!k.endsWith('Id')&&!/documentosConsumo/i.test(k));
- return [...main,...remaining].slice(0,8);
+ const selected=[...main,...remaining];
+ const max=6;
+ const order=r.source==='SALES_COSTS'?(r.periodo.desde===r.periodo.hasta?
+  ['numeroOrden','producto','cantidad','ingreso','costoDirecto','margenAntesEmpaque']:
+  ['fecha','numeroOrden','producto','ingreso','costoDirecto','margenAntesEmpaque']):
+  r.source==='PAYMENT_SALES_RECON'?['numeroOrden','estadoOrden','reconocimientoVenta','pagos','cobrado','netoHistorico']:
+  r.source==='ORDER_COST_OUTCOMES'?['numeroOrden','estadoActual','documentos','costoIdentificado','costoEmpaqueIdentificado','costoCompleto']:[];
+ if(order.length)return order.filter(k=>keys.includes(k)).slice(0,max);
+ return selected.slice(0,max);
 }
 function dayOf(v:unknown,zone:string,cutoff:string):string|null{
  if(v==null||v==='')return null;
@@ -159,16 +181,24 @@ export function reportDaily(r:ExportPayload):{rows:Daily[];note:string}{
  });
  return {rows,note:'Agrupación por fecha operativa del documento de origen. Costos no conciliados permanecen vacíos, nunca se convierten en cero.'};
 }
-export function presentationValue(v:unknown,field:string,zone='America/Guatemala'){
- if(v===null||v===undefined)return 'No disponible';
+export function presentationValue(v:unknown,field:string,zone='America/Guatemala',currency='GTQ'){
+ if(v===null||v===undefined)return 'Sin dato';
  if(typeof v==='boolean')return v?'Sí':'No';
+ if(isMoney(field)&&/^-?\\d+(?:\\.\\d+)?$/.test(String(v)))
+  return formatMoney(v,currency,2);
  if(field==='cobertura')return String(v).replaceAll('_',' ');
- if(/fecha|En$|creadaEn|cerradaEn|canceladaEn|recibidaEn/i.test(field)&&
-  typeof v==='string'&&/^\d{4}-\d{2}-\d{2}T/.test(v)){
-  const d=new Date(v);
-  if(!Number.isNaN(d.getTime()))
-   return new Intl.DateTimeFormat('es-GT',{timeZone:zone,year:'numeric',
-    month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(d);
+ if(field==='reconocimientoVenta')return v==='CON_VENTA'?'Sí':'Pendiente';
+ if(/fecha|En$|creadaEn|cerradaEn|canceladaEn|recibidaEn/i.test(field)){
+  const raw=v instanceof Date?v.toISOString():String(v);
+  if(/^\\d{4}-\\d{2}-\\d{2}$/.test(raw))return raw.split('-').reverse().join('/');
+  if(/^\\d{4}-\\d{2}-\\d{2}T/.test(raw)){
+   const date=new Date(raw);
+   if(!Number.isNaN(date.getTime()))return new Intl.DateTimeFormat('es-GT',{timeZone:zone,
+    year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',
+    hourCycle:'h23'}).format(date);
+  }
  }
- return str(v);
+ const value=str(v);
+ return /^[A-ZÁÉÍÓÚ_]+$/.test(value)?value.replaceAll('_',' ').toLowerCase()
+  .replace(/^./,c=>c.toUpperCase()):value;
 }

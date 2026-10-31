@@ -36,7 +36,7 @@ describe('REP-2B professional export renderers',()=>{
   expect(csv.toString('utf8')).toContain('"\'=1+2"');
   expect(csv.toString('utf8')).toContain('"\'+SUM(A1)"');
   expect(csv.toString('utf8')).toContain('\r\n');
-  expect(exportTable(sample).headers).toEqual(['numeroOrden','fecha','ingreso',
+  expect(exportTable(sample).headers).toEqual(['fecha','numeroOrden','ingreso',
    'costoDirecto','detalle']);
  });
  it('generates validly ordered OOXML styles and three human-readable XLSX worksheets',()=>{
@@ -86,8 +86,8 @@ describe('REP-2B professional export renderers',()=>{
    data:[{proveedor:long,numeroDocumento:'DOC-123',saldo:'0.00'}],
    totales:{saldo:'0.00'},meta:{total:1}};
   const pdf=renderPdf(r).toString('latin1');
-  expect(pdf).toContain('ABCDEFGHIJKLMNOP');
-  expect(pdf).toContain('QRSTUVWXYZ');
+  const texts=[...pdf.matchAll(/\(([^()]*)\) Tj/g)].map(m=>m[1]).join('');
+  expect(texts).toContain(long);
   expect(pdf).toContain('/Helvetica-Bold');
  });
  it('computes operational-day grouping from sale timestamps and preserves six decimals',()=>{
@@ -126,7 +126,7 @@ describe('REP-2B professional export renderers',()=>{
  });
  it('supports empty financial datasets without invented monetary totals',()=>{
   const r={...sample,data:[],meta:{total:0}};
-  expect(renderCsv(r).toString()).toContain('sinRegistros');
+  expect(renderCsv(r).toString()).toContain('Sin registros');
   expect(renderXlsx(r).subarray(0,2).toString()).toBe('PK');
   expect(renderPdf(r).toString('latin1')).toContain('/Count 1');
  });

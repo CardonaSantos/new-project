@@ -302,7 +302,14 @@ export class InventoryOperationsStore{
    map.set(layer.articuloId,(map.get(layer.articuloId)??new Prisma.Decimal(0)).plus(
     layer.cantidadRestante.mul(layer.costoUnitario)));
   }
-  const records=[...map].map(([articuloId,v])=>({articuloId,valor:price(v)}));
+  // Article identity is already loaded with each stock position; avoid N+1 requests.
+  const articleLabels=new Map(rows.map(row=>[row.articuloId,{
+   codigo:row.articulo.codigo,nombre:row.articulo.nombre
+  }]));
+  const records=[...map].map(([articuloId,v])=>({
+   articuloId,codigo:articleLabels.get(articuloId)?.codigo??'',
+   nombre:articleLabels.get(articuloId)?.nombre??'',valor:price(v)
+  }));
   return {sucursalId:q.sucursalId,metodoValoracion:company?.metodoValoracion??null,
    valorInventario:price([...map.values()].reduce((sum,x)=>sum.plus(x),new Prisma.Decimal(0))),
    articulos:records,nota:'Valorización de existencias físicas; tránsito se informa en documentos de transferencia.'};
@@ -323,10 +330,27 @@ export class InventoryOperationsStore{
  async reconciliation(u:Principal,q:StockQuery){
   await this.listScope(u,q,'inventory.reports.read');
   const [rows,movs,layers]=await Promise.all([
-   this.db.existencia.findMany({where:{ubicacion:{almacen:{sucursalId:q.sucursalId}}}}),
-   this.db.movimientoInventario.findMany({where:{ubicacion:{almacen:{sucursalId:q.sucursalId}}}}),
-   this.db.capaCostoInventario.findMany({where:{ubicacion:{almacen:{sucursalId:q.sucursalId}}}})
+   this.db.existencia.findMany({where:{ubicacion:{almacen:{sucursalId:q.sucursalId}}},
+    include:{articulo:{select:{codigo:true,nombre:true}},
+     ubicacion:{select:{codigo:true,nombre:true}},lote:{select:{codigoLote:true}}}}),
+   this.db.movimientoInventario.findMany({where:{ubicacion:{almacen:{sucursalId:q.sucursalId}}},
+    include:{articulo:{select:{codigo:true,nombre:true}},
+     ubicacion:{select:{codigo:true,nombre:true}},lote:{select:{codigoLote:true}}}}),
+   this.db.capaCostoInventario.findMany({where:{ubicacion:{almacen:{sucursalId:q.sucursalId}}},
+    include:{articulo:{select:{codigo:true,nombre:true}},
+     ubicacion:{select:{codigo:true,nombre:true}}}})
   ]);
+  // Names travel alongside discrepancies. Never expose raw database IDs to operators.
+  const articleNames=new Map<string,{codigo:string;nombre:string}>();
+  const locationNames=new Map<string,{codigo:string;nombre:string}>();
+  const lotNames=new Map<string,{codigoLote:string}>();
+  for(const row of [...rows,...movs,...layers]){
+   articleNames.set(row.articuloId,row.articulo);
+   locationNames.set(row.ubicacionId,row.ubicacion);
+  }
+  for(const row of [...rows,...movs])if(row.loteId&&row.lote){
+   lotNames.set(row.loteId,row.lote);
+  }
   const key=(a:string,b:string,c:string|null)=>[a,b,c??''].join(':');
   const balances=new Map<string,Prisma.Decimal>();
   for(const x of rows)balances.set(key(x.articuloId,x.ubicacionId,x.loteId),x.cantidad);
@@ -334,9 +358,14 @@ export class InventoryOperationsStore{
   for(const x of movs){const k=key(x.articuloId,x.ubicacionId,x.loteId);
    ledger.set(k,(ledger.get(k)??new Prisma.Decimal(0)).plus(x.cantidad));}
   const discrepancies=[...new Set([...balances.keys(),...ledger.keys()])].filter(k=>
-    !(balances.get(k)??new Prisma.Decimal(0)).equals(ledger.get(k)??new Prisma.Decimal(0))).map(k=>({
-     posicion:k,cantidad:qty(balances.get(k)??new Prisma.Decimal(0)),
-     kardex:qty(ledger.get(k)??new Prisma.Decimal(0))}));
+    !(balances.get(k)??new Prisma.Decimal(0)).equals(ledger.get(k)??new Prisma.Decimal(0))).map(k=>{
+     const [articuloId,ubicacionId,loteId]=k.split(':');
+     return {posicion:k,articulo:articleNames.get(articuloId)??null,
+      ubicacion:locationNames.get(ubicacionId)??null,
+      lote:loteId?lotNames.get(loteId)??null:null,
+      cantidad:qty(balances.get(k)??new Prisma.Decimal(0)),
+      kardex:qty(ledger.get(k)??new Prisma.Decimal(0))};
+    });
   const layerTotals=new Map<string,Prisma.Decimal>();
   const positionTotals=new Map<string,Prisma.Decimal>();
   for(const x of layers){const k=key(x.articuloId,x.ubicacionId,null);
@@ -344,9 +373,13 @@ export class InventoryOperationsStore{
   for(const x of rows){const k=key(x.articuloId,x.ubicacionId,null);
    positionTotals.set(k,(positionTotals.get(k)??new Prisma.Decimal(0)).plus(x.cantidad));}
   const capas=[...new Set([...layerTotals.keys(),...positionTotals.keys()])].filter(k=>
-   !(layerTotals.get(k)??new Prisma.Decimal(0)).equals(positionTotals.get(k)??new Prisma.Decimal(0))).map(k=>({
-    articuloUbicacion:k,cantidad:qty(positionTotals.get(k)??new Prisma.Decimal(0)),
-    capas:qty(layerTotals.get(k)??new Prisma.Decimal(0))}));
+   !(layerTotals.get(k)??new Prisma.Decimal(0)).equals(positionTotals.get(k)??new Prisma.Decimal(0))).map(k=>{
+    const [articuloId,ubicacionId]=k.split(':');
+    return {articuloUbicacion:k,articulo:articleNames.get(articuloId)??null,
+     ubicacion:locationNames.get(ubicacionId)??null,
+     cantidad:qty(positionTotals.get(k)??new Prisma.Decimal(0)),
+     capas:qty(layerTotals.get(k)??new Prisma.Decimal(0))};
+   });
   return {sucursalId:q.sucursalId,conciliado:discrepancies.length===0&&capas.length===0,
    diferenciasKardex:discrepancies,diferenciasCapas:capas,
    nota:'No modifica datos; discrepancias requieren investigación y reversas controladas.'};

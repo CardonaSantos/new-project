@@ -302,7 +302,14 @@ export class InventoryOperationsStore{
    map.set(layer.articuloId,(map.get(layer.articuloId)??new Prisma.Decimal(0)).plus(
     layer.cantidadRestante.mul(layer.costoUnitario)));
   }
-  const records=[...map].map(([articuloId,v])=>({articuloId,valor:price(v)}));
+  // Article identity is already loaded with each stock position; avoid N+1 requests.
+  const articleLabels=new Map(rows.map(row=>[row.articuloId,{
+   codigo:row.articulo.codigo,nombre:row.articulo.nombre
+  }]));
+  const records=[...map].map(([articuloId,v])=>({
+   articuloId,codigo:articleLabels.get(articuloId)?.codigo??'',
+   nombre:articleLabels.get(articuloId)?.nombre??'',valor:price(v)
+  }));
   return {sucursalId:q.sucursalId,metodoValoracion:company?.metodoValoracion??null,
    valorInventario:price([...map.values()].reduce((sum,x)=>sum.plus(x),new Prisma.Decimal(0))),
    articulos:records,nota:'Valorización de existencias físicas; tránsito se informa en documentos de transferencia.'};

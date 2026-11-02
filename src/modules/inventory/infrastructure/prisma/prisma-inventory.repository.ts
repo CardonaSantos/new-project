@@ -3,7 +3,7 @@ import {Prisma} from '../../../../generated/prisma/client.js';
 import {PrismaService} from '../../../../infrastructure/database/prisma/prisma.service.js';
 import {InventoryRepositoryPort,type Scope,type Page,type Options,type ArticleInput,type ArticleUpdate,
  type ArticleFilter,type WarehouseFilter,type LocationFilter,type WarehouseInput,type LocationInput} from '../../application/ports/inventory.repository.port.js';
-import {expirationRule,sameDimension,type Dimension,type ArticleKind} from '../../domain/inventory.policy.js';
+import {expirationRule,reducesArticleTracking,sameDimension,type Dimension,type ArticleKind} from '../../domain/inventory.policy.js';
 
 type Tx=Prisma.TransactionClient;
 const serial={isolationLevel:Prisma.TransactionIsolationLevel.Serializable};
@@ -264,7 +264,7 @@ export class PrismaInventoryRepository extends InventoryRepositoryPort{
    const before=await tx.articuloInventario.findUnique({where:{id}});
    if(!before)throw new NotFoundException('Artículo no encontrado');
    expirationRule(input.requiereLote??before.requiereLote,input.requiereVencimiento??before.requiereVencimiento);
-   if((input.requiereLote===false||input.requiereVencimiento===false)&&
+   if(reducesArticleTracking(before,input)&&
       await tx.movimientoInventario.count({where:{articuloId:id}}))
     throw new ConflictException('No puede reducir los controles de lote/vencimiento con historial de movimientos');
    const row=await tx.articuloInventario.update({where:{id},data:input,include:articleInclude});

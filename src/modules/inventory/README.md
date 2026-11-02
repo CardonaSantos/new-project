@@ -288,3 +288,71 @@ de lotes y las financieras de capas son independientes.
 - `inventory-operations.controller.ts` delega ahora a `InventoryOperationsService` / `InventoryInternalConsumptionService`.
 - Las interfaces `InventoryOperationsPort` y `InventoryInternalConsumptionPort` se enlazan mediante `useExisting` a los stores originales.
 - Se conserva `InventoryPostingEngine`, la conciliación Kardex, conteos, transferencias y autorizaciones; no hay cambios de rutas, inventario o SQL.
+
+
+## INV-UX — Read models para UI Inventory (2026-11-02)
+
+Ampliación compatible y exclusivamente de lectura. Sin SQL/migraciones, cambios en stock,
+costeo, auditoría ni permisos de escritura. Las 53 rutas anteriores conservan
+su firma y semántica; se añaden dos GET para un total de 55 rutas Inventory.
+
+### Documentos de conteo: GET /api/inventory/counts
+
+Query: \`sucursalId\` (obligatorio), \`almacenId\` y \`estado\` (opcionales:
+BORRADOR, CONFIRMADO, CANCELADO), \`page\` (1 por defecto) y \`limit\` (20 por
+defecto; máximo 100). Requiere \`inventory.read\` en sucursalId. Filtros y
+paginación se ejecutan en PostgreSQL, antes de entregar datos. Devuelve:
+\`{data:[{id,almacen:{id,codigo,nombre,sucursalId},estado,nota,
+responsable:{id,nombre},numeroLineas,creadoEn,confirmadoEn}],
+meta:{page,limit,total,totalPages}}\`. El listado no expone costos.
+
+### Documentos de transferencia: GET /api/inventory/transfers
+
+Query: \`sucursalId\` obligatorio (de origen o destino), \`almacenOrigenId\`,
+\`almacenDestinoId\` opcionales, \`estado\` opcional:
+BORRADOR, EN_TRANSITO, RECIBIDA, CANCELADA; page/limit como arriba.
+Devuelve \`{data:[{id,numero,estado,nota,origen,destino,responsable,
+numeroLineas,despachadaEn,recibidaEn}],meta:{page,limit,total,totalPages}}\`.
+Cada almacén contiene id/codigo/nombre/sucursalId. Requiere lectura en la
+sucursal filtrada **y en ambas sucursales de cada transferencia**, incluso
+si son diferentes. El alcance se aplica en la consulta SQL antes de
+paginar o contar. No expone costos, capas de inventario ni datos sensibles.
+
+El modelo existente de transferencia no tiene \`creadoEn\`; el listado
+ordena por id descendente, sin inventar fecha de creación.
+
+### Selector de lotes sin stock
+
+\`GET /api/inventory/lots?sucursalId=...&articuloId=...&incluirSinExistencias=true\`
+incluye lotes ya registrados sin posición de inventario en la sucursal.
+Solo se admite con articuloId explícito. El valor por defecto (false)
+mantiene el filtro original: lotes con al menos una posición local.
+Se mantiene autorización \`inventory.read\` por sucursal y el resto
+del contrato \`{data,meta}\`, incluidas cantidades decimales como string.
+
+### Miniaturas para existencias y Kardex
+
+Los GET existentes ahora agregan de forma aditiva:
+- /inventory/stock: \`data[].articulo.imagenPrincipalUrl\`.
+- /inventory/stock/summary: \`data[].imagenPrincipalUrl\`.
+- /inventory/movements: \`data[].articulo.imagenPrincipalUrl\`.
+- /inventory/movements/:id: \`articulo.id\` e \`articulo.imagenPrincipalUrl\`.
+
+La imagen se obtiene de \`ArticuloInventarioMedia\` con una sola consulta
+para los artículos solicitados, seleccionando la primera imagen
+confirmada y no eliminada, preferentemente principal. Si es privada,
+se genera URL firmada de 300 segundos (si es pública, se reutiliza
+urlPublica). Si no existe imagen o Media falla, el campo vale \`null\`,
+sin bloquear el acceso a cantidades ni Kardex. La URL nunca es permanente.
+Las políticas de costos, FIFO/promedio y cantidades permanecen intactas.
+
+### Comprobaciones recomendadas para UI
+
+- Paginación y estados de documentos, sucursales cruzadas autorizadas y 403.
+- Valores invalidos de query -> 400, sin alterar operaciones anteriores.
+- Lote creado sin stock: ausente por defecto, seleccionable con
+  incluirSinExistencias=true + articuloId.
+- Miniatura presente, ausente, privada, caducada y fallo de almacenamiento.
+- GET inventory/stock/summary sigue siendo consolidado *no paginado*;
+  una UI de alto volumen debería paginarse en un cambio posterior
+  sin modificar su contrato actual.

@@ -15,6 +15,8 @@ export class RecipeService{
  newVersion(u:Principal,id:string,d:VersionDto){return this.recipes.newVersion(u,id,d);}
  revise(u:Principal,id:string,d:VersionDto){return this.recipes.revise(u,id,d);}
  publish(u:Principal,id:string){return this.recipes.publish(u,id);}
+ unpublish(u:Principal,id:string){return this.recipes.unpublish(u,id);}
+ discardVersion(u:Principal,id:string){return this.recipes.discardVersion(u,id);}
  coverage(u:Principal,d:CoverageQueryDto){return this.recipes.coverage(u,d);}
  modifier(u:Principal,id:string){return this.recipes.modifier(u,id);}
  setModifier(u:Principal,id:string,d:ModifierCompositionDto){return this.recipes.setModifier(u,id,d);}

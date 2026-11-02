@@ -17,6 +17,8 @@ describe('REC-A HTTP contracts',()=>{
   create:vi.fn().mockResolvedValue({id:'r1'}),detail:vi.fn().mockResolvedValue({id:'r1'}),
   update:vi.fn().mockResolvedValue({id:'r1'}),newVersion:vi.fn().mockResolvedValue({id:'v1'}),
   revise:vi.fn().mockResolvedValue({id:'v1'}),publish:vi.fn().mockResolvedValue({id:'v1'}),
+  unpublish:vi.fn().mockResolvedValue({id:'v1',activa:false}),
+  discardVersion:vi.fn().mockResolvedValue({id:'v2',descartada:true}),
   preview:vi.fn().mockResolvedValue({disponible:true,consumos:[]}),
   modifier:vi.fn().mockResolvedValue({id:'m1'}),setModifier:vi.fn().mockResolvedValue({id:'m1'}),
   packaging:vi.fn().mockResolvedValue([]),createPackaging:vi.fn().mockResolvedValue({id:'e1'}),
@@ -80,6 +82,14 @@ describe('REC-A HTTP contracts',()=>{
   expect(service.productions).toHaveBeenCalledWith(actor,expect.objectContaining({sucursalId:'b1',
    fechaDesde:'2026-11-01T00:00:00Z',fechaHasta:'2026-12-01T00:00:00Z'}));
   await request(app.getHttpServer()).get('/api/production/batches/reports/summary?sucursalId=b1&fechaDesde=no').expect(400);
+ });
+ it('keeps version retirement separate from deleting unpublished drafts',async()=>{
+  await request(app.getHttpServer()).post('/api/recipes/versions/v1/unpublish')
+   .expect(201).expect({id:'v1',activa:false});
+  expect(service.unpublish).toHaveBeenCalledWith(actor,'v1');
+  await request(app.getHttpServer()).delete('/api/recipes/versions/v2')
+   .expect(200).expect({id:'v2',descartada:true});
+  expect(service.discardVersion).toHaveBeenCalledWith(actor,'v2');
  });
  it('validates modifier replacement and previews',async()=>{
   await request(app.getHttpServer()).put('/api/recipes/modifiers/m1/components').send({

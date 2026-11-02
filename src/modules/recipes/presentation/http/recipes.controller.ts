@@ -1,4 +1,4 @@
-import {Body,Controller,Get,Param,Patch,Post,Put,Query} from '@nestjs/common';
+import {Body,Controller,Delete,Get,Param,Patch,Post,Put,Query} from '@nestjs/common';
 import {CurrentUser} from '../../../auth/presentation/http/decorators/auth.decorators.js';
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {RecipeService} from '../../application/recipe.service.js';
@@ -33,6 +33,10 @@ export class RecipesController{
   @Body() d:VersionDto){return this.s.revise(u,id,d);}
  @Post('versions/:id/publish') publish(@CurrentUser() u:Principal,@Param('id') id:string){
   return this.s.publish(u,id);}
+ @Post('versions/:id/unpublish') unpublish(@CurrentUser() u:Principal,@Param('id') id:string){
+  return this.s.unpublish(u,id);}
+ @Delete('versions/:id') discardVersion(@CurrentUser() u:Principal,@Param('id') id:string){
+  return this.s.discardVersion(u,id);}
  @Get(':id') detail(@CurrentUser() u:Principal,@Param('id') id:string){return this.s.detail(u,id);}
  @Patch(':id') update(@CurrentUser() u:Principal,@Param('id') id:string,@Body() d:UpdateRecipeDto){
   return this.s.update(u,id,d);}

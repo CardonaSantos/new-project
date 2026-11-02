@@ -227,6 +227,46 @@ export class RecipeStore{
    return tx.recetaVersion.findUniqueOrThrow({where:{id}});
   });
  }
+ /** Preserve published formulas and their past usages, but stop selecting one for new work. */
+ async unpublish(u:Principal,id:string){
+  await this.global(u,'recipes.publish');
+  return this.engine.tx(async tx=>{
+   const role=await tx.usuarioRol.findFirst({where:{usuarioId:u.id,sucursalId:null,
+    usuario:{activo:true},rol:{activo:true,alcance:'GLOBAL',
+     rolPermisosComoRol:{some:{permiso:{codigo:'recipes.publish'}}}}}});
+   if(!role)throw new ForbiddenException('Se requiere permiso para retirar fórmulas');
+   const version=await tx.recetaVersion.findUnique({where:{id}});
+   if(!version)throw new NotFoundException('Fórmula inexistente');
+   if(!version.publicadaEn||!version.activa)
+    throw new ConflictException('Solo puedes retirar la fórmula publicada actualmente');
+   const result=await tx.recetaVersion.update({where:{id},data:{activa:false}});
+   await audit(tx,u,'RECIPE_VERSION_UNPUBLISHED','RecetaVersion',id,
+    {recetaId:version.recetaId,numero:version.numero});
+   return {id:result.id,activa:result.activa,publicadaEn:result.publicadaEn};
+  });
+ }
+ /** Drafts have no historical publication, but may be referenced: honor FK restrict. */
+ async discardVersion(u:Principal,id:string){
+  await this.global(u,'recipes.manage');
+  return this.engine.tx(async tx=>{
+   await this.edit(tx,u);
+   const version=await tx.recetaVersion.findUnique({where:{id}});
+   if(!version)throw new NotFoundException('Fórmula inexistente');
+   if(version.publicadaEn||version.activa)
+    throw new ConflictException('Las fórmulas publicadas no se pueden eliminar. Retíralas de uso.');
+   try{
+    await tx.recetaComponente.deleteMany({where:{recetaVersionId:id}});
+    await tx.recetaVersion.delete({where:{id}});
+   }catch(error){
+    if(error instanceof Prisma.PrismaClientKnownRequestError&&error.code==='P2003')
+     throw new ConflictException('No se puede descartar una fórmula vinculada a operaciones');
+    throw error;
+   }
+   await audit(tx,u,'RECIPE_VERSION_DRAFT_DISCARDED','RecetaVersion',id,
+    {recetaId:version.recetaId,numero:version.numero});
+   return {id,descartada:true};
+  });
+ }
  async coverage(u:Principal,q:CoverageQueryDto){
   await this.global(u,'recipes.read');
   const [total,recetasVenta,recetasProduccion,publicadas,variantesPreparadasActivas]=await Promise.all([

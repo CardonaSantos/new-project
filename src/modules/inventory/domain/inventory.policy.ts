@@ -25,6 +25,15 @@ export function nonNegativeDecimal(value:string,precision=6,maxWhole=12):string{
 export function requireChange(changes:object):void{
  if(!Object.keys(changes).length)throw new BadRequestException('No hay campos para modificar');
 }
+/** A persisted movement prevents disabling an enabled tracking control, not
+ * resubmitting a pre-existing false value during an unrelated edit. */
+export function reducesArticleTracking(
+ previous:{requiereLote:boolean;requiereVencimiento:boolean},
+ changes:{requiereLote?:boolean;requiereVencimiento?:boolean},
+):boolean{
+ return (previous.requiereLote&&changes.requiereLote===false)||
+  (previous.requiereVencimiento&&changes.requiereVencimiento===false);
+}
 export function expirationRule(lot:boolean,expiry:boolean):void{
  if(expiry&&!lot)throw new ConflictException('Control de vencimiento requiere lotes');
 }

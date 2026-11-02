@@ -1,6 +1,6 @@
 import {describe,it,expect} from 'vitest';
 import {BadRequestException,ConflictException} from '@nestjs/common';
-import {code,requiredName,positiveDecimal,nonNegativeDecimal,expirationRule,sameDimension,requireChange} from './inventory.policy.js';
+import {code,requiredName,positiveDecimal,nonNegativeDecimal,expirationRule,reducesArticleTracking,sameDimension,requireChange} from './inventory.policy.js';
 describe('Inventory policies',()=>{
  it('normaliza y valida códigos y nombres',()=>{
   expect(code(' cafe_01 ')).toBe('CAFE_01');
@@ -19,6 +19,17 @@ describe('Inventory policies',()=>{
   expect(()=>expirationRule(false,true)).toThrow(ConflictException);
   expect(()=>expirationRule(true,true)).not.toThrow();
   expect(()=>sameDimension('MASA','VOLUMEN')).toThrow(ConflictException);
+ });
+ it('solo detecta reducciones reales de seguimiento de lotes o vencimiento',()=>{
+  const noTracking={requiereLote:false,requiereVencimiento:false};
+  expect(reducesArticleTracking(noTracking,{requiereLote:false,requiereVencimiento:false})).toBe(false);
+  expect(reducesArticleTracking(noTracking,{})).toBe(false);
+  expect(reducesArticleTracking(noTracking,{requiereLote:true})).toBe(false);
+  const tracked={requiereLote:true,requiereVencimiento:true};
+  expect(reducesArticleTracking(tracked,{requiereLote:true,requiereVencimiento:true})).toBe(false);
+  expect(reducesArticleTracking(tracked,{requiereLote:false})).toBe(true);
+  expect(reducesArticleTracking(tracked,{requiereVencimiento:false})).toBe(true);
+  expect(reducesArticleTracking(tracked,{})).toBe(false);
  });
  it('evita actualizar documentos con patches vacíos',()=>{
   expect(()=>requireChange({})).toThrow(BadRequestException);

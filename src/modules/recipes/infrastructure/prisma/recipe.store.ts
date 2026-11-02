@@ -7,7 +7,7 @@ import {InventoryPostingEngine} from '../../../inventory/infrastructure/prisma/i
 import {quantity,proportion,ensureUnique} from '../../domain/recipe.policy.js';
 import {toBase} from './recipe-units.js';
 import type {CreateRecipeDto,UpdateRecipeDto,VersionDto,ListRecipesDto,ModifierCompositionDto,
- PackagingRuleDto,PackagingQueryDto} from '../../presentation/http/dto/recipe.dto.js';
+ PackagingRuleDto,PackagingQueryDto,CoverageQueryDto} from '../../presentation/http/dto/recipe.dto.js';
 type Tx=Prisma.TransactionClient;
 const publicArticle={id:true,codigo:true,nombre:true,tipo:true,unidadBaseId:true,
  unidadBase:{select:{id:true,codigo:true,nombre:true,dimension:true}}} as const;
@@ -17,6 +17,14 @@ export const fullRecipe={
   unidadRendimiento:true,recetaComponentesComoRecetaVersion:{
    include:{articulo:{select:publicArticle},unidad:true}}}}
 };
+// Compact read model opt-in: full detail remains unchanged for existing clients.
+const summaryRecipe={
+ variante:{include:{producto:{select:{id:true,nombre:true,codigo:true,tipo:true}}}},
+ articuloResultado:{select:publicArticle},
+ recetaVersionesComoReceta:{where:{activa:true,publicadaEn:{not:null}},
+  take:1,select:{id:true,numero:true,rendimiento:true,publicadaEn:true,
+   unidadRendimiento:{select:{id:true,codigo:true,nombre:true,dimension:true}}}}
+} as const;
 export const audit=async(tx:Tx,u:Principal,action:string,entity:string,id:string,after?:Record<string,unknown>)=>
  tx.eventoAuditoria.create({data:{usuarioId:u.id,accion:action,entidad:entity,entidadId:id,
   ...(after?{despues:after as Prisma.InputJsonValue}:{})}});
@@ -98,15 +106,35 @@ export class RecipeStore{
    ...(q.tipo?{tipo:q.tipo}:{}),...(q.varianteId?{varianteId:q.varianteId}:{}),
    ...(q.articuloResultadoId?{articuloResultadoId:q.articuloResultadoId}:{}),
    ...(q.search?{nombre:{contains:q.search,mode:'insensitive'}}:{})};
+  const page={orderBy:{nombre:'asc' as const},skip:(q.page-1)*q.limit,take:q.limit};
+  if(q.vista==='RESUMEN'){
+   const [rows,count]=await this.db.$transaction([
+    this.db.receta.findMany({where,include:summaryRecipe,...page}),this.db.receta.count({where})]);
+   return {data:rows.map(r=>({...r,versionPublicada:r.recetaVersionesComoReceta[0]??null})),
+    meta:{page:q.page,limit:q.limit,total:count,totalPages:Math.ceil(count/q.limit)}};
+  }
   const [rows,count]=await this.db.$transaction([
-   this.db.receta.findMany({where,include:fullRecipe,orderBy:{nombre:'asc'},
-    skip:(q.page-1)*q.limit,take:q.limit}),this.db.receta.count({where})]);
+   this.db.receta.findMany({where,include:fullRecipe,...page}),this.db.receta.count({where})]);
   return {data:rows,meta:{page:q.page,limit:q.limit,total:count,totalPages:Math.ceil(count/q.limit)}};
  }
  async options(u:Principal,q:ListRecipesDto){
-  const d=await this.list(u,q);
-  return {data:d.data.map(x=>({id:x.id,label:x.nombre,tipo:x.tipo,activa:x.activa,
-   versionActiva:x.recetaVersionesComoReceta.find(v=>v.activa)?.numero??null})),meta:d.meta};
+  await this.global(u,'recipes.read');
+  const where:Prisma.RecetaWhereInput={
+   ...(q.tipo?{tipo:q.tipo}:{}),...(q.varianteId?{varianteId:q.varianteId}:{}),
+   ...(q.articuloResultadoId?{articuloResultadoId:q.articuloResultadoId}:{}),
+   ...(q.search?{nombre:{contains:q.search,mode:'insensitive'}}:{})};
+  const [rows,total]=await this.db.$transaction([
+   this.db.receta.findMany({where,include:summaryRecipe,orderBy:{nombre:'asc'},
+    skip:(q.page-1)*q.limit,take:q.limit}),this.db.receta.count({where})]);
+  return {data:rows.map(r=>{
+   const active=r.recetaVersionesComoReceta[0]??null;
+   return {id:r.id,label:r.nombre,tipo:r.tipo,activa:r.activa,
+    destino:r.tipo==='VENTA'?
+     {id:r.varianteId,nombre:r.variante?.producto.nombre??'',presentacion:r.variante?.nombre??''}:
+     {id:r.articuloResultadoId,nombre:r.articuloResultado?.nombre??''},
+    versionActiva:active?.numero??null,versionActivaId:active?.id??null,
+    rendimiento:active?{cantidad:active.rendimiento.toFixed(6),unidad:active.unidadRendimiento}:null};
+  }),meta:{page:q.page,limit:q.limit,total,totalPages:Math.ceil(total/q.limit)}};
  }
  async detail(u:Principal,id:string){
   await this.global(u,'recipes.read');
@@ -199,15 +227,31 @@ export class RecipeStore{
    return tx.recetaVersion.findUniqueOrThrow({where:{id}});
   });
  }
- async coverage(u:Principal){
+ async coverage(u:Principal,q:CoverageQueryDto){
   await this.global(u,'recipes.read');
-  const rows=await this.db.receta.findMany({include:{recetaVersionesComoReceta:true}});
-  const variants=await this.db.varianteProducto.count({where:{activo:true,producto:{tipo:'PREPARADO',activo:true}}});
-  return {total:rows.length,recetasVenta:rows.filter(x=>x.tipo==='VENTA').length,
-   recetasProduccion:rows.filter(x=>x.tipo==='PRODUCCION').length,
-   publicadas:rows.filter(x=>x.activa&&x.recetaVersionesComoReceta.some(v=>v.activa&&v.publicadaEn)).length,
-   variantesPreparadasActivas:variants,variantesSinRecetaPublicada:Math.max(0,variants-rows.filter(
-    x=>x.tipo==='VENTA'&&x.activa&&x.recetaVersionesComoReceta.some(v=>v.activa&&v.publicadaEn)).length)};
+  const [total,recetasVenta,recetasProduccion,publicadas,variantesPreparadasActivas]=await Promise.all([
+   this.db.receta.count(),this.db.receta.count({where:{tipo:'VENTA'}}),
+   this.db.receta.count({where:{tipo:'PRODUCCION'}}),
+   this.db.receta.count({where:{activa:true,recetaVersionesComoReceta:{some:{activa:true,publicadaEn:{not:null}}}}}),
+   this.db.varianteProducto.count({where:{activo:true,producto:{tipo:'PREPARADO',activo:true}}})
+  ]);
+  const faltantes:Prisma.VarianteProductoWhereInput={
+   activo:true,producto:{activo:true,tipo:'PREPARADO',
+    ...(q.search?{nombre:{contains:q.search,mode:'insensitive'}}:{})},
+   recetasComoVariante:{none:{tipo:'VENTA',activa:true,
+    recetaVersionesComoReceta:{some:{activa:true,publicadaEn:{not:null}}}}}
+  };
+  const [missing,variantesSinRecetaPublicada]=await this.db.$transaction([
+   this.db.varianteProducto.findMany({where:faltantes,select:{id:true,nombre:true,sku:true,
+    producto:{select:{id:true,nombre:true,codigo:true}}},orderBy:[{producto:{nombre:'asc'}},{nombre:'asc'}],
+    skip:(q.page-1)*q.limit,take:q.limit}),
+   this.db.varianteProducto.count({where:faltantes})
+  ]);
+  return {total,recetasVenta,recetasProduccion,publicadas,variantesPreparadasActivas,
+   variantesSinRecetaPublicada,
+   pendientes:{data:missing.map(x=>({...x,motivo:'SIN_RECETA_PUBLICADA'})),
+    meta:{page:q.page,limit:q.limit,total:variantesSinRecetaPublicada,
+     totalPages:Math.ceil(variantesSinRecetaPublicada/q.limit)}}};
  }
  async modifier(u:Principal,id:string){
   await this.global(u,'recipes.read');
@@ -247,7 +291,7 @@ export class RecipeStore{
   return this.db.reglaEmpaque.findMany({where:{AND:[
    ...(q.sucursalId?[{OR:[{sucursalId:q.sucursalId},{sucursalId:null}]}]:[]),
    ...(q.varianteId?[{OR:[{varianteId:q.varianteId},{varianteId:null}]}]:[])
-  ]},include:{reglaEmpaqueLineasComoRegla:{include:{articulo:{select:publicArticle}}},variante:true,sucursal:true},
+  ]},include:{reglaEmpaqueLineasComoRegla:{include:{articulo:{select:publicArticle}}},variante:{include:{producto:{select:{nombre:true}}}},sucursal:true},
    orderBy:{nombre:'asc'}});
  }
  async createPackaging(u:Principal,d:PackagingRuleDto){
@@ -278,7 +322,7 @@ export class RecipeStore{
  async packagingOne(u:Principal,id:string){
   await this.global(u,'recipes.read');
   const row=await this.db.reglaEmpaque.findUnique({where:{id},include:{
-   variante:true,sucursal:true,reglaEmpaqueLineasComoRegla:{include:{articulo:{select:publicArticle}}}}});
+   variante:{include:{producto:{select:{nombre:true}}}},sucursal:true,reglaEmpaqueLineasComoRegla:{include:{articulo:{select:publicArticle}}}}});
   if(!row)throw new NotFoundException('Regla de empaque inexistente');
   return row;
  }

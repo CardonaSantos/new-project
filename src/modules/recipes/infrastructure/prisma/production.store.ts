@@ -13,7 +13,7 @@ import {quantity,money,demand,isDate,ensureUnique,validCode} from '../../domain/
 import type {PreviewDto,QuoteDto,ExecuteProductionDto,ListProductionsDto,SourceDto} from '../../presentation/http/dto/recipe.dto.js';
 type Tx=Prisma.TransactionClient;
 const includeVersion={receta:true,recetaComponentesComoRecetaVersion:true} as const;
-const details={recetaVersion:{include:{receta:true,recetaComponentesComoRecetaVersion:{
+const details={recetaVersion:{include:{receta:{include:{articuloResultado:{select:{id:true,codigo:true,nombre:true,unidadBase:{select:{id:true,codigo:true,nombre:true}}}}}},recetaComponentesComoRecetaVersion:{
   include:{articulo:{select:{id:true,codigo:true,nombre:true,tipo:true}},unidad:true}}}},
  ubicacionDestino:{include:{almacen:true}},loteResultado:true,
  produccionConsumosComoProduccion:{include:{articulo:true,ubicacion:true,lote:true,movimiento:true}}} as const;
@@ -215,10 +215,22 @@ export class ProductionStore{
   await this.permission(u,d.sucursalId,'inventory.read');
   return this.engine.tx(async tx=>{
    const version=await this.version(tx,id,false);
-   if(!d.ubicacionId)return {recetaVersionId:id,sucursalId:d.sucursalId,
-    requiereUbicacion:true,ingredientes:version.recetaComponentesComoRecetaVersion.map(x=>({
-     articuloId:x.articuloId,cantidad:money(x.cantidad),unidadId:x.unidadId,
-     mermaPorcentaje:money(x.mermaPorcentaje)}))};
+   if(!d.ubicacionId){
+    const components=version.recetaComponentesComoRecetaVersion;
+    const [articles,units]=await Promise.all([
+     tx.articuloInventario.findMany({where:{id:{in:components.map(x=>x.articuloId)}},
+      select:{id:true,codigo:true,nombre:true,unidadBase:{select:{id:true,codigo:true,nombre:true}}}}),
+     tx.unidadMedida.findMany({where:{id:{in:components.map(x=>x.unidadId)}},
+      select:{id:true,codigo:true,nombre:true,dimension:true}})
+    ]);
+    const articleNames=new Map(articles.map(x=>[x.id,x]));
+    const unitNames=new Map(units.map(x=>[x.id,x]));
+    return {recetaVersionId:id,sucursalId:d.sucursalId,requiereUbicacion:true,
+     ingredientes:components.map(x=>({
+      articuloId:x.articuloId,articulo:articleNames.get(x.articuloId)??null,
+      cantidad:money(x.cantidad),unidadId:x.unidadId,unidad:unitNames.get(x.unidadId)??null,
+      mermaPorcentaje:money(x.mermaPorcentaje)}))};
+   }
    const location=await this.engine.location(tx,d.ubicacionId);
    if(location.almacen.sucursalId!==d.sucursalId)throw new ForbiddenException('Ubicación ajena a sucursal');
    const amount=quantity(d.cantidad??money(version.rendimiento));
@@ -227,9 +239,26 @@ export class ProductionStore{
     ubicacionConsumoId:d.ubicacionId,modificadores:quote.modificadores,modalidad:quote.modalidad});
    const allowed=(await this.identity.capabilities(u.id,d.sucursalId)).includes('inventory.costs.read');
    const costs=allowed&&!plan.short.length?await this.estimated(tx,plan.result):[];
+   const ids=[...new Set([...plan.short.map(x=>x.articuloId),...plan.result.map(x=>x.articuloId)])];
+   const [articles,locations,lots]=await Promise.all([
+    tx.articuloInventario.findMany({where:{id:{in:ids}},
+     select:{id:true,codigo:true,nombre:true,unidadBase:{select:{id:true,codigo:true,nombre:true}}}}),
+    tx.ubicacionAlmacen.findMany({where:{id:{in:[...new Set(plan.result.map(x=>x.ubicacionId))]}},
+     select:{id:true,codigo:true,nombre:true,almacen:{select:{nombre:true}}}}),
+    tx.loteInventario.findMany({where:{id:{in:plan.result.flatMap(x=>x.loteId?[x.loteId]:[])}},
+     select:{id:true,codigoLote:true,fechaVencimiento:true}})
+   ]);
+   const articleNames=new Map(articles.map(x=>[x.id,x]));
+   const locationNames=new Map(locations.map(x=>[x.id,x]));
+   const lotNames=new Map(lots.map(x=>[x.id,x]));
    return {recetaVersionId:id,sucursalId:d.sucursalId,cantidad:money(amount),
-    disponible:!plan.short.length,insuficientes:plan.short,
+    disponible:!plan.short.length,
+    insuficientes:plan.short.map(x=>({...x,articulo:articleNames.get(x.articuloId)??null,
+     faltante:money(Prisma.Decimal.max(0,new Prisma.Decimal(x.requerido).minus(x.disponible)))})),
     consumos:plan.result.map((x,i)=>({...x,cantidad:money(x.cantidad),
+     articulo:articleNames.get(x.articuloId)??null,
+     ubicacion:locationNames.get(x.ubicacionId)??null,
+     lote:x.loteId?lotNames.get(x.loteId)??null:null,
      ...(allowed?{costoTotal:costs[i]?money(costs[i]):null}:{})})),
     ...(allowed?{costoEstimado:plan.short.length?null:
      money(costs.reduce((sum,c)=>sum.plus(c),new Prisma.Decimal(0)))}:{})
@@ -349,6 +378,7 @@ export class ProductionStore{
   const canCost=(await this.identity.capabilities(u.id,branch)).includes('inventory.costs.read');
   return {id:row.id,estado:row.estado,claveOperacion:row.claveOperacion,
    recetaVersion:row.recetaVersion,ubicacionDestino:row.ubicacionDestino,
+   articuloResultado:row.recetaVersion.receta.articuloResultado,
    cantidadProducida:money(row.cantidadProducida),loteResultado:row.loteResultado,
    fechaVencimiento:row.fechaVencimiento?.toISOString().slice(0,10)??null,
    movimientoResultadoId:row.movimientoResultadoId,
@@ -401,40 +431,54 @@ export class ProductionStore{
  }
  async list(u:Principal,q:ListProductionsDto){
   await this.permission(u,q.sucursalId,'recipes.production.read');
-  const where:Prisma.ProduccionLoteWhereInput={ubicacionDestino:{almacen:{sucursalId:q.sucursalId}}};
+  const since=q.fechaDesde?new Date(q.fechaDesde):undefined;
+  const until=q.fechaHasta?new Date(q.fechaHasta):undefined;
+  if((since&&!Number.isFinite(since.getTime()))||(until&&!Number.isFinite(until.getTime()))||
+   (since&&until&&since>=until))throw new BadRequestException('Rango de fechas inválido');
+  const where:Prisma.ProduccionLoteWhereInput={ubicacionDestino:{almacen:{sucursalId:q.sucursalId}},
+   ...((since||until)?{creadoEn:{...(since?{gte:since}:{}),...(until?{lt:until}:{})}}:{})};
   const [rows,total]=await this.db.$transaction([
-   this.db.produccionLote.findMany({where,include:{recetaVersion:{include:{receta:true}},
+   this.db.produccionLote.findMany({where,include:{recetaVersion:{include:{receta:{include:{
+    articuloResultado:{select:{id:true,codigo:true,nombre:true,unidadBase:{select:{id:true,codigo:true,nombre:true}}}}}}}},
     ubicacionDestino:true,loteResultado:true},orderBy:{creadoEn:'desc'},
     skip:(q.page-1)*q.limit,take:q.limit}),this.db.produccionLote.count({where})]);
   const cost=(await this.identity.capabilities(u.id,q.sucursalId)).includes('inventory.costs.read');
   return {data:rows.map(r=>({id:r.id,estado:r.estado,receta:r.recetaVersion.receta.nombre,
    recetaVersion:r.recetaVersion.numero,ubicacion:r.ubicacionDestino.nombre,
-   cantidadProducida:money(r.cantidadProducida),lote:r.loteResultado?.codigoLote??null,
+   cantidadProducida:money(r.cantidadProducida),
+   articuloResultado:r.recetaVersion.receta.articuloResultado,
+   unidadResultado:r.recetaVersion.receta.articuloResultado?.unidadBase??null,
+   lote:r.loteResultado?.codigoLote??null,
    confirmadoEn:r.confirmadoEn,creadoEn:r.creadoEn,
    ...(cost?{costoTotal:r.costoTotal?money(r.costoTotal):null}:{})})),
    meta:{page:q.page,limit:q.limit,total,totalPages:Math.ceil(total/q.limit)}};
  }
  async report(u:Principal,q:ListProductionsDto){
   await this.permission(u,q.sucursalId,'recipes.production.read');
+  const since=q.fechaDesde?new Date(q.fechaDesde):undefined;
+  const until=q.fechaHasta?new Date(q.fechaHasta):undefined;
+  if((since&&!Number.isFinite(since.getTime()))||(until&&!Number.isFinite(until.getTime()))||
+   (since&&until&&since>=until))throw new BadRequestException('Rango de fechas inválido');
   const rows=await this.db.produccionLote.findMany({where:{
-   estado:'CONFIRMADA',ubicacionDestino:{almacen:{sucursalId:q.sucursalId}}},select:{
+   estado:'CONFIRMADA',ubicacionDestino:{almacen:{sucursalId:q.sucursalId}},
+   ...((since||until)?{confirmadoEn:{...(since?{gte:since}:{}),...(until?{lt:until}:{})}}:{})},select:{
     cantidadProducida:true,costoTotal:true,recetaVersion:{select:{
      receta:{select:{nombre:true,articuloResultado:{select:{id:true,codigo:true,nombre:true,
-      unidadBase:{select:{codigo:true}}}}}}}}}});
-  const byArticle=new Map<string,{articuloId:string;codigo:string;nombre:string;unidad:string;
+      unidadBase:{select:{codigo:true,nombre:true}}}}}}}}}});
+  const byArticle=new Map<string,{articuloId:string;codigo:string;nombre:string;unidad:string;unidadNombre:string;
    cantidad:Prisma.Decimal;costo:Prisma.Decimal}>();
   for(const row of rows){
    const article=row.recetaVersion.receta.articuloResultado;
    if(!article)continue;
    const old=byArticle.get(article.id)??{articuloId:article.id,codigo:article.codigo,
-    nombre:article.nombre,unidad:article.unidadBase.codigo,
+    nombre:article.nombre,unidad:article.unidadBase.codigo,unidadNombre:article.unidadBase.nombre,
     cantidad:new Prisma.Decimal(0),costo:new Prisma.Decimal(0)};
    old.cantidad=old.cantidad.plus(row.cantidadProducida);
    old.costo=old.costo.plus(row.costoTotal??0);
    byArticle.set(article.id,old);
   }
   const canCost=(await this.identity.capabilities(u.id,q.sucursalId)).includes('inventory.costs.read');
-  return {sucursalId:q.sucursalId,produccionesConfirmadas:rows.length,
+  return {sucursalId:q.sucursalId,periodo:{desde:q.fechaDesde??null,hastaExclusiva:q.fechaHasta??null},produccionesConfirmadas:rows.length,
    articulos:[...byArticle.values()].map(a=>({articuloId:a.articuloId,codigo:a.codigo,
     nombre:a.nombre,unidad:a.unidad,cantidad:money(a.cantidad),
     ...(canCost?{costoTotal:money(a.costo)}:{})})),

@@ -3,7 +3,7 @@ import type {Principal} from '../../auth/application/auth.service.js';
 import {RecipeStorePort} from './ports/recipe.port.js';
 import {ProductionStorePort} from './ports/production.port.js';
 import type {CreateRecipeDto,UpdateRecipeDto,VersionDto,ListRecipesDto,PreviewDto,
- ModifierCompositionDto,PackagingRuleDto,PackagingQueryDto,QuoteDto,ExecuteProductionDto,ListProductionsDto} from '../presentation/http/dto/recipe.dto.js';
+ ModifierCompositionDto,PackagingRuleDto,PackagingQueryDto,QuoteDto,ExecuteProductionDto,ListProductionsDto,CoverageQueryDto} from '../presentation/http/dto/recipe.dto.js';
 @Injectable()
 export class RecipeService{
  constructor(private readonly recipes:RecipeStorePort,private readonly productionStore:ProductionStorePort){}
@@ -15,7 +15,7 @@ export class RecipeService{
  newVersion(u:Principal,id:string,d:VersionDto){return this.recipes.newVersion(u,id,d);}
  revise(u:Principal,id:string,d:VersionDto){return this.recipes.revise(u,id,d);}
  publish(u:Principal,id:string){return this.recipes.publish(u,id);}
- coverage(u:Principal){return this.recipes.coverage(u);}
+ coverage(u:Principal,d:CoverageQueryDto){return this.recipes.coverage(u,d);}
  modifier(u:Principal,id:string){return this.recipes.modifier(u,id);}
  setModifier(u:Principal,id:string,d:ModifierCompositionDto){return this.recipes.setModifier(u,id,d);}
  packaging(u:Principal,d:PackagingQueryDto){return this.recipes.packaging(u,d);}

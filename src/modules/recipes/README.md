@@ -24,6 +24,37 @@ entrada de inventario, costo exacto y auditoría en una transacción serializabl
   pueden registrar monto, banco/referencia/autorización y validación manual
   cuando corresponda. **No exigir pasarela interna** ni mezclar Pago con recetas.
 
+## Contrato de lectura optimizado para REC-UI (2026-11-02)
+
+Se preservan los **25 endpoints** y la semántica anterior. Todas las ampliaciones son
+aditivas; la UI no debe mostrar IDs técnicos, enums, claves internas ni columnas Prisma.
+
+- `GET /recipes?vista=RESUMEN&page=1&limit=20`: lista paginada compacta que incluye
+  producto/presentación o artículo resultado, y `versionPublicada` con nombre de unidad.
+  Sin `vista`, mantiene la respuesta detallada anterior (compatibilidad).
+- `GET /recipes/options`: SELECT directo y paginado, con `versionActivaId`,
+  `versionActiva`, `rendimiento:{cantidad,unidad}`, `destino` de nombre legible.
+  Permite seleccionar sin descargar todas las fórmulas de cada receta.
+- `GET /recipes/reports/coverage?page=1&limit=20&search=...`: contadores originales
+  más `pendientes:{data,meta}` con producto, presentación y motivo de atención.
+  La búsqueda filtra los detalles pendientes; los contadores generales se mantienen.
+- `GET /recipes/versions/:id/preview` y `POST /recipes/preview`: nombres de
+  artículos, códigos, unidades base, ubicaciones y lotes en consumos; faltantes
+  incluyen `requerido`, `disponible`, `faltante` y `articulo` legible.
+  Sin ubicación se retornan ingredientes de fórmula nominal sin afirmar disponibilidad.
+  Los costos aparecen solo con `inventory.costs.read`.
+- `GET /production/batches`: devuelve `articuloResultado` y `unidadResultado` junto
+  a nombre de receta y datos existentes. `GET /production/batches/:id` conserva su
+  detalle y añade `articuloResultado` legible.
+- Listado y reporte admiten `fechaDesde` y `fechaHasta` como ISO-8601 con zona
+  (`2026-11-01T00:00:00-06:00`); el extremo final es **exclusivo**.
+  Listado filtra `creadoEn`; el resumen filtra `confirmadoEn`.
+  Reporte incluye `periodo` y nombre de unidad por artículo.
+
+No hay cambios de tablas ni migraciones. No cambia la conversión de unidades, FEFO,
+valoración FIFO/PROMEDIO, idempotencia, ni autorización por sucursal. No se
+habilitan operaciones de borrado de fórmulas publicadas o reversión de producción.
+
 ## API (prefijo global /api)
 - GET/POST /recipes — listado paginado/alta, con version opcional
 - GET /recipes/options — opciones enriquecidas

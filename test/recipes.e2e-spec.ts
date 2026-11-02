@@ -68,6 +68,19 @@ describe('REC-A HTTP contracts',()=>{
   await request(app.getHttpServer()).post('/api/production/batches/execute')
    .send({...input,cantidadProducida:'0'}).expect(400);
  });
+ it('transforms optional read-model and period filters without touching production logic',async()=>{
+  await request(app.getHttpServer()).get('/api/recipes?limit=20&vista=RESUMEN').expect(200);
+  expect(service.list).toHaveBeenCalledWith(actor,expect.objectContaining({limit:20,vista:'RESUMEN'}));
+  await request(app.getHttpServer()).get('/api/recipes?limit=20&vista=INVALID').expect(400);
+  await request(app.getHttpServer()).get('/api/recipes/reports/coverage?page=2&limit=10').expect(200);
+  expect(service.coverage).toHaveBeenCalledWith(actor,expect.objectContaining({page:2,limit:10}));
+  await request(app.getHttpServer()).get('/api/recipes/reports/coverage?limit=900').expect(400);
+  await request(app.getHttpServer()).get('/api/production/batches?'+
+   'sucursalId=b1&fechaDesde=2026-11-01T00%3A00%3A00Z&fechaHasta=2026-12-01T00%3A00%3A00Z').expect(200);
+  expect(service.productions).toHaveBeenCalledWith(actor,expect.objectContaining({sucursalId:'b1',
+   fechaDesde:'2026-11-01T00:00:00Z',fechaHasta:'2026-12-01T00:00:00Z'}));
+  await request(app.getHttpServer()).get('/api/production/batches/reports/summary?sucursalId=b1&fechaDesde=no').expect(400);
+ });
  it('validates modifier replacement and previews',async()=>{
   await request(app.getHttpServer()).put('/api/recipes/modifiers/m1/components').send({
    componentes:[{...component,efecto:'SUSTITUIR',sustituyeArticuloId:'alternative'}]

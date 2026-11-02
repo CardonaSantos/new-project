@@ -1,5 +1,5 @@
 import {IsBoolean,IsIn,IsInt,IsISO8601,IsOptional,IsString,Matches,Max,MaxLength,Min,ValidateNested,IsArray,ArrayMaxSize,ArrayMinSize} from 'class-validator';
-import {Type} from 'class-transformer';
+import {Type,Transform} from 'class-transformer';
 const money=/^(?:0|[1-9]\d{0,11})(?:\.\d{1,6})?$/;
 const qty=/^(?:0|[1-9]\d{0,13})(?:\.\d{1,6})?$/;
 export class StockBranchDto {
@@ -10,6 +10,26 @@ export class StockBranchDto {
  @IsOptional() @IsString() loteId?:string;
  @IsOptional() @Type(()=>Number) @IsInt() @Min(1) page=1;
  @IsOptional() @Type(()=>Number) @IsInt() @Min(1) @Max(100) limit=20;
+}
+/** Inventory lot picker can include newly registered lots without stock, for one article only. */
+export class LotsListDto extends StockBranchDto {
+ @IsOptional() @Transform(({value})=>value==='true'?true:value==='false'?false:value)
+ @IsBoolean() incluirSinExistencias?:boolean;
+}
+export class InventoryDocumentListDto {
+ @IsString() sucursalId!:string;
+ @IsOptional() @Type(()=>Number) @IsInt() @Min(1) page=1;
+ @IsOptional() @Type(()=>Number) @IsInt() @Min(1) @Max(100) limit=20;
+}
+export class CountListDto extends InventoryDocumentListDto {
+ @IsOptional() @IsString() almacenId?:string;
+ @IsOptional() @IsIn(['BORRADOR','CONFIRMADO','CANCELADO']) estado?:'BORRADOR'|'CONFIRMADO'|'CANCELADO';
+}
+export class TransferListDto extends InventoryDocumentListDto {
+ @IsOptional() @IsString() almacenOrigenId?:string;
+ @IsOptional() @IsString() almacenDestinoId?:string;
+ @IsOptional() @IsIn(['BORRADOR','EN_TRANSITO','RECIBIDA','CANCELADA'])
+ estado?:'BORRADOR'|'EN_TRANSITO'|'RECIBIDA'|'CANCELADA';
 }
 export class LotCreateDto{
  @IsString() articuloId!:string;

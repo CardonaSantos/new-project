@@ -3,7 +3,7 @@ import {CurrentUser} from '../../../auth/presentation/http/decorators/auth.decor
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {InventoryOperationsService} from '../../application/inventory-operations.service.js';
 import {InventoryInternalConsumptionService} from '../../application/inventory-internal-consumption.service.js';
-import {ManualPostingDto,LotCreateDto,LotStatusDto,StockBranchDto,CountCreateDto,TransferCreateDto,OperationKeyDto,InternalConsumptionDto} from './dto/inventory-operations.dto.js';
+import {ManualPostingDto,LotCreateDto,LotStatusDto,StockBranchDto,LotsListDto,CountCreateDto,TransferCreateDto,CountListDto,TransferListDto,OperationKeyDto,InternalConsumptionDto} from './dto/inventory-operations.dto.js';
 @Controller('inventory/stock')
 export class InventoryStockController{
  constructor(private readonly store:InventoryOperationsService){}
@@ -13,7 +13,7 @@ export class InventoryStockController{
 @Controller('inventory/lots')
 export class InventoryLotsController{
  constructor(private readonly store:InventoryOperationsService){}
- @Get() list(@CurrentUser() u:Principal,@Query() q:StockBranchDto){return this.store.lots(u,q);}
+ @Get() list(@CurrentUser() u:Principal,@Query() q:LotsListDto){return this.store.lots(u,q);}
  @Post() create(@CurrentUser() u:Principal,@Body() dto:LotCreateDto){return this.store.createLot(u,dto);}
  @Patch(':id/block') block(@CurrentUser() u:Principal,@Param('id') id:string,@Body() dto:LotStatusDto){
   return this.store.blockLot(u,id,dto);
@@ -36,6 +36,7 @@ export class InventoryManualController{
 @Controller('inventory/counts')
 export class InventoryCountsController{
  constructor(private readonly store:InventoryOperationsService){}
+ @Get() list(@CurrentUser() u:Principal,@Query() q:CountListDto){return this.store.counts(u,q);}
  @Post() create(@CurrentUser() u:Principal,@Body() dto:CountCreateDto){return this.store.createCount(u,dto);}
  @Get(':id') detail(@CurrentUser() u:Principal,@Param('id') id:string){return this.store.count(u,id);}
  @Post(':id/confirm') confirm(@CurrentUser() u:Principal,@Param('id') id:string){return this.store.confirmCount(u,id);}
@@ -44,6 +45,7 @@ export class InventoryCountsController{
 @Controller('inventory/transfers')
 export class InventoryTransfersController{
  constructor(private readonly store:InventoryOperationsService){}
+ @Get() list(@CurrentUser() u:Principal,@Query() q:TransferListDto){return this.store.transfers(u,q);}
  @Post() create(@CurrentUser() u:Principal,@Body() dto:TransferCreateDto){return this.store.createTransfer(u,dto);}
  @Get(':id') detail(@CurrentUser() u:Principal,@Param('id') id:string){return this.store.transfer(u,id);}
  @Post(':id/cancel') cancel(@CurrentUser() u:Principal,@Param('id') id:string){return this.store.cancelTransfer(u,id);}

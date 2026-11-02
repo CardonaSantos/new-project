@@ -17,10 +17,12 @@ export class InventoryOperationsService {
  reconciliation(actor:Principal,...args:any[]){return this.port.reconciliation(actor,...args);}
  createCount(actor:Principal,...args:any[]){return this.port.createCount(actor,...args);}
  count(actor:Principal,...args:any[]){return this.port.count(actor,...args);}
+ counts(actor:Principal,...args:any[]){return this.port.counts(actor,...args);}
  cancelCount(actor:Principal,...args:any[]){return this.port.cancelCount(actor,...args);}
  confirmCount(actor:Principal,...args:any[]){return this.port.confirmCount(actor,...args);}
  createTransfer(actor:Principal,...args:any[]){return this.port.createTransfer(actor,...args);}
  transfer(actor:Principal,...args:any[]){return this.port.transfer(actor,...args);}
+ transfers(actor:Principal,...args:any[]){return this.port.transfers(actor,...args);}
  cancelTransfer(actor:Principal,...args:any[]){return this.port.cancelTransfer(actor,...args);}
  dispatch(actor:Principal,...args:any[]){return this.port.dispatch(actor,...args);}
  receive(actor:Principal,...args:any[]){return this.port.receive(actor,...args);}

@@ -62,6 +62,8 @@ habilitan operaciones de borrado de fórmulas publicadas o reversión de producc
 - POST /recipes/:id/versions — crear nueva version completa
 - PUT /recipes/versions/:id — reemplazar fórmula SOLO en borrador
 - POST /recipes/versions/:id/publish — publicar/inactivar versión anterior
+- POST /recipes/versions/:id/unpublish — retirar del uso la versión publicada activa, sin borrar historial; recipes.publish global
+- DELETE /recipes/versions/:id — descartar únicamente versión nunca publicada ni activa; recipes.manage global. Rechaza borrado si existen referencias.
 - GET /recipes/versions/:id/preview?sucursalId=...&ubicacionId=...&cantidad=...
 - GET /recipes/modifiers/:id/components
 - PUT /recipes/modifiers/:id/components — composición de extras

@@ -9,6 +9,8 @@ export abstract class RecipeStorePort {
  abstract newVersion(actor:Principal,...args:any[]):Promise<any>;
  abstract revise(actor:Principal,...args:any[]):Promise<any>;
  abstract publish(actor:Principal,...args:any[]):Promise<any>;
+ abstract unpublish(actor:Principal,...args:any[]):Promise<any>;
+ abstract discardVersion(actor:Principal,...args:any[]):Promise<any>;
  abstract coverage(actor:Principal,...args:any[]):Promise<any>;
  abstract modifier(actor:Principal,...args:any[]):Promise<any>;
  abstract setModifier(actor:Principal,...args:any[]):Promise<any>;

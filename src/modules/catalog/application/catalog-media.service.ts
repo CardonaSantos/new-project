@@ -10,6 +10,8 @@ export class CatalogMediaService{
    // Prisma.Decimal has enumerable internals (s/e/d): never walk it like a plain object.
    // Every Decimal in CAT-A represents a monetary amount with scale 2.
    if(Prisma.Decimal.isDecimal(obj))return obj.toFixed(2);
+   // Media size and similar Prisma bigints must be JSON-safe; preserve exact precision.
+   if(typeof obj==='bigint')return obj.toString();
    if(!obj||typeof obj!=='object'||obj instanceof Date)return obj;
    if(Array.isArray(obj))return Promise.all(obj.map(visit));
    const item=obj as Record<string,unknown>;

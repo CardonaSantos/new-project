@@ -28,8 +28,8 @@ export class CatalogCommercialStore{
  }
  async categoryTree(){
   const rows=await this.db.categoria.findMany({include:categoryInclude,orderBy:[{orden:'asc'},{nombre:'asc'}]});
-  const map=new Map<string,{id:string;nombre:string;orden:number;activa:boolean;imagenes:unknown;children:unknown[];totalProductos:number}>();
-  for(const x of rows)map.set(x.id,{id:x.id,nombre:x.nombre,orden:x.orden,activa:x.activa,imagenes:x.medios,children:[],totalProductos:x._count.productosComoCategoria});
+  const map=new Map<string,{id:string;nombre:string;parentId:string|null;orden:number;activa:boolean;medios:unknown;children:unknown[];totalProductos:number}>();
+  for(const x of rows)map.set(x.id,{id:x.id,nombre:x.nombre,parentId:x.parentId,orden:x.orden,activa:x.activa,medios:x.medios,children:[],totalProductos:x._count.productosComoCategoria});
   const roots:unknown[]=[];
   for(const x of rows){
    const item=map.get(x.id)!;

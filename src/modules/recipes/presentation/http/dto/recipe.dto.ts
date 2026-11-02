@@ -29,9 +29,15 @@ export class UpdateRecipeDto{
 }
 export class ListRecipesDto{
  @IsOptional() @IsEnum(['VENTA','PRODUCCION']) tipo?:'VENTA'|'PRODUCCION';
+ @IsOptional() @IsEnum(['RESUMEN','COMPLETA']) vista?:'RESUMEN'|'COMPLETA';
  @IsOptional() @IsString() search?:string;
  @IsOptional() @IsString() varianteId?:string;
  @IsOptional() @IsString() articuloResultadoId?:string;
+ @IsOptional() @IsInt() @Min(1) @Type(()=>Number) page=1;
+ @IsOptional() @IsInt() @Min(1) @Max(100) @Type(()=>Number) limit=20;
+}
+export class CoverageQueryDto{
+ @IsOptional() @IsString() search?:string;
  @IsOptional() @IsInt() @Min(1) @Type(()=>Number) page=1;
  @IsOptional() @IsInt() @Min(1) @Max(100) @Type(()=>Number) limit=20;
 }
@@ -92,6 +98,9 @@ export class ExecuteProductionDto{
 }
 export class ListProductionsDto{
  @IsString() sucursalId!:string;
+ // Timestamps with offsets; hasta is exclusive. Filter createdEn on list and confirmadoEn in reports.
+ @IsOptional() @IsString() @Matches(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/) fechaDesde?:string;
+ @IsOptional() @IsString() @Matches(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/) fechaHasta?:string;
  @IsOptional() @IsInt() @Min(1) @Type(()=>Number) page=1;
  @IsOptional() @IsInt() @Min(1) @Max(100) @Type(()=>Number) limit=20;
 }

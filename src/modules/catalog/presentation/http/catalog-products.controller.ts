@@ -3,7 +3,7 @@ import type {Principal} from '../../../auth/application/auth.service.js';
 import {CurrentUser} from '../../../auth/presentation/http/decorators/auth.decorators.js';
 import {CatalogService} from '../../application/catalog.service.js';
 import {BranchQueryDto,BranchVariantDto,CategoryCreateDto,CategoryPatchDto,ImageIdsDto,
- OptionsDto,ProductCreateDto,ProductListDto,ProductOptionsDto,ProductPatchDto,PriceQueryDto,StatusDto,
+ OptionsDto,PageDto,ProductCreateDto,ProductListDto,ProductOptionsDto,ProductPatchDto,PriceQueryDto,StatusDto,
  VariantInputDto,VariantOptionDto,VariantPatchDto} from './dto/catalog.dto.js';
 
 @Controller('catalog/categories')
@@ -11,7 +11,7 @@ export class CatalogCategoriesController{
  constructor(private readonly service:CatalogService){}
  @Get('tree') tree(@CurrentUser() a:Principal){return this.service.categoryTree(a);}
  @Get('options') options(@CurrentUser() a:Principal,@Query() q:OptionsDto){return this.service.categoryOptions(a,q);}
- @Get() list(@CurrentUser() a:Principal,@Query() q:import('./dto/catalog.dto.js').PageDto){return this.service.categories(a,q);}
+ @Get() list(@CurrentUser() a:Principal,@Query() q:PageDto){return this.service.categories(a,q);}
  @Post() create(@CurrentUser() a:Principal,@Body() v:CategoryCreateDto){return this.service.createCategory(a,v);}
  @Get(':id') detail(@CurrentUser() a:Principal,@Param('id') id:string){return this.service.category(a,id);}
  @Patch(':id') update(@CurrentUser() a:Principal,@Param('id') id:string,@Body() v:CategoryPatchDto){

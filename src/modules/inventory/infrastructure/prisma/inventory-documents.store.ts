@@ -6,7 +6,7 @@ import {IdentityRepository} from '../../../auth/application/ports/identity.repos
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {amount,cost,qty,price} from '../../domain/stock.policy.js';
 import {InventoryPostingEngine,type CostSlice} from './inventory-posting.engine.js';
-import type {CountCreateDto,TransferCreateDto} from '../../presentation/http/dto/inventory-operations.dto.js';
+import type {CountCreateDto,TransferCreateDto,CountListDto,TransferListDto} from '../../presentation/http/dto/inventory-operations.dto.js';
 type Tx=Prisma.TransactionClient;
 const included={almacen:true,conteoInventarioLineasComoConteo:{include:{
  articulo:{select:{codigo:true,nombre:true}},ubicacion:{select:{codigo:true,nombre:true}},
@@ -36,6 +36,28 @@ export class InventoryDocumentsStore{
     delta:qty(x.cantidadContada.minus(x.cantidadTeorica)),
     ...(costAllowed?{costoUnitarioEntrada:x.costoUnitarioEntrada?.toFixed(6)??null}:{})
    }))};
+ }
+ /** Stable paginated index for UI; no stock/cost mutation or cost disclosure. */
+ async counts(u:Principal,q:CountListDto){
+  await this.read(u,q.sucursalId);
+  const where:Prisma.ConteoInventarioWhereInput={
+   almacen:{sucursalId:q.sucursalId,...(q.almacenId?{id:q.almacenId}:{})},
+   ...(q.estado?{estado:q.estado}:{})
+  };
+  const [rows,total]=await this.db.$transaction([
+   this.db.conteoInventario.findMany({where,
+    include:{almacen:{select:{id:true,codigo:true,nombre:true,sucursalId:true}},
+     usuario:{select:{id:true,nombre:true}},
+     _count:{select:{conteoInventarioLineasComoConteo:true}}},
+    orderBy:[{creadoEn:'desc'},{id:'desc'}],
+    skip:(q.page-1)*q.limit,take:q.limit}),
+   this.db.conteoInventario.count({where})
+  ]);
+  return {data:rows.map(x=>({
+   id:x.id,almacen:x.almacen,estado:x.estado,nota:x.nota,
+   responsable:x.usuario,numeroLineas:x._count.conteoInventarioLineasComoConteo,
+   creadoEn:x.creadoEn,confirmadoEn:x.confirmadoEn
+  })),meta:{page:q.page,limit:q.limit,total,totalPages:Math.ceil(total/q.limit)}};
  }
  async createCount(u:Principal,d:CountCreateDto){
   if(d.nota.trim().length<3)throw new BadRequestException('Nota obligatoria');
@@ -150,6 +172,50 @@ export class InventoryDocumentsStore{
     ...(originCost&&destCost?{costoEnTransito:x.costoEnTransito?.toFixed(6)??null,
      capasEnTransito:x.capasEnTransito}:{}),
    }))};
+ }
+ /** A transfer is visible only when the actor can read both branches.
+  * Filtering is done in SQL before pagination to keep meta.total accurate.
+  */
+ async transfers(u:Principal,q:TransferListDto){
+  await this.read(u,q.sucursalId);
+  const global=(await this.identity.capabilities(u.id,null)).includes('inventory.read');
+  let allowedIds:string[]=[];
+  if(!global){
+   const branches=await this.db.sucursal.findMany({select:{id:true}});
+   const access=await Promise.all(branches.map(async b=>({
+    id:b.id,allowed:(await this.identity.capabilities(u.id,b.id)).includes('inventory.read')
+   })));
+   allowedIds=access.filter(x=>x.allowed).map(x=>x.id);
+  }
+  const where:Prisma.TransferenciaInventarioWhereInput={
+   AND:[
+    {OR:[{almacenOrigen:{sucursalId:q.sucursalId}},{almacenDestino:{sucursalId:q.sucursalId}}]},
+    ...(!global?[
+     {almacenOrigen:{sucursalId:{in:allowedIds}}},
+     {almacenDestino:{sucursalId:{in:allowedIds}}}
+    ]:[]),
+    ...(q.almacenOrigenId?[{almacenOrigenId:q.almacenOrigenId}]:[]),
+    ...(q.almacenDestinoId?[{almacenDestinoId:q.almacenDestinoId}]:[])
+   ],
+   ...(q.estado?{estado:q.estado}:{})
+  };
+  const [rows,total]=await this.db.$transaction([
+   this.db.transferenciaInventario.findMany({where,
+    include:{
+     almacenOrigen:{select:{id:true,codigo:true,nombre:true,sucursalId:true}},
+     almacenDestino:{select:{id:true,codigo:true,nombre:true,sucursalId:true}},
+     usuario:{select:{id:true,nombre:true}},
+     _count:{select:{transferenciaInventarioLineasComoTransferencia:true}}
+    },
+    orderBy:[{id:'desc'}],skip:(q.page-1)*q.limit,take:q.limit}),
+   this.db.transferenciaInventario.count({where})
+  ]);
+  return {data:rows.map(x=>({
+   id:x.id,numero:x.numero,estado:x.estado,nota:x.nota,
+   origen:x.almacenOrigen,destino:x.almacenDestino,responsable:x.usuario,
+   numeroLineas:x._count.transferenciaInventarioLineasComoTransferencia,
+   despachadaEn:x.despachadaEn,recibidaEn:x.recibidaEn
+  })),meta:{page:q.page,limit:q.limit,total,totalPages:Math.ceil(total/q.limit)}};
  }
  async createTransfer(u:Principal,d:TransferCreateDto){
   if(d.nota.trim().length<3)throw new BadRequestException('Nota obligatoria');

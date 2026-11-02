@@ -20,7 +20,9 @@ describe('INV-B HTTP validation and route contracts',()=>{
   movements:vi.fn().mockResolvedValue({data:[]}),movement:vi.fn().mockResolvedValue({id:'m1'}),
   createCount:vi.fn().mockResolvedValue({id:'c1'}),confirmCount:vi.fn().mockResolvedValue({id:'c1'}),
   count:vi.fn().mockResolvedValue({id:'c1'}),
+  counts:vi.fn().mockResolvedValue({data:[],meta:{page:1,limit:20,total:0,totalPages:0}}),
   createTransfer:vi.fn().mockResolvedValue({id:'t1'}),transfer:vi.fn().mockResolvedValue({id:'t1'}),
+  transfers:vi.fn().mockResolvedValue({data:[],meta:{page:1,limit:20,total:0,totalPages:0}}),
   dispatch:vi.fn().mockResolvedValue({estado:'EN_TRANSITO'}),receive:vi.fn().mockResolvedValue({estado:'RECIBIDA'}),
   cancelCount:vi.fn().mockResolvedValue({id:'c1',estado:'CANCELADO'}),
   cancelTransfer:vi.fn().mockResolvedValue({id:'t1',estado:'CANCELADA'}),
@@ -86,4 +88,37 @@ describe('INV-B HTTP validation and route contracts',()=>{
   await request(app.getHttpServer()).get('/api/inventory/reports/reconciliation?sucursalId=b1')
    .expect(200).expect({conciliado:true});
  });
+ it('lists counts with bounded pagination, branch and state; refuses invalid filters',async()=>{
+  await request(app.getHttpServer()).get('/api/inventory/counts?sucursalId=b1&almacenId=w1&estado=BORRADOR&page=2&limit=10')
+   .expect(200);
+  expect(store.counts).toHaveBeenCalledWith(actor,expect.objectContaining({
+   sucursalId:'b1',almacenId:'w1',estado:'BORRADOR',page:2,limit:10
+  }));
+  await request(app.getHttpServer()).get('/api/inventory/counts').expect(400);
+  await request(app.getHttpServer()).get('/api/inventory/counts?sucursalId=b1&estado=INEXISTENTE').expect(400);
+  await request(app.getHttpServer()).get('/api/inventory/counts?sucursalId=b1&limit=101').expect(400);
+ });
+ it('lists transfers using explicit branch and bounded status filters',async()=>{
+  await request(app.getHttpServer()).get(
+   '/api/inventory/transfers?sucursalId=b1&almacenOrigenId=w1&estado=EN_TRANSITO'
+  ).expect(200);
+  expect(store.transfers).toHaveBeenCalledWith(actor,expect.objectContaining({
+   sucursalId:'b1',almacenOrigenId:'w1',estado:'EN_TRANSITO'
+  }));
+  await request(app.getHttpServer()).get('/api/inventory/transfers').expect(400);
+  await request(app.getHttpServer()).get('/api/inventory/transfers?sucursalId=b1&estado=INVALIDO').expect(400);
+  await request(app.getHttpServer()).get('/api/inventory/transfers?sucursalId=b1&page=0').expect(400);
+ });
+ it('allows empty lots only with a selected article, without changing default listing',async()=>{
+  await request(app.getHttpServer()).get('/api/inventory/lots?sucursalId=b1&articuloId=a1&incluirSinExistencias=true')
+    .expect(200);
+  expect(store.lots).toHaveBeenCalledWith(actor,expect.objectContaining({
+   sucursalId:'b1',articuloId:'a1',incluirSinExistencias:true
+  }));
+  await request(app.getHttpServer()).get('/api/inventory/lots?sucursalId=b1')
+    .expect(200);
+  expect(store.lots).toHaveBeenLastCalledWith(actor,expect.objectContaining({sucursalId:'b1'}));
+  await request(app.getHttpServer()).get('/api/inventory/lots?sucursalId=b1&incluirSinExistencias=maybe').expect(400);
+ });
+
 });

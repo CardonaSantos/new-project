@@ -9,7 +9,7 @@ import {InventoryPostingEngine} from './inventory-posting.engine.js';
 import {InventoryDocumentsStore} from './inventory-documents.store.js';
 import {locationBookValues} from './inventory-ledger.js';
 import {bookKey,allocatePoolBookValues} from '../../domain/inventory-valuation.policy.js';
-import type {StockBranchDto,LotCreateDto,LotStatusDto,ManualPostingDto,CountCreateDto,TransferCreateDto} from '../../presentation/http/dto/inventory-operations.dto.js';
+import type {StockBranchDto,LotCreateDto,LotStatusDto,ManualPostingDto,CountCreateDto,TransferCreateDto,CountListDto,TransferListDto,LotsListDto} from '../../presentation/http/dto/inventory-operations.dto.js';
 type StockQuery=StockBranchDto;
 const meta=(page:number,limit:number,total:number)=>({page,limit,total,totalPages:Math.ceil(total/limit)});
 function sanitize<T>(value:T,allowed:boolean):T{
@@ -135,11 +135,15 @@ export class InventoryOperationsStore{
    metodoValoracion:company?.metodoValoracion??null,
    nota:'Valoración según el método empresarial; no incluye tránsito ni reservas de órdenes.'};
  }
- async lots(u:Principal,q:StockQuery){
+ async lots(u:Principal,q:LotsListDto){
   await this.listScope(u,q);
+  if(q.incluirSinExistencias&&!q.articuloId)
+   throw new BadRequestException('Seleccione un artículo para incluir lotes sin existencias');
   const where:Prisma.LoteInventarioWhereInput={
    ...(q.articuloId?{articuloId:q.articuloId}:{}),
-   existenciasComoLote:{some:{ubicacion:{almacen:{sucursalId:q.sucursalId}}}}
+   ...(!q.incluirSinExistencias?{
+    existenciasComoLote:{some:{ubicacion:{almacen:{sucursalId:q.sucursalId}}}}
+   }:{})
   };
   const [data,total]=await this.db.$transaction([
    this.db.loteInventario.findMany({where,include:{articulo:{select:{id:true,codigo:true,nombre:true}},
@@ -265,7 +269,7 @@ export class InventoryOperationsStore{
    aplicacionCapaCostosComoMovimientoSalida:{include:{capa:true}}}});
   if(!m)throw new NotFoundException('Movimiento inexistente');
   await this.permission(u,m.ubicacion.almacen.sucursalId,'inventory.read');
-  return sanitize({id:m.id,tipo:m.tipo,articulo:{codigo:m.articulo.codigo,nombre:m.articulo.nombre,
+  return sanitize({id:m.id,tipo:m.tipo,articulo:{id:m.articulo.id,codigo:m.articulo.codigo,nombre:m.articulo.nombre,
    unidad:m.articulo.unidadBase.codigo},ubicacion:m.ubicacion.nombre,lote:m.lote?.codigoLote??null,
    cantidad:qty(m.cantidad),costoUnitario:price(m.costoUnitario),costoTotal:price(m.costoTotal),
    referenciaTipo:m.referenciaTipo,referenciaId:m.referenciaId,claveOperacion:m.claveOperacion,
@@ -349,10 +353,12 @@ export class InventoryOperationsStore{
  }
  createCount(u:Principal,d:CountCreateDto){return this.docs.createCount(u,d);}
  count(u:Principal,id:string){return this.docs.count(u,id);}
+ counts(u:Principal,q:CountListDto){return this.docs.counts(u,q);}
  cancelCount(u:Principal,id:string){return this.docs.cancelCount(u,id);}
  confirmCount(u:Principal,id:string){return this.docs.confirmCount(u,id);}
  createTransfer(u:Principal,d:TransferCreateDto){return this.docs.createTransfer(u,d);}
  transfer(u:Principal,id:string){return this.docs.transfer(u,id);}
+ transfers(u:Principal,q:TransferListDto){return this.docs.transfers(u,q);}
  cancelTransfer(u:Principal,id:string){return this.docs.cancelTransfer(u,id);}
  dispatch(u:Principal,id:string){return this.docs.dispatch(u,id);}
  receive(u:Principal,id:string){return this.docs.receive(u,id);}

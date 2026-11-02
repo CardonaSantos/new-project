@@ -1,9 +1,40 @@
 import {Injectable} from '@nestjs/common';
+import {PrismaService} from '../../../infrastructure/database/prisma/prisma.service.js';
 import {MediaRepositoryPort} from '../../media/application/ports/media-repository.port.js';
 import {FileStoragePort} from '../../media/application/ports/file-storage.port.js';
 @Injectable()
 export class InventoryMediaService{
- constructor(private readonly media:MediaRepositoryPort,private readonly storage:FileStoragePort){}
+ constructor(private readonly media:MediaRepositoryPort,private readonly storage:FileStoragePort,
+  private readonly db:PrismaService){}
+ /** One database lookup for principal pictures in a table page, not N article requests.
+  * Signing only the selected picture keeps the response lightweight.
+  */
+ async primaryUrls(articleIds:readonly string[]):Promise<Map<string,string|null>>{
+  const unique=[...new Set(articleIds.filter(Boolean))];
+  const result=new Map<string,string|null>(unique.map(id=>[id,null]));
+  if(!unique.length)return result;
+  const links=await this.db.articuloInventarioMedia.findMany({
+   where:{articuloId:{in:unique}},
+   include:{media:true},
+   orderBy:[{principal:'desc'},{orden:'asc'}]
+  });
+  const selected=new Map<string,(typeof links)[number]['media']>();
+  for(const link of links){
+   const m=link.media;
+   if(!selected.has(link.articuloId)&&m.confirmadaEn&&!m.eliminadaEn&&m.tipo==='IMAGEN')
+    selected.set(link.articuloId,m);
+  }
+  await Promise.all([...selected].map(async ([id,m])=>{
+   try{
+    result.set(id,m.urlPublica??await this.storage.downloadUrl(m.bucket,m.claveObjeto,
+     m.mimeType,m.nombreOriginal??'inventario',300));
+   }catch{
+    // Optional images must never make inventory quantities or Kardex unavailable.
+    result.set(id,null);
+   }
+  }));
+  return result;
+ }
  private async url(id:string):Promise<string|null>{
   const m=await this.media.getById(id);
   if(!m||!m.confirmadaEn||m.eliminadaEn||m.tipo!=='IMAGEN')return null;

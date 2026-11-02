@@ -15,10 +15,12 @@ export abstract class InventoryOperationsPort {
  abstract reconciliation(actor:Principal,...args:any[]):Promise<any>;
  abstract createCount(actor:Principal,...args:any[]):Promise<any>;
  abstract count(actor:Principal,...args:any[]):Promise<any>;
+ abstract counts(actor:Principal,...args:any[]):Promise<any>;
  abstract cancelCount(actor:Principal,...args:any[]):Promise<any>;
  abstract confirmCount(actor:Principal,...args:any[]):Promise<any>;
  abstract createTransfer(actor:Principal,...args:any[]):Promise<any>;
  abstract transfer(actor:Principal,...args:any[]):Promise<any>;
+ abstract transfers(actor:Principal,...args:any[]):Promise<any>;
  abstract cancelTransfer(actor:Principal,...args:any[]):Promise<any>;
  abstract dispatch(actor:Principal,...args:any[]):Promise<any>;
  abstract receive(actor:Principal,...args:any[]):Promise<any>;

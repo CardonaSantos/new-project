@@ -6,7 +6,8 @@ import {InventoryMediaService} from './inventory-media.service.js';
 export class InventoryOperationsService {
  constructor(private readonly port:InventoryOperationsPort,private readonly media:InventoryMediaService){}
  private async images(rows:any[],id:(row:any)=>string|undefined,nested:boolean){
-  const urls=await this.media.primaryUrls(rows.map(id).filter((value):value is string=>!!value));
+  const urls=await this.media.primaryUrls(rows.map(id).filter((value):value is string=>!!value))
+   .catch(()=>new Map<string,string|null>()); // Optional media must not block stock or Kardex.
   return rows.map(row=>nested?{...row,articulo:{...row.articulo,
    imagenPrincipalUrl:urls.get(id(row)??'')??null}}:
    {...row,imagenPrincipalUrl:urls.get(id(row)??'')??null});

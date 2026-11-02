@@ -23,13 +23,13 @@ describe('Inventory policies',()=>{
  it('solo detecta reducciones reales de seguimiento de lotes o vencimiento',()=>{
   const noTracking={requiereLote:false,requiereVencimiento:false};
   expect(reducesArticleTracking(noTracking,{requiereLote:false,requiereVencimiento:false})).toBe(false);
-  expect(reducesArticleTracking(noTracking,{nombre:'Pajillas'})).toBe(false);
+  expect(reducesArticleTracking(noTracking,{})).toBe(false);
   expect(reducesArticleTracking(noTracking,{requiereLote:true})).toBe(false);
   const tracked={requiereLote:true,requiereVencimiento:true};
   expect(reducesArticleTracking(tracked,{requiereLote:true,requiereVencimiento:true})).toBe(false);
   expect(reducesArticleTracking(tracked,{requiereLote:false})).toBe(true);
   expect(reducesArticleTracking(tracked,{requiereVencimiento:false})).toBe(true);
-  expect(reducesArticleTracking(tracked,{nombre:'Leche'})).toBe(false);
+  expect(reducesArticleTracking(tracked,{})).toBe(false);
  });
  it('evita actualizar documentos con patches vacíos',()=>{
   expect(()=>requireChange({})).toThrow(BadRequestException);

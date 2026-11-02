@@ -269,7 +269,7 @@ export class InventoryOperationsStore{
    aplicacionCapaCostosComoMovimientoSalida:{include:{capa:true}}}});
   if(!m)throw new NotFoundException('Movimiento inexistente');
   await this.permission(u,m.ubicacion.almacen.sucursalId,'inventory.read');
-  return sanitize({id:m.id,tipo:m.tipo,articulo:{codigo:m.articulo.codigo,nombre:m.articulo.nombre,
+  return sanitize({id:m.id,tipo:m.tipo,articulo:{id:m.articulo.id,codigo:m.articulo.codigo,nombre:m.articulo.nombre,
    unidad:m.articulo.unidadBase.codigo},ubicacion:m.ubicacion.nombre,lote:m.lote?.codigoLote??null,
    cantidad:qty(m.cantidad),costoUnitario:price(m.costoUnitario),costoTotal:price(m.costoTotal),
    referenciaTipo:m.referenciaTipo,referenciaId:m.referenciaId,claveOperacion:m.claveOperacion,

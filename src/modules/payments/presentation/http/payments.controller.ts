@@ -5,7 +5,7 @@ import type {Principal} from '../../../auth/application/auth.service.js';
 import {CashService} from '../../application/cash.service.js';
 import {PaymentsService} from '../../application/payments.service.js';
 import {BranchDto,PageDto,RegisterDto,RegisterPatchDto,ShiftOpenDto,ShiftCloseDto,
- ShiftMovementDto,CollectDto,ConfirmAttemptDto,CancelAttemptDto,RefundDto,SplitDto,EqualSplitDto}
+ ShiftMovementDto,CollectDto,ConfirmAttemptDto,CancelAttemptDto,RefundDto,SplitDto,EqualSplitDto,SalesListDto}
  from './dto/payments.dto.js';
 @Controller('cash')
 export class CashController{
@@ -56,7 +56,7 @@ export class PaymentsController{
 @Controller('sales')
 export class SalesController{
  constructor(private readonly payments:PaymentsService){}
- @Get() list(@CurrentUser() u:Principal,@Query() q:PageDto){return this.payments.sales(u,q);}
+ @Get() list(@CurrentUser() u:Principal,@Query() q:SalesListDto){return this.payments.sales(u,q);}
  @Get(':id') detail(@CurrentUser() u:Principal,@Param('id') id:string){
   return this.payments.sale(u,id);}
 }

@@ -70,4 +70,21 @@ describe('PAY-A HTTP DTO contract',()=>{
   await request(app.getHttpServer()).post('/api/payments/p1/refund').send({
    monto:'5.00',motivo:'Servicio cancelado',claveOperacion:'PAY:REFUND:001'}).expect(201);
  });
+ it('filters sales before pagination and forwards validated query parameters',async()=>{
+  await request(app.getHttpServer()).get('/api/sales').query({
+   sucursalId:'branch',search:'ORD-12',desde:'2026-11-01',hasta:'2026-11-04',
+   minTotal:'10.00',maxTotal:'100.00',page:'2',limit:'10',
+  }).expect(200);
+  expect(pay.sales).toHaveBeenCalledWith(principal,expect.objectContaining({
+   sucursalId:'branch',search:'ORD-12',desde:'2026-11-01',hasta:'2026-11-04',
+   minTotal:'10.00',maxTotal:'100.00',page:2,limit:10
+  }));
+  await request(app.getHttpServer()).get('/api/sales')
+   .query({sucursalId:'branch',desde:'yesterday'}).expect(400);
+  await request(app.getHttpServer()).get('/api/sales')
+   .query({sucursalId:'branch',minTotal:'-1'}).expect(400);
+  await request(app.getHttpServer()).get('/api/sales')
+   .query({sucursalId:'branch',search:'x'.repeat(101)}).expect(400);
+ });
+
 });

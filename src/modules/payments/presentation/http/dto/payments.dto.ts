@@ -11,6 +11,13 @@ export class PageDto extends BranchDto{
  @IsOptional() @Type(()=>Number) @IsInt() @Min(1) page=1;
  @IsOptional() @Type(()=>Number) @IsInt() @Min(1) @Max(100) limit=20;
 }
+export class SalesListDto extends PageDto{
+ @IsOptional() @IsString() @MaxLength(100) search?:string;
+ @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) desde?:string;
+ @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) hasta?:string;
+ @IsOptional() @Matches(cash) minTotal?:string;
+ @IsOptional() @Matches(cash) maxTotal?:string;
+}
 export class RegisterDto extends BranchDto{
  @IsString() @MinLength(1) @MaxLength(40) codigo!:string;
  @IsString() @MinLength(2) @MaxLength(120) nombre!:string;

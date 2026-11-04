@@ -9,7 +9,8 @@ import {allowed,audit,orderForAccount,runOnce,txSerializable,type Tx} from './pa
 import {CashStore} from './cash.store.js';
 import {postVerifiedExternalMovement} from '../../../finance/infrastructure/prisma/finance-posting.js';
 import {assertFinancialPeriodOpen} from '../../../finance/infrastructure/prisma/finance-period.guard.js';
-import type {CollectDto,ConfirmAttemptDto,RefundDto,SplitDto,EqualSplitDto,PageDto} from '../../presentation/http/dto/payments.dto.js';
+import {salesDateRange,salesSearch} from '../../domain/sales-filter.policy.js';
+import type {CollectDto,ConfirmAttemptDto,RefundDto,SplitDto,EqualSplitDto,SalesListDto} from '../../presentation/http/dto/payments.dto.js';
 
 @Injectable()
 export class PaymentsStore{
@@ -351,13 +352,30 @@ export class PaymentsStore{
      cantidad:x._count._all}))};
   });
  }
- async sales(u:Principal,q:PageDto){
+ async sales(u:Principal,q:SalesListDto){
   return txSerializable(this.db,async tx=>{
    await allowed(tx,u,q.sucursalId,'sales.read');
+   const branch=await tx.sucursal.findUnique({where:{id:q.sucursalId},select:{zonaHoraria:true}});
+   if(!branch)throw new NotFoundException('Sucursal inexistente');
+   const range=salesDateRange(q,branch.zonaHoraria);
+   const search=salesSearch(q.search);
+   const minimum=q.minTotal!==undefined?money(q.minTotal,true):undefined;
+   const maximum=q.maxTotal!==undefined?money(q.maxTotal,true):undefined;
+   if(minimum&&maximum&&minimum.gt(maximum))
+    throw new BadRequestException('El importe mínimo supera el máximo');
+   const where:Prisma.VentaWhereInput={
+    sucursalId:q.sucursalId,
+    ...(range.gte||range.lt?{cerradaEn:{gte:range.gte,lt:range.lt}}:{}),
+    ...(minimum||maximum?{total:{gte:minimum,lte:maximum}}:{}),
+    ...(search?{OR:[{numero:{contains:search,mode:'insensitive'}},
+     {cuenta:{orden:{numero:{contains:search,mode:'insensitive'}}}}]}:{})
+   };
    const [data,total]=await Promise.all([
-    tx.venta.findMany({where:{sucursalId:q.sucursalId},orderBy:{cerradaEn:'desc'},
-     skip:(q.page-1)*q.limit,take:q.limit,include:{ventaLineasComoVenta:true}}),
-    tx.venta.count({where:{sucursalId:q.sucursalId}})]);
+    tx.venta.findMany({where,orderBy:[{cerradaEn:'desc'},{id:'desc'}],
+     skip:(q.page-1)*q.limit,take:q.limit,
+     include:{ventaLineasComoVenta:true,cuenta:{include:{orden:{select:{
+      id:true,numero:true,modalidad:true,estado:true}}}}}}),
+    tx.venta.count({where})]);
    return {data,meta:{page:q.page,limit:q.limit,total,totalPages:Math.ceil(total/q.limit)}};
   });
  }

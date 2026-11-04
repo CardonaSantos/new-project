@@ -17,6 +17,7 @@ describe('INV-B HTTP validation and route contracts',()=>{
   summary:vi.fn().mockResolvedValue({totalArticulos:0,data:[]}),
   createLot:vi.fn().mockResolvedValue({id:'l1'}),lots:vi.fn().mockResolvedValue({data:[]}),
   manual:vi.fn().mockResolvedValue({movementId:'m1',cantidad:'5.000000'}),
+  inboundBatch:vi.fn().mockResolvedValue({numeroLineas:2,movimientos:[{movementId:'m1'},{movementId:'m2'}]}),
   movements:vi.fn().mockResolvedValue({data:[]}),movement:vi.fn().mockResolvedValue({id:'m1'}),
   createCount:vi.fn().mockResolvedValue({id:'c1'}),confirmCount:vi.fn().mockResolvedValue({id:'c1'}),
   count:vi.fn().mockResolvedValue({id:'c1'}),
@@ -59,6 +60,29 @@ describe('INV-B HTTP validation and route contracts',()=>{
    .send({...entry,cantidad:'-2'}).expect(400);
   await request(app.getHttpServer()).post('/api/inventory/operations/opening')
    .send({...entry,costoUnitario:'-3.00'}).expect(400);
+ });
+ it('accepts atomic inbound batches and rejects empty, oversize, or invalid lines',async()=>{
+  const payload={claveOperacion:'INV:BATCH:100',motivo:'Compra de insumos',
+   lineas:[
+    {articuloId:'a1',ubicacionId:'loc1',cantidad:'3.000000',costoUnitario:'8.50'},
+    {articuloId:'a2',ubicacionId:'loc1',cantidad:'5',costoUnitario:'2.75'}
+   ]};
+  await request(app.getHttpServer()).post('/api/inventory/operations/inbound/batch')
+   .send(payload).expect(201);
+  expect(store.inboundBatch).toHaveBeenCalledWith(actor,expect.objectContaining({
+   claveOperacion:'INV:BATCH:100',lineas:expect.arrayContaining([
+    expect.objectContaining({articuloId:'a1',cantidad:'3.000000'})
+   ])
+  }));
+  await request(app.getHttpServer()).post('/api/inventory/operations/inbound/batch')
+   .send({...payload,lineas:[]}).expect(400);
+  await request(app.getHttpServer()).post('/api/inventory/operations/inbound/batch')
+   .send({...payload,lineas:[...Array(26)].map(()=>payload.lineas[0])}).expect(400);
+  await request(app.getHttpServer()).post('/api/inventory/operations/inbound/batch')
+   .send({...payload,lineas:[{...payload.lineas[0],cantidad:'-2'}]}).expect(400);
+  await request(app.getHttpServer()).post('/api/inventory/operations/inbound/batch')
+   .send({...payload,lineas:[{...payload.lineas[0],costoUnitario:'abc'}]}).expect(400);
+  expect(store.inboundBatch).toHaveBeenCalledTimes(1);
  });
  it('validates nested transfer and count rows',async()=>{
   await request(app.getHttpServer()).post('/api/inventory/transfers').send({

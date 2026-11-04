@@ -24,6 +24,7 @@ export class InventoryOperationsService {
  createLot(actor:Principal,...args:any[]){return this.port.createLot(actor,...args);}
  blockLot(actor:Principal,...args:any[]){return this.port.blockLot(actor,...args);}
  manual(actor:Principal,...args:any[]){return this.port.manual(actor,...args);}
+ inboundBatch(actor:Principal,...args:any[]){return this.port.inboundBatch(actor,...args);}
  async movements(actor:Principal,...args:any[]){
   const result=await this.port.movements(actor,...args);
   return {...result,data:await this.images(result.data,(row)=>row.articuloId,true)};

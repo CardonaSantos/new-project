@@ -50,6 +50,21 @@ export class ManualPostingDto{
  @IsString() @MaxLength(120) claveOperacion!:string;
  @IsString() @MaxLength(500) motivo!:string;
 }
+/** Direct, multi-article inbound posting. Each line is accounted atomically. */
+export class BatchInboundLineDto{
+ @IsString() articuloId!:string;
+ @IsString() ubicacionId!:string;
+ @IsOptional() @IsString() loteId?:string;
+ @IsString() @Matches(qty) cantidad!:string;
+ @IsString() @Matches(money) costoUnitario!:string;
+}
+export class BatchInboundDto{
+ @IsString() @MaxLength(100) claveOperacion!:string;
+ @IsString() @MaxLength(500) motivo!:string;
+ @IsArray() @ArrayMinSize(1) @ArrayMaxSize(25)
+ @ValidateNested({each:true}) @Type(()=>BatchInboundLineDto)
+ lineas!:BatchInboundLineDto[];
+}
 export class RecountLineDto{
  @IsString() articuloId!:string;
  @IsString() ubicacionId!:string;

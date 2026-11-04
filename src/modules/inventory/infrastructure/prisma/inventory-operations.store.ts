@@ -9,7 +9,7 @@ import {InventoryPostingEngine} from './inventory-posting.engine.js';
 import {InventoryDocumentsStore} from './inventory-documents.store.js';
 import {locationBookValues} from './inventory-ledger.js';
 import {bookKey,allocatePoolBookValues} from '../../domain/inventory-valuation.policy.js';
-import type {StockBranchDto,LotCreateDto,LotStatusDto,ManualPostingDto,CountCreateDto,TransferCreateDto,CountListDto,TransferListDto,LotsListDto} from '../../presentation/http/dto/inventory-operations.dto.js';
+import type {StockBranchDto,LotCreateDto,LotStatusDto,ManualPostingDto,CountCreateDto,TransferCreateDto,CountListDto,TransferListDto,LotsListDto,BatchInboundDto} from '../../presentation/http/dto/inventory-operations.dto.js';
 type StockQuery=StockBranchDto;
 const meta=(page:number,limit:number,total:number)=>({page,limit,total,totalPages:Math.ceil(total/limit)});
 function sanitize<T>(value:T,allowed:boolean):T{
@@ -206,6 +206,65 @@ export class InventoryOperationsStore{
     antes:{bloqueado:old.bloqueado},despues:{bloqueado:result.bloqueado}}});
    return {id,codigoLote:result.codigoLote,bloqueado:result.bloqueado};
   });
+ }
+ /** Atomic direct inbound posting: a failed line rolls back ALL movements and stock. */
+ async inboundBatch(u:Principal,dto:BatchInboundDto){
+  requireReference(dto.claveOperacion);
+  if(!dto.lineas?.length||dto.lineas.length>25)
+   throw new BadRequestException('La entrada requiere entre 1 y 25 artículos');
+  if(!dto.motivo?.trim()||dto.motivo.trim().length<3)
+   throw new BadRequestException('Motivo mínimo 3 caracteres');
+  for(const line of dto.lineas){
+   amount(line.cantidad);cost(line.costoUnitario);
+  }
+  const op='INVENTORY_INBOUND_BATCH';
+  const payload={kind:'INBOUND_BATCH',...dto,actor:u.id};
+  const hash=createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+  const posted=await this.engine.tx(async tx=>{
+   const old=await tx.operacionIdempotente.findUnique({where:{clave:dto.claveOperacion}});
+   if(old){
+    if(old.operacion!==op||old.hashSolicitud!==hash||!old.finalizada)
+     throw new ConflictException('Clave idempotente reutilizada con datos diferentes o aún pendiente');
+    return old.resultado;
+   }
+   // All lines must belong to ONE active branch, with both stock and cost permissions.
+   let branchId='';
+   const locations=new Map<string,Awaited<ReturnType<InventoryPostingEngine['location']>>>();
+   for(const line of dto.lineas){
+    let l=locations.get(line.ubicacionId);
+    if(!l){
+     l=await this.engine.location(tx,line.ubicacionId);
+     locations.set(line.ubicacionId,l);
+     await this.engine.allowed(tx,u.id,'inventory.costs.manage',l.almacen.sucursalId);
+    }
+    if(branchId&&branchId!==l.almacen.sucursalId)
+     throw new ConflictException('Los artículos de una entrada deben pertenecer a la misma sucursal');
+    branchId=l.almacen.sucursalId;
+   }
+   const movimientos=[];
+   for(const [index,line] of dto.lineas.entries()){
+    // Per-line keys cannot collide with the batch's idempotency key or another line.
+    const key='IB-'+createHash('sha256')
+     .update(dto.claveOperacion+':'+index).digest('hex').slice(0,48);
+    movimientos.push(await this.engine.post(tx,{
+     actorId:u.id,articuloId:line.articuloId,ubicacionId:line.ubicacionId,
+     loteId:line.loteId,cantidad:line.cantidad,costoUnitario:line.costoUnitario,
+     direction:'IN',tipo:'AJUSTE_ENTRADA',claveOperacion:key,
+     referenciaTipo:op,referenciaId:dto.claveOperacion,nota:dto.motivo.trim(),
+     permission:'inventory.adjust'
+    }));
+   }
+   const result={claveOperacion:dto.claveOperacion,sucursalId:branchId,
+    numeroLineas:movimientos.length,movimientos};
+   await tx.operacionIdempotente.create({data:{
+    clave:dto.claveOperacion,operacion:op,hashSolicitud:hash,finalizada:true,
+    expiraEn:new Date(Date.now()+365*86400000),
+    resultado:result as unknown as Prisma.InputJsonValue
+   }});
+   return result;
+  });
+  const branch=(posted as {sucursalId?:string}).sucursalId;
+  return sanitize(posted,!!branch&&await this.costs(u,branch));
  }
  async manual(u:Principal,kind:'OPENING'|'INBOUND'|'OUTBOUND'|'WASTE',dto:ManualPostingDto){
   requireReference(dto.claveOperacion);amount(dto.cantidad);

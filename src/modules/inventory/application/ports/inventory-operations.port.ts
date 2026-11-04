@@ -8,6 +8,7 @@ export abstract class InventoryOperationsPort {
  abstract createLot(actor:Principal,...args:any[]):Promise<any>;
  abstract blockLot(actor:Principal,...args:any[]):Promise<any>;
  abstract manual(actor:Principal,...args:any[]):Promise<any>;
+ abstract inboundBatch(actor:Principal,...args:any[]):Promise<any>;
  abstract movements(actor:Principal,...args:any[]):Promise<any>;
  abstract movement(actor:Principal,...args:any[]):Promise<any>;
  abstract valuation(actor:Principal,...args:any[]):Promise<any>;

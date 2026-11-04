@@ -31,7 +31,8 @@ const permissions:Record<ReportSource,string>={
 export class DomainReportsStore extends DomainReportsPort{
  constructor(private readonly db:PrismaService){super();}
  private read<T>(fn:(tx:Tx)=>Promise<T>):Promise<T>{
-  return this.db.$transaction(fn,{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead,timeout:20000});
+  return this.db.$transaction(fn,{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead,
+   maxWait:10000,timeout:20000});
  }
  private async context(tx:Tx,u:Principal,kind:ReportSource,q:TicketQuery){
   const branch=await tx.sucursal.findUnique({where:{id:q.sucursalId},
@@ -112,7 +113,8 @@ export class DomainReportsStore extends DomainReportsPort{
    const daily=await exportDaily(tx,context,kind);
    return {...first,data,...daily,meta:{page:1,limit:total,total,totalPages:total?1:0},
     exportacion:{registros:total,limite:max,scope:'COMPLETO',snapshot:'REPEATABLE_READ'}};
-  },{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead,timeout:60000});
+  },{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead,
+   maxWait:10000,timeout:60000});
  }
  private async recordsInTx(tx:Tx,u:Principal,kind:ReportSource,q:TicketQuery):Promise<unknown>{
    const b=await this.context(tx,u,kind,q),span={gte:b.from,lt:b.to};

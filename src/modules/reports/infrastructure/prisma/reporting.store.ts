@@ -16,7 +16,10 @@ const money=(x:Prisma.Decimal|string|number|null|undefined)=>dec(x).toFixed(2);
 export class ReportingStore extends ReportingPort{
  constructor(private readonly db:PrismaService){super();}
  private read<T>(call:(tx:Tx)=>Promise<T>):Promise<T>{
-  return this.db.$transaction(call,{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead,timeout:20000});
+  // Reports use concurrent reads; allow bounded time to acquire a PostgreSQL pool slot.
+  // maxWait is distinct from timeout (transaction execution time).
+  return this.db.$transaction(call,{isolationLevel:Prisma.TransactionIsolationLevel.RepeatableRead,
+   maxWait:10000,timeout:20000});
  }
  private async access(tx:Tx,u:Principal,branch:string){
   const [b,role]=await Promise.all([

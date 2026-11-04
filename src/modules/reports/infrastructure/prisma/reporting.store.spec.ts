@@ -26,6 +26,13 @@ function rig(){
  return {tx,store:new ReportingStore(db),db};
 }
 describe('REP-1 sources and accounting guardrails',()=>{
+ it('gives reporting reads a bounded pool acquisition window separate from execution timeout',async()=>{
+  const {store,db}=rig();
+  await store.operational(admin,{sucursalId:'s1'}).catch(()=>undefined);
+  expect(db.$transaction).toHaveBeenCalledWith(expect.any(Function),
+   expect.objectContaining({maxWait:10000,timeout:20000,isolationLevel:'RepeatableRead'}));
+ });
+
  it('does not double-count sales as collections or costs',async()=>{
   const {store,tx}=rig();
   const report=await store.overview(admin,{sucursalId:'s1',periodo:'DIA',fecha:'2026-10-30'}) as any;

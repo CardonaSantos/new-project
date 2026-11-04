@@ -45,6 +45,19 @@ function rig(){
  return {store:new DomainReportsStore(db),tx,db};
 }
 describe('REP-A source reports data and financial guardrails',()=>{
+ it('sets pool acquisition maxWait separately from domain read timeout',async()=>{
+  const {store,db}=rig();
+  await store.records(actor,'SALES_LINES',{sucursalId:'s1',periodo:'DIA',fecha:'2026-10-30',page:1,limit:20});
+  expect(db.$transaction).toHaveBeenCalledWith(expect.any(Function),
+   expect.objectContaining({maxWait:10000,timeout:20000,isolationLevel:'RepeatableRead'}));
+ });
+ it('uses bounded maxWait for long-running repeatable-read exports',async()=>{
+  const {store,db}=rig();
+  await store.exportRecords(actor,'SALES_LINES',{sucursalId:'s1',periodo:'DIA',fecha:'2026-10-30',page:1,limit:100}).catch(()=>undefined);
+  expect(db.$transaction).toHaveBeenCalledWith(expect.any(Function),
+   expect.objectContaining({maxWait:10000,timeout:60000,isolationLevel:'RepeatableRead'}));
+ });
+
  it('aggregates sales charts over all matching rows, independent of pagination',async()=>{
   const {store,tx}=rig();
   tx.ventaLinea.count.mockResolvedValue(12);

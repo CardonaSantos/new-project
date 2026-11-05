@@ -28,8 +28,12 @@ function rig(type:'INVENTARIABLE'|'PREPARADO'='INVENTARIABLE'){
    })
   },
   varianteProducto:{findMany:vi.fn().mockResolvedValue([{id:'water',producto:{tipo:type}}])},
-  cuenta:{findFirstOrThrow:vi.fn().mockResolvedValue({id:'account-1'})},
-  orden:{findUniqueOrThrow:vi.fn()
+  cuenta:{findFirstOrThrow:vi.fn().mockResolvedValue({id:'account-1'}),
+   findMany:vi.fn().mockResolvedValue([{id:'account-1',estado:'ABIERTA'}])},
+  intentoPago:{count:vi.fn().mockResolvedValue(0)},
+  comanda:{count:vi.fn().mockResolvedValue(1)},
+  orden:{findUnique:vi.fn().mockResolvedValue({id:'order-1',sucursalId:'b1',usuarioId:'cashier',estado:'ABIERTA'}),
+   findUniqueOrThrow:vi.fn()
    .mockResolvedValueOnce({id:'order-1',estado:'ABIERTA'})
    .mockResolvedValueOnce({id:'order-1',numero:'ORD-1',estado:'CERRADA'})},
   venta:{findUnique:vi.fn().mockResolvedValue({id:'sale-1',total:{toFixed:()=> '7.00'}})}
@@ -86,5 +90,54 @@ describe('POS express checkout',()=>{
   h.engine.allowed.mockRejectedValue(new ForbiddenException('Forbidden after role revoked'));
   await expect(h.store.quickCheckout(actor,d)).rejects.toThrow('Forbidden after role revoked');
   expect(h.payment.collectInTx).toHaveBeenCalledOnce();
+ });
+});
+
+describe('Pay-and-send with one confirmed payment transaction',()=>{
+ it('collects and dispatches after payment within one transaction',async()=>{
+  const h=rig();
+  const result=await h.store.payAndSend(actor,'order-1',{
+   turnoId:'shift-1',pagos:[{metodo:'EFECTIVO',monto:'7.00',efectivoRecibido:'10.00'}],
+   claveOperacion:'ORDER:PAY:SEND:1'
+  });
+  expect(result).toEqual({ordenId:'order-1',estado:'CERRADA',
+   pagoIds:['payment-1'],comandasPendientes:1});
+  expect(h.engine.tx).toHaveBeenCalledOnce();
+  expect(h.payment.collectInTx).toHaveBeenCalledOnce();
+  expect(h.kitchen.sendTx).toHaveBeenCalledWith(h.tx,actor,'order-1','orders.create');
+  expect(h.payment.collectInTx.mock.invocationCallOrder[0])
+   .toBeLessThan(h.kitchen.sendTx.mock.invocationCallOrder[0]);
+  expect(h.tx.operacionIdempotente.create).toHaveBeenCalledOnce();
+ });
+ it('does not charge if a transfer awaits verification',async()=>{
+  const h=rig();
+  await expect(h.store.payAndSend(actor,'order-1',{
+   turnoId:'shift-1',pagos:[{metodo:'TRANSFERENCIA',monto:'7.00',referencia:'DEMO'}],
+   claveOperacion:'ORDER:PAY:SEND:2'
+  })).rejects.toThrow('transferencia');
+  expect(h.payment.collectInTx).not.toHaveBeenCalled();
+  expect(h.tx.operacionIdempotente.create).not.toHaveBeenCalled();
+ });
+ it('requires orders.manage for an order created by a different employee',async()=>{
+  const h=rig();
+  h.tx.orden.findUnique.mockResolvedValue({
+   id:'order-1',sucursalId:'b1',usuarioId:'waiter-2',estado:'ABIERTA'
+  });
+  await h.store.payAndSend(actor,'order-1',{
+   turnoId:'shift-1',pagos:[{metodo:'EFECTIVO',monto:'7.00'}],
+   claveOperacion:'ORDER:PAY:SEND:3'
+  });
+  expect(h.engine.allowed).toHaveBeenCalledWith(h.tx,'cashier','orders.manage','b1');
+  expect(h.kitchen.sendTx).toHaveBeenCalledWith(h.tx,actor,'order-1','orders.manage');
+ });
+ it('does not commit idempotency on a financial error',async()=>{
+  const h=rig();
+  h.payment.collectInTx.mockRejectedValue(Error('Unverified card payment'));
+  await expect(h.store.payAndSend(actor,'order-1',{
+   turnoId:'shift-1',pagos:[{metodo:'TARJETA',monto:'7.00'}],
+   claveOperacion:'ORDER:PAY:SEND:4'
+  })).rejects.toThrow('Unverified card payment');
+  expect(h.kitchen.sendTx).not.toHaveBeenCalled();
+  expect(h.tx.operacionIdempotente.create).not.toHaveBeenCalled();
  });
 });

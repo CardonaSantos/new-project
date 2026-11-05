@@ -76,7 +76,7 @@ export class CatalogSetupService{
     opcionesConConsumo:options.filter(o=>o.requiereComposicion).length
    });
    return {id:group.id,nombre:group.nombre,minimo:group.minimo,maximo:group.maximo,
-    activo:true,opciones,asignadoAVarianteId:dto.varianteId??null};
+    activo:true,opciones:options,asignadoAVarianteId:dto.varianteId??null};
   },serial);}catch(e){failUnique(e);}
  }
 

@@ -6,6 +6,7 @@ export abstract class OrderPort {
  abstract list(actor:Principal,...args:any[]):Promise<any>;
  abstract worklist(actor:Principal,...args:any[]):Promise<any>;
  abstract create(actor:Principal,...args:any[]):Promise<any>;
+ abstract quickCheckout(actor:Principal,...args:any[]):Promise<any>;
  abstract edit(actor:Principal,...args:any[]):Promise<any>;
  abstract add(actor:Principal,...args:any[]):Promise<any>;
  abstract editLine(actor:Principal,...args:any[]):Promise<any>;

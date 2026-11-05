@@ -14,6 +14,7 @@ export class OrdersController{
  constructor(private readonly orders:OrderService){}
  @Get() list(@CurrentUser() u:Principal,@Query() q:OrderListDto){return this.orders.list(u,q);}
  @Post() create(@CurrentUser() u:Principal,@Body() d:CreateOrderDto){return this.orders.create(u,d);}
+ @Get('worklist') worklist(@CurrentUser() u:Principal,@Query() q:OrderListDto){return this.orders.worklist(u,q);}
  @Get(':id') detail(@CurrentUser() u:Principal,@Param('id') id:string){return this.orders.detail(u,id);}
  @Patch(':id') edit(@CurrentUser() u:Principal,@Param('id') id:string,
   @Body() d:EditOrderDto){return this.orders.edit(u,id,d);}

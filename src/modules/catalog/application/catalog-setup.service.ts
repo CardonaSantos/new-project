@@ -1,15 +1,82 @@
 import {BadRequestException,ConflictException,Injectable,NotFoundException} from '@nestjs/common';
 import {Prisma} from '../../../generated/prisma/client.js';
 import {PrismaService} from '../../../infrastructure/database/prisma/prisma.service.js';
-import type {ProductSetupDto,PriceCreateDto,MenuLayoutDto} from '../presentation/http/dto/catalog.dto.js';
-import {catalogCode,catalogName,decimalPrice,period,validSchedule} from '../domain/catalog.policy.js';
+import type {ProductSetupDto,PriceCreateDto,MenuLayoutDto,QuickModifierGroupDto} from '../presentation/http/dto/catalog.dto.js';
+import {bounds,catalogCode,catalogName,decimalPrice,period,validSchedule} from '../domain/catalog.policy.js';
 import {activeBranch,audit,failUnique,menuInclude,permission,productInclude,serial,validateLink} from '../infrastructure/prisma/catalog-prisma.shared.js';
 import {CatalogMenuStore} from '../infrastructure/prisma/catalog-menu.store.js';
+import {toBase} from '../../recipes/infrastructure/prisma/recipe-units.js';
 
 /** Task-level operations for the guided editor; every operation is one serializable transaction. */
 @Injectable()
 export class CatalogSetupService{
  constructor(private readonly db:PrismaService,private readonly menus:CatalogMenuStore){}
+
+
+ /** Atomic group, modifiers, additive ingredient composition and optional assignment.
+  * No stock movements occur here. Removal/substitution requires the advanced editor. */
+ async createModifierGroupWithOptions(actor:string,dto:QuickModifierGroupDto){
+  bounds(dto.minimo,dto.maximo);
+  if(!dto.opciones.length||dto.opciones.length>30)
+   throw new BadRequestException('Incluye de 1 a 30 opciones');
+  if(dto.minimo>dto.opciones.length||dto.maximo!==undefined&&dto.maximo!==null&&dto.maximo>dto.opciones.length)
+   throw new BadRequestException('Los límites superan la cantidad de opciones');
+  const names=dto.opciones.map(x=>catalogName(x.nombre).toLocaleLowerCase('es'));
+  if(new Set(names).size!==names.length)throw new ConflictException('Hay opciones repetidas');
+  try{return await this.db.$transaction(async tx=>{
+   await permission(tx,actor,'catalog.manage',null);
+   if(dto.varianteId){
+    const variant=await tx.varianteProducto.findUnique({
+     where:{id:dto.varianteId},include:{producto:true}});
+    if(!variant||!variant.activo||!variant.producto.activo)
+     throw new NotFoundException('Presentación inactiva o inexistente');
+    if(dto.opciones.some(o=>o.ingredientes.length)&&variant.producto.tipo!=='PREPARADO')
+     throw new ConflictException('Solo preparados pueden vincular extras que consumen ingredientes');
+   }
+   const group=await tx.grupoModificador.create({data:{
+    nombre:catalogName(dto.nombre),minimo:dto.minimo,maximo:dto.maximo??null
+   }});
+   const options=[];
+   for(const option of dto.opciones){
+    const unique=new Set<string>();
+    for(const item of option.ingredientes){
+     if(unique.has(item.articuloId))
+      throw new ConflictException('Ingrediente repetido en la opción');
+     unique.add(item.articuloId);
+     if(item.efecto!=='SUMAR')
+      throw new BadRequestException('Para retirar o sustituir ingredientes usa la composición avanzada');
+     await toBase(tx,item.articuloId,item.unidadId,item.cantidad);
+    }
+    const extra=await tx.modificador.create({data:{
+     grupoId:group.id,nombre:catalogName(option.nombre),
+     incrementoPrecio:decimalPrice(option.incrementoPrecio),
+     requiereComposicion:option.ingredientes.length>0
+    }});
+    if(option.ingredientes.length)await tx.modificadorComponente.createMany({data:
+     option.ingredientes.map(c=>({
+      modificadorId:extra.id,articuloId:c.articuloId,unidadId:c.unidadId,
+      cantidad:new Prisma.Decimal(c.cantidad),efecto:'SUMAR' as const
+     }))});
+    options.push({id:extra.id,nombre:extra.nombre,
+     incrementoPrecio:extra.incrementoPrecio.toFixed(2),
+     requiereComposicion:extra.requiereComposicion});
+   }
+   if(dto.varianteId){
+    const prior=await tx.varianteGrupoModificador.findMany({
+     where:{varianteId:dto.varianteId},select:{orden:true}});
+    await tx.varianteGrupoModificador.create({data:{
+     varianteId:dto.varianteId,grupoId:group.id,
+     orden:prior.length?Math.max(...prior.map(x=>x.orden))+1:0,obligatorio:group.minimo>0
+    }});
+   }
+   await audit(tx,actor,'MODIFIER_GROUP_SETUP_CREATED','GrupoModificador',group.id,null,null,{
+    nombre:group.nombre,opciones:options.length,varianteId:dto.varianteId??null,
+    opcionesConConsumo:options.filter(o=>o.requiereComposicion).length
+   });
+   return {id:group.id,nombre:group.nombre,minimo:group.minimo,maximo:group.maximo,
+    activo:true,opciones,asignadoAVarianteId:dto.varianteId??null};
+  },serial);}catch(e){failUnique(e);}
+ }
 
  async createProductSetup(actor:string,input:ProductSetupDto){
   if(!input.variantes.length||input.variantes.length>50)

@@ -33,7 +33,7 @@ function mocks(){
   },
   varianteProducto:{
    create:vi.fn().mockResolvedValue({id:'v1',nombre:'Única'}),
-   findUnique:vi.fn().mockResolvedValue({id:'v1',activo:true,producto:{activo:true}}),
+   findUnique:vi.fn().mockResolvedValue({id:'v1',activo:true,producto:{activo:true,tipo:'PREPARADO'}}),
    findMany:vi.fn().mockResolvedValue([{id:'v1'}])
   },
   precioVariante:{

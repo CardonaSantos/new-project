@@ -12,6 +12,13 @@
 - Operaciones de escritura con `claveOperacion` estable; la UI debe usar una clave NUEVA por intención, mantenerla en reintentos sin modificar payload, y no hacer reintentos automáticos de HTTP POST.
 
 ## Contratos nuevos
+### POST /api/orders/quote
+Previsualización de precios calculados **por NestJS** antes de que el cajero confirme. Permiso `orders.create` en sucursal.
+```json
+{"sucursalId":"branch-id","lineas":[{"varianteId":"variant-id","cantidad":"2","descuento":"1.00"}]}
+```
+Respuesta: `{sucursalId,moneda,subtotal,descuentoTotal,total,lineas:[{varianteId,nombre,cantidad,precioUnitario,subtotal,descuento,total,modificadores}],advertencia}`; importes en cadenas exactas. Reutiliza reglas de precios, obligatoriedad de toppings, receta publicada y disponibilidad comercial. **No reserva stock ni garantiza el precio futuro**: durante la confirmación se calcula de nuevo. No es una autorización de cobro.
+
 ### POST /api/pos/quick-checkout
 Venta directa completa **atómica** para MOSTRADOR o PARA_LLEVAR, solo productos INVENTARIABLE o SERVICIO; transferencia no admitida (pendiente de verificación). 
 Permisos: `orders.create` + `payments.collect` en sucursal; requiere turno de caja válido del cajero.

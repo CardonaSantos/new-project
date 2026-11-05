@@ -416,7 +416,9 @@ export class KitchenStore{
    await this.engine.allowed(tx,u.id,'kitchen.manage',ticket.orden.sucursalId);
    return runOnce(tx,u,d.claveOperacion,'KITCHEN_TICKET_READY_DELIVER',
     {ticketId:id},async()=>{
-     await this.startTx(tx,u,id);
+     // An already LISTA ticket can still be handed off after its sale closed.
+     // Do not invoke startTx, which correctly blocks *new preparation* on closed orders.
+     if(ticket.estado!=='LISTA')await this.startTx(tx,u,id);
      const current=await this.ticket(tx,id);
      for(const line of current.comandaLineasComoComanda)
       if(!line.canceladaEn&&!line.listaEn)await this.readyLineTx(tx,u,line.id);

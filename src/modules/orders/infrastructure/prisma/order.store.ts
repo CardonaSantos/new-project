@@ -12,6 +12,7 @@ import {TableStore} from './table.store.js';
 import {PaymentsStore} from '../../../payments/infrastructure/prisma/payments.store.js';
 import {KitchenStore} from './kitchen.store.js';
 import {CustomerSelectionPort} from '../../../customers/application/ports/customers.port.js';
+import type {CollectDto} from '../../../payments/presentation/http/dto/payments.dto.js';
 import type {CreateOrderDto,QuickCheckoutDto,AddItemsDto,OrderItemDto,EditLineDto,EditOrderDto,OrderListDto,ReasonDto,CancelOrderDto,SendDto} from '../../presentation/http/dto/orders.dto.js';
 import {requiresCancellationAuthorization,requireCancellationClassification} from '../../domain/cancellation.policy.js';
 export type IngredientModifierSnapshot={modificadorId:string;articuloId:string;
@@ -277,6 +278,35 @@ export class OrderStore{
      throw new ConflictException('Venta no cerrada; operación revertida íntegramente');
     return {ordenId:created.orderId,numero:final.numero,ventaId:sale.id,
      estado:final.estado,total:sale.total.toFixed(2),pagoIds:payment.pagoIds};
+   });
+  });
+ }
+ /** Pay and dispatch in one serializable transaction; no success after partial handoff. */
+ async payAndSend(u:Principal,id:string,d:CollectDto){
+  return this.engine.tx(async tx=>{
+   const order=await this.order(tx,id);
+   await this.engine.allowed(tx,u.id,'payments.collect',order.sucursalId);
+   const permission=order.usuarioId===u.id?'orders.create':'orders.manage';
+   await this.engine.allowed(tx,u.id,permission,order.sucursalId);
+   return runOnce(tx,u,d.claveOperacion,'ORDER_PAY_AND_SEND',{id,...d},async()=>{
+    if(order.estado!=='ABIERTA')throw new ConflictException('Orden no está abierta');
+    if(d.pagos.some(p=>p.metodo==='TRANSFERENCIA'))
+     throw new BadRequestException('La transferencia debe verificarse antes de enviar a Cocina');
+    const accounts=await tx.cuenta.findMany({where:{ordenId:id},
+     select:{id:true,estado:true}});
+    if(accounts.length!==1||accounts[0].estado!=='ABIERTA')
+     throw new ConflictException('Para cuentas divididas utilice Cobros');
+    if(await tx.intentoPago.count({where:{cuentaId:accounts[0].id,estado:'PENDIENTE'}}))
+     throw new ConflictException('Existen transferencias pendientes de confirmación');
+    const paid=await this.payments.collectInTx(tx,u,accounts[0].id,d);
+    const current=await tx.orden.findUniqueOrThrow({where:{id}});
+    if(current.estado==='ABIERTA')
+     await this.kitchen.sendTx(tx,u,id,permission);
+    const after=await tx.orden.findUniqueOrThrow({where:{id}});
+    const pending=await tx.comanda.count({where:{ordenId:id,
+     estado:{in:['PENDIENTE','PREPARANDO']}}});
+    return {ordenId:id,estado:after.estado,pagoIds:paid.pagoIds,
+     comandasPendientes:pending};
    });
   });
  }

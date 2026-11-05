@@ -4,7 +4,7 @@ import type {Principal} from '../../../auth/application/auth.service.js';
 import {OrderService} from '../../application/order.service.js';
 import {KitchenService} from '../../application/kitchen.service.js';
 import {TableService} from '../../application/table.service.js';
-import {AddItemsDto,BranchQueryDto,CreateOrderDto,EditLineDto,EditOrderDto,
+import {AddItemsDto,BranchQueryDto,CreateOrderDto,QuickCheckoutDto,EditLineDto,EditOrderDto,
  OrderListDto,ReasonDto,RouteDto,RouteUpdateDto,RoomDto,RoomUpdateDto,TableUpdateDto,KitchenChangesDto,
  CancelOrderDto,SendDto,StartLineDto,StationDto,
  StationUpdateDto,TableDto,TicketListDto,KitchenActionDto,KitchenQueueDto} from './dto/orders.dto.js';
@@ -32,6 +32,13 @@ export class OrdersController{
   @Body() d:CancelOrderDto){return this.orders.cancel(u,id,d);}
  @Post(':id/close') close(@CurrentUser() u:Principal,@Param('id') id:string){
   return this.orders.close(u,id);}
+}
+/** Fast cashier endpoint; does not create an open order on payment failure. */
+@Controller('pos')
+export class PosController{
+ constructor(private readonly orders:OrderService){}
+ @Post('quick-checkout') quickCheckout(@CurrentUser() u:Principal,
+  @Body() d:QuickCheckoutDto){return this.orders.quickCheckout(u,d);}
 }
 @Controller('tables')
 export class TablesController{

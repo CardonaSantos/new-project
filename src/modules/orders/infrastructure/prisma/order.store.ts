@@ -12,7 +12,7 @@ import {TableStore} from './table.store.js';
 import {PaymentsStore} from '../../../payments/infrastructure/prisma/payments.store.js';
 import {KitchenStore} from './kitchen.store.js';
 import {CustomerSelectionPort} from '../../../customers/application/ports/customers.port.js';
-import type {CreateOrderDto,AddItemsDto,OrderItemDto,EditLineDto,EditOrderDto,OrderListDto,ReasonDto,CancelOrderDto,SendDto} from '../../presentation/http/dto/orders.dto.js';
+import type {CreateOrderDto,QuickCheckoutDto,AddItemsDto,OrderItemDto,EditLineDto,EditOrderDto,OrderListDto,ReasonDto,CancelOrderDto,SendDto} from '../../presentation/http/dto/orders.dto.js';
 import {requiresCancellationAuthorization,requireCancellationClassification} from '../../domain/cancellation.policy.js';
 export type IngredientModifierSnapshot={modificadorId:string;articuloId:string;
  unidadId:string;cantidad:string;efecto:'SUMAR'|'RESTAR'|'SUSTITUIR';
@@ -238,6 +238,48 @@ export class OrderStore{
   return this.detail(u,result.orderId);
  }
 
+ /** Cashier express sale: create + stock + payment + close, all in ONE serializable tx.
+  * PREPARADO and delayed bank confirmations remain on the standard order flow. */
+ async quickCheckout(u:Principal,d:QuickCheckoutDto){
+  return this.engine.tx(async tx=>{
+   await this.engine.allowed(tx,u.id,'orders.create',d.sucursalId);
+   await this.engine.allowed(tx,u.id,'payments.collect',d.sucursalId);
+   const branch=await tx.sucursal.findUnique({where:{id:d.sucursalId}});
+   if(!branch?.activa)throw new ConflictException('Sucursal inexistente o inactiva');
+   if(d.clienteId)await this.customerSelection.assertVisibleInTx(tx,u.id,d.sucursalId,d.clienteId);
+   return runOnce(tx,u,d.claveOperacion,'POS_QUICK_CHECKOUT',d,async()=>{
+    if(!['MOSTRADOR','PARA_LLEVAR'].includes(d.modalidad)||d.mesaId)
+     throw new BadRequestException('Cobro rápido solo para mostrador o para llevar');
+    if(d.enviarCocina===false)throw new BadRequestException('Cobro rápido requiere procesar existencias');
+    if(d.pagos.some(p=>p.metodo==='TRANSFERENCIA'))
+     throw new BadRequestException('Transferencias pendientes requieren Cobros normal');
+    const variantIds=[...new Set(d.lineas.map(l=>l.varianteId))];
+    const variants=await tx.varianteProducto.findMany({where:{id:{in:variantIds}},
+     select:{id:true,producto:{select:{tipo:true}}}});
+    if(variants.length!==variantIds.length)throw new ConflictException('Producto no encontrado');
+    if(variants.some(v=>v.producto.tipo==='PREPARADO'))
+     throw new ConflictException('Los productos preparados usan el flujo de orden y Cocina');
+    const created=await this.createCoreTx(tx,u,d);
+    const account=await tx.cuenta.findFirstOrThrow({where:{ordenId:created.orderId},
+     select:{id:true}});
+    const payment=await this.payments.collectInTx(tx,u,account.id,{
+     turnoId:d.turnoId,pagos:d.pagos,claveOperacion:d.claveOperacion
+    });
+    const current=await tx.orden.findUniqueOrThrow({where:{id:created.orderId}});
+    if(current.estado==='ABIERTA'){
+     // In branches requiring payment first, only now may stock be consumed.
+     await this.kitchen.sendTx(tx,u,created.orderId,'orders.create');
+     await this.payments.settleAfterProcessingTx(tx,u,created.orderId);
+    }
+    const final=await tx.orden.findUniqueOrThrow({where:{id:created.orderId}});
+    const sale=await tx.venta.findUnique({where:{cuentaId:account.id}});
+    if(final.estado!=='CERRADA'||!sale)
+     throw new ConflictException('Venta no cerrada; operación revertida íntegramente');
+    return {ordenId:created.orderId,numero:final.numero,ventaId:sale.id,
+     estado:final.estado,total:sale.total.toFixed(2),pagoIds:payment.pagoIds};
+   });
+  });
+ }
  async edit(u:Principal,id:string,d:EditOrderDto){
   const result=await this.engine.tx(async tx=>{
    const order=await this.order(tx,id);

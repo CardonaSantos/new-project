@@ -58,6 +58,12 @@ export class CatalogSetupService{
       {codigo:article.codigo,nombre:article.nombre,tipo:article.tipo,stockInicial:'0'});
     }
     await validateLink(tx,input.tipo,articleId);
+    if(input.tipo==='INVENTARIABLE'&&articleId){
+     const physical=await tx.articuloInventario.findUnique({where:{id:articleId},
+      include:{unidadBase:true}});
+     if(physical?.unidadBase.dimension!=='UNIDAD')
+      throw new ConflictException('Este producto terminado debe medirse en unidades. Selecciona otro artículo.');
+    }
     const variant=await tx.varianteProducto.create({data:{
      productoId:product.id,nombre:catalogName(v.nombre),sku:v.sku?catalogCode(v.sku):null,
      articuloInventarioId:articleId,orden:v.orden??index

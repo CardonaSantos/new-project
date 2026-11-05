@@ -17,4 +17,6 @@ export abstract class KitchenPort {
  abstract readyLine(actor:Principal,...args:any[]):Promise<any>;
  abstract ready(actor:Principal,...args:any[]):Promise<any>;
  abstract deliver(actor:Principal,...args:any[]):Promise<any>;
+ abstract readyDeliver(actor:Principal,...args:any[]):Promise<any>;
+ abstract readyDeliverLine(actor:Principal,...args:any[]):Promise<any>;
 }

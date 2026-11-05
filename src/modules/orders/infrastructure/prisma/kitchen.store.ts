@@ -7,7 +7,7 @@ import {InventoryPostingEngine} from '../../../inventory/infrastructure/prisma/i
 import {decimal,distinct,qty} from '../../domain/order.policy.js';
 import {audit,outbox,runOnce,ticketInclude,type Tx} from './order-shared.js';
 import {ConsumptionStore} from './consumption.store.js';
-import type {RouteDto,RouteUpdateDto,KitchenChangesDto,StartLineDto,StationDto,StationUpdateDto,TicketListDto} from '../../presentation/http/dto/orders.dto.js';
+import type {RouteDto,RouteUpdateDto,KitchenChangesDto,StartLineDto,StationDto,StationUpdateDto,TicketListDto,KitchenQueueDto} from '../../presentation/http/dto/orders.dto.js';
 type Perm='orders.create'|'orders.manage';
 @Injectable()
 export class KitchenStore{
@@ -228,6 +228,42 @@ export class KitchenStore{
      skip:(q.page-1)*q.limit,take:q.limit}),
     tx.comanda.count({where})]);
    return {data:rows,meta:{page:q.page,limit:q.limit,total,totalPages:Math.ceil(total/q.limit)}};
+  });
+ }
+ /** Stable, database-sorted queue and counts across the entire branch/station. */
+ async queue(u:Principal,q:KitchenQueueDto){
+  return this.engine.tx(async tx=>{
+   await this.engine.allowed(tx,u.id,'kitchen.read',q.sucursalId);
+   if(q.estacionId){
+    const station=await tx.estacionPreparacion.findUnique({where:{id:q.estacionId}});
+    if(!station||station.sucursalId!==q.sucursalId)
+     throw new ConflictException('Estación fuera de sucursal');
+   }
+   const base:Prisma.ComandaWhereInput={estacion:{sucursalId:q.sucursalId},
+    ...(q.estacionId?{estacionId:q.estacionId}:{})};
+   const awaiting:Prisma.ComandaWhereInput={estado:'LISTA',
+    comandaLineasComoComanda:{some:{canceladaEn:null,entregadaEn:null}}};
+   const delivered:Prisma.ComandaWhereInput={estado:'LISTA',AND:[
+    {comandaLineasComoComanda:{some:{canceladaEn:null}}},
+    {comandaLineasComoComanda:{none:{canceladaEn:null,entregadaEn:null}}}
+   ]};
+   const view:Prisma.ComandaWhereInput=q.vista==='PARA_ENTREGAR'?awaiting:
+    q.vista==='ENTREGADAS'?delivered:
+    q.vista==='TODAS'?{}:{estado:{in:['PENDIENTE','PREPARANDO']}};
+   const where:Prisma.ComandaWhereInput={AND:[base,view]};
+   const [data,total,pending,preparing,readyToDeliver,alreadyDelivered]=await Promise.all([
+    tx.comanda.findMany({where,include:ticketInclude,
+     orderBy:[{enviadaEn:'asc'},{id:'asc'}],
+     skip:(q.page-1)*q.limit,take:q.limit}),
+    tx.comanda.count({where}),
+    tx.comanda.count({where:{AND:[base,{estado:'PENDIENTE'}]}}),
+    tx.comanda.count({where:{AND:[base,{estado:'PREPARANDO'}]}}),
+    tx.comanda.count({where:{AND:[base,awaiting]}}),
+    tx.comanda.count({where:{AND:[base,delivered]}})
+   ]);
+   return {data,meta:{page:q.page,limit:q.limit,total,
+    totalPages:Math.ceil(total/q.limit)},
+    totals:{pending,preparing,readyToDeliver,delivered:alreadyDelivered}};
   });
  }
  private async ticket(tx:Tx,id:string){

@@ -79,6 +79,19 @@ describe('KDS express handoff: atomicity, permissions, idempotency',()=>{
    .rejects.toThrow('Stock transaction failed');
   expect(h.tx.operacionIdempotente.create).not.toHaveBeenCalled();
  });
+ it('allows handoff of already ready tickets after the paid order closes without new preparation',async()=>{
+  const h=rig();
+  h.ticket.mockResolvedValue({
+   id:'ticket-1',estado:'LISTA',orden:{sucursalId:'branch-1',estado:'CERRADA'},
+   comandaLineasComoComanda:[
+    {id:'line-1',canceladaEn:null,listaEn:new Date(),entregadaEn:null}
+   ]
+  });
+  await h.store.readyDeliver(actor,'ticket-1',{claveOperacion:'KITCHEN:CLOSED:1'});
+  expect(h.start).not.toHaveBeenCalled();
+  expect(h.ready).not.toHaveBeenCalled();
+  expect(h.deliver).toHaveBeenCalledOnce();
+ });
  it('never writes another delivery event if a line was already handed off',async()=>{
   const h=rig();
   h.deliver.mockRestore();

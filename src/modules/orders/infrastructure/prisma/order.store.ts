@@ -12,7 +12,8 @@ import {TableStore} from './table.store.js';
 import {PaymentsStore} from '../../../payments/infrastructure/prisma/payments.store.js';
 import {KitchenStore} from './kitchen.store.js';
 import {CustomerSelectionPort} from '../../../customers/application/ports/customers.port.js';
-import type {CreateOrderDto,AddItemsDto,OrderItemDto,EditLineDto,EditOrderDto,OrderListDto,ReasonDto,CancelOrderDto,SendDto} from '../../presentation/http/dto/orders.dto.js';
+import type {CollectDto} from '../../../payments/presentation/http/dto/payments.dto.js';
+import type {QuoteOrderDto,CreateOrderDto,QuickCheckoutDto,AddItemsDto,OrderItemDto,EditLineDto,EditOrderDto,OrderListDto,ReasonDto,CancelOrderDto,SendDto} from '../../presentation/http/dto/orders.dto.js';
 import {requiresCancellationAuthorization,requireCancellationClassification} from '../../domain/cancellation.policy.js';
 export type IngredientModifierSnapshot={modificadorId:string;articuloId:string;
  unidadId:string;cantidad:string;efecto:'SUMAR'|'RESTAR'|'SUSTITUIR';
@@ -166,14 +167,70 @@ export class OrderStore{
    return {data,meta:{page:q.page,limit:q.limit,total,totalPages:Math.ceil(total/q.limit)}};
   });
  }
- async create(u:Principal,d:CreateOrderDto){
-  const result=await this.engine.tx(async tx=>{
-   // Authorization is outside runOnce so replay cannot bypass a revoked role.
+ /** Priced read-only preview; never reserves inventory or authorizes payment. */
+ async quoteOrder(u:Principal,d:QuoteOrderDto){
+  return this.engine.tx(async tx=>{
    await this.engine.allowed(tx,u.id,'orders.create',d.sucursalId);
    const branch=await tx.sucursal.findUnique({where:{id:d.sucursalId}});
    if(!branch?.activa)throw new ConflictException('Sucursal inexistente o inactiva');
-   if(d.clienteId)await this.customerSelection.assertVisibleInTx(tx,u.id,d.sucursalId,d.clienteId);
-   return runOnce(tx,u,d.claveOperacion,'ORDER_CREATE',d,async()=>{
+   const priced=[];
+   for(const item of d.lineas){
+    const q=await this.quote(tx,u,d.sucursalId,item);
+    priced.push({varianteId:q.varianteId,nombre:q.nombre,
+     cantidad:q.cantidad.toFixed(3),precioUnitario:q.unit.toFixed(2),
+     subtotal:q.total.toFixed(2),descuento:q.discount.toFixed(2),
+     total:q.total.minus(q.discount).toFixed(2),
+     modificadores:q.modifiers.map(m=>({id:m.id,nombre:m.nombre,recargo:m.unit.toFixed(2)}))});
+   }
+   const subtotal=priced.reduce((sum,line)=>sum.plus(line.subtotal),new Prisma.Decimal(0));
+   const discount=priced.reduce((sum,line)=>sum.plus(line.descuento),new Prisma.Decimal(0));
+   const config=await tx.configuracionSucursal.findUnique({where:{sucursalId:d.sucursalId}});
+   return {sucursalId:d.sucursalId,moneda:config?.moneda??'GTQ',
+    subtotal:subtotal.toFixed(2),descuentoTotal:discount.toFixed(2),
+    total:subtotal.minus(discount).toFixed(2),lineas:priced,
+    advertencia:'Cotización informativa: precios y existencias se validarán otra vez al confirmar'};
+  });
+ }
+ /** One read for POS and table boards: accounts, pending products and kitchen progress. */
+ async worklist(u:Principal,q:OrderListDto){
+  return this.engine.tx(async tx=>{
+   await this.engine.allowed(tx,u.id,'orders.read',q.sucursalId);
+   const where:Prisma.OrdenWhereInput={
+    sucursalId:q.sucursalId,estado:q.estado??'ABIERTA',
+    ...(q.modalidad?{modalidad:q.modalidad}:{}),
+    ...(q.search?{numero:{contains:q.search,mode:'insensitive'}}:{})};
+   const [rows,total]=await Promise.all([
+    tx.orden.findMany({where,include:{
+     ocupacionMesa:{select:{id:true,mesa:{select:{id:true,numero:true,sala:{select:{nombre:true}}}}}},
+     cuentasComoOrden:{select:{id:true,total:true,pagado:true,estado:true}},
+     ordenLineasComoOrden:{select:{id:true,cantidad:true,cantidadEnviada:true,canceladaEn:true}},
+     comandasComoOrden:{select:{id:true,estado:true,comandaLineasComoComanda:{
+      select:{canceladaEn:true,entregadaEn:true}}}}
+    },orderBy:[{abiertaEn:'desc'},{id:'desc'}],skip:(q.page-1)*q.limit,take:q.limit}),
+    tx.orden.count({where})
+   ]);
+   const data=rows.map(order=>{
+    const pagado=order.cuentasComoOrden.reduce((sum,c)=>sum.plus(c.pagado),new Prisma.Decimal(0));
+    const needsProcessing=order.ordenLineasComoOrden.some(line=>
+     !line.canceladaEn&&line.cantidadEnviada.lt(line.cantidad));
+    const tickets=order.comandasComoOrden;
+    const pending=tickets.filter(t=>t.estado==='PENDIENTE').length;
+    const preparing=tickets.filter(t=>t.estado==='PREPARANDO').length;
+    const toDeliver=tickets.filter(t=>t.estado==='LISTA'&&
+     t.comandaLineasComoComanda.some(l=>!l.canceladaEn&&!l.entregadaEn)).length;
+    return {id:order.id,numero:order.numero,modalidad:order.modalidad,
+     estado:order.estado,version:order.version,abiertaEn:order.abiertaEn,
+     ocupacionMesaId:order.ocupacionMesaId,mesa:order.ocupacionMesa?.mesa??null,
+     total:order.total.toFixed(2),pagado:pagado.toFixed(2),
+     saldo:Prisma.Decimal.max(0,order.total.minus(pagado)).toFixed(2),
+     needsProcessing,kitchen:{pending,preparing,toDeliver}};
+   });
+   return {data,meta:{page:q.page,limit:q.limit,total,
+    totalPages:Math.ceil(total/q.limit)}};
+  });
+ }
+ /** Core insertion is shared by ordinary orders and single-transaction express checkout. */
+ private async createCoreTx(tx:Tx,u:Principal,d:CreateOrderDto){
    if(d.modalidad==='MESA'&&!d.mesaId)throw new BadRequestException('Servicio MESA requiere mesaId');
    if(d.modalidad!=='MESA'&&d.mesaId)throw new BadRequestException('mesaId solo en modalidad MESA');
    if(d.clienteId)await this.customerSelection.assertSelectableInTx(tx,u.id,d.sucursalId,d.clienteId);
@@ -193,9 +250,95 @@ export class OrderStore{
    await audit(tx,u,'ORDER_CREATED','Orden',order.id,d.sucursalId,{lineas:d.lineas.length});
    await outbox(tx,'ORDER_CREATED','Orden',order.id,d.sucursalId);
    return {orderId:order.id};
-   });
+ }
+ async create(u:Principal,d:CreateOrderDto){
+  const result=await this.engine.tx(async tx=>{
+   // Authorization is outside runOnce so replay cannot bypass a revoked role.
+   await this.engine.allowed(tx,u.id,'orders.create',d.sucursalId);
+   const branch=await tx.sucursal.findUnique({where:{id:d.sucursalId}});
+   if(!branch?.activa)throw new ConflictException('Sucursal inexistente o inactiva');
+   if(d.clienteId)await this.customerSelection.assertVisibleInTx(tx,u.id,d.sucursalId,d.clienteId);
+   return runOnce(tx,u,d.claveOperacion,'ORDER_CREATE',d,()=>this.createCoreTx(tx,u,d));
   });
   return this.detail(u,result.orderId);
+ }
+
+ /** Cashier express sale: create + stock + payment + close, all in ONE serializable tx.
+  * PREPARADO and delayed bank confirmations remain on the standard order flow. */
+ async quickCheckout(u:Principal,d:QuickCheckoutDto){
+  return this.engine.tx(async tx=>{
+   await this.engine.allowed(tx,u.id,'orders.create',d.sucursalId);
+   await this.engine.allowed(tx,u.id,'payments.collect',d.sucursalId);
+   const branch=await tx.sucursal.findUnique({where:{id:d.sucursalId}});
+   if(!branch?.activa)throw new ConflictException('Sucursal inexistente o inactiva');
+   if(d.clienteId)await this.customerSelection.assertVisibleInTx(tx,u.id,d.sucursalId,d.clienteId);
+   return runOnce(tx,u,d.claveOperacion,'POS_QUICK_CHECKOUT',d,async()=>{
+    if(!['MOSTRADOR','PARA_LLEVAR'].includes(d.modalidad)||d.mesaId)
+     throw new BadRequestException('Cobro rápido solo para mostrador o para llevar');
+    if(d.enviarCocina===false)throw new BadRequestException('Cobro rápido requiere procesar existencias');
+    if(d.pagos.some(p=>p.metodo==='TRANSFERENCIA'))
+     throw new BadRequestException('Transferencias pendientes requieren Cobros normal');
+    const variantIds=[...new Set(d.lineas.map(l=>l.varianteId))];
+    const variants=await tx.varianteProducto.findMany({where:{id:{in:variantIds}},
+     select:{id:true,producto:{select:{tipo:true}}}});
+    if(variants.length!==variantIds.length)throw new ConflictException('Producto no encontrado');
+    if(variants.some(v=>v.producto.tipo==='PREPARADO'))
+     throw new ConflictException('Los productos preparados usan el flujo de orden y Cocina');
+    const created=await this.createCoreTx(tx,u,d);
+    const account=await tx.cuenta.findFirstOrThrow({where:{ordenId:created.orderId},
+     select:{id:true}});
+    const payment=await this.payments.collectInTx(tx,u,account.id,{
+     turnoId:d.turnoId,pagos:d.pagos,claveOperacion:d.claveOperacion
+    });
+    const current=await tx.orden.findUniqueOrThrow({where:{id:created.orderId}});
+    if(current.estado==='ABIERTA'){
+     // In branches requiring payment first, only now may stock be consumed.
+     await this.kitchen.sendTx(tx,u,created.orderId,'orders.create');
+     await this.payments.settleAfterProcessingTx(tx,u,created.orderId);
+    }
+    const final=await tx.orden.findUniqueOrThrow({where:{id:created.orderId}});
+    const sale=await tx.venta.findUnique({where:{cuentaId:account.id}});
+    if(final.estado!=='CERRADA'||!sale)
+     throw new ConflictException('Venta no cerrada; operación revertida íntegramente');
+    return {ordenId:created.orderId,numero:final.numero,ventaId:sale.id,
+     estado:final.estado,total:sale.total.toFixed(2),pagoIds:payment.pagoIds};
+   });
+  });
+ }
+ /** Pay and dispatch in one serializable transaction; no success after partial handoff. */
+ async payAndSend(u:Principal,id:string,d:CollectDto){
+  return this.engine.tx(async tx=>{
+   const order=await this.order(tx,id);
+   await this.engine.allowed(tx,u.id,'payments.collect',order.sucursalId);
+   const permission=order.usuarioId===u.id?'orders.create':'orders.manage';
+   await this.engine.allowed(tx,u.id,permission,order.sucursalId);
+   return runOnce(tx,u,d.claveOperacion,'ORDER_PAY_AND_SEND',{id,...d},async()=>{
+    if(order.estado!=='ABIERTA')throw new ConflictException('Orden no está abierta');
+    if(d.pagos.some(p=>p.metodo==='TRANSFERENCIA'))
+     throw new BadRequestException('La transferencia debe verificarse antes de enviar a Cocina');
+    const accounts=await tx.cuenta.findMany({where:{ordenId:id},
+     select:{id:true,estado:true}});
+    if(accounts.length!==1||accounts[0].estado!=='ABIERTA')
+     throw new ConflictException('Para cuentas divididas utilice Cobros');
+    if(await tx.intentoPago.count({where:{cuentaId:accounts[0].id,estado:'PENDIENTE'}}))
+     throw new ConflictException('Existen transferencias pendientes de confirmación');
+    const paid=await this.payments.collectInTx(tx,u,accounts[0].id,d);
+    // Payment-before-preparation MUST NOT dispatch stock/recipes on an advance.
+    // Partial payments use ordinary PAY-A without automatic kitchen dispatch.
+    const settledAccount=await tx.cuenta.findUniqueOrThrow({where:{id:accounts[0].id},
+     select:{total:true,pagado:true}});
+    if(settledAccount.pagado.lt(settledAccount.total))
+     throw new ConflictException('Para cobrar y enviar, la cuenta debe quedar pagada completamente');
+    const current=await tx.orden.findUniqueOrThrow({where:{id}});
+    if(current.estado==='ABIERTA')
+     await this.kitchen.sendTx(tx,u,id,permission);
+    const after=await tx.orden.findUniqueOrThrow({where:{id}});
+    const pending=await tx.comanda.count({where:{ordenId:id,
+     estado:{in:['PENDIENTE','PREPARANDO']}}});
+    return {ordenId:id,estado:after.estado,pagoIds:paid.pagoIds,
+     comandasPendientes:pending};
+   });
+  });
  }
  async edit(u:Principal,id:string,d:EditOrderDto){
   const result=await this.engine.tx(async tx=>{

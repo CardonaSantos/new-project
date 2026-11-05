@@ -4,7 +4,11 @@ import type {Principal} from '../../../auth/application/auth.service.js';
 export abstract class OrderPort {
  abstract detail(actor:Principal,...args:any[]):Promise<any>;
  abstract list(actor:Principal,...args:any[]):Promise<any>;
+ abstract worklist(actor:Principal,...args:any[]):Promise<any>;
+ abstract quoteOrder(actor:Principal,...args:any[]):Promise<any>;
  abstract create(actor:Principal,...args:any[]):Promise<any>;
+ abstract quickCheckout(actor:Principal,...args:any[]):Promise<any>;
+ abstract payAndSend(actor:Principal,...args:any[]):Promise<any>;
  abstract edit(actor:Principal,...args:any[]):Promise<any>;
  abstract add(actor:Principal,...args:any[]):Promise<any>;
  abstract editLine(actor:Principal,...args:any[]):Promise<any>;

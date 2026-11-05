@@ -7,7 +7,7 @@ import {InventoryPostingEngine} from '../../../inventory/infrastructure/prisma/i
 import {decimal,distinct,qty} from '../../domain/order.policy.js';
 import {audit,outbox,runOnce,ticketInclude,type Tx} from './order-shared.js';
 import {ConsumptionStore} from './consumption.store.js';
-import type {RouteDto,RouteUpdateDto,KitchenChangesDto,StartLineDto,StationDto,StationUpdateDto,TicketListDto} from '../../presentation/http/dto/orders.dto.js';
+import type {RouteDto,RouteUpdateDto,KitchenChangesDto,StartLineDto,StationDto,StationUpdateDto,TicketListDto,KitchenQueueDto} from '../../presentation/http/dto/orders.dto.js';
 type Perm='orders.create'|'orders.manage';
 @Injectable()
 export class KitchenStore{
@@ -230,6 +230,42 @@ export class KitchenStore{
    return {data:rows,meta:{page:q.page,limit:q.limit,total,totalPages:Math.ceil(total/q.limit)}};
   });
  }
+ /** Stable, database-sorted queue and counts across the entire branch/station. */
+ async queue(u:Principal,q:KitchenQueueDto){
+  return this.engine.tx(async tx=>{
+   await this.engine.allowed(tx,u.id,'kitchen.read',q.sucursalId);
+   if(q.estacionId){
+    const station=await tx.estacionPreparacion.findUnique({where:{id:q.estacionId}});
+    if(!station||station.sucursalId!==q.sucursalId)
+     throw new ConflictException('Estación fuera de sucursal');
+   }
+   const base:Prisma.ComandaWhereInput={estacion:{sucursalId:q.sucursalId},
+    ...(q.estacionId?{estacionId:q.estacionId}:{})};
+   const awaiting:Prisma.ComandaWhereInput={estado:'LISTA',
+    comandaLineasComoComanda:{some:{canceladaEn:null,entregadaEn:null}}};
+   const delivered:Prisma.ComandaWhereInput={estado:'LISTA',AND:[
+    {comandaLineasComoComanda:{some:{canceladaEn:null}}},
+    {comandaLineasComoComanda:{none:{canceladaEn:null,entregadaEn:null}}}
+   ]};
+   const view:Prisma.ComandaWhereInput=q.vista==='PARA_ENTREGAR'?awaiting:
+    q.vista==='ENTREGADAS'?delivered:
+    q.vista==='TODAS'?{}:{estado:{in:['PENDIENTE','PREPARANDO']}};
+   const where:Prisma.ComandaWhereInput={AND:[base,view]};
+   const [data,total,pending,preparing,readyToDeliver,alreadyDelivered]=await Promise.all([
+    tx.comanda.findMany({where,include:ticketInclude,
+     orderBy:[{enviadaEn:'asc'},{id:'asc'}],
+     skip:(q.page-1)*q.limit,take:q.limit}),
+    tx.comanda.count({where}),
+    tx.comanda.count({where:{AND:[base,{estado:'PENDIENTE'}]}}),
+    tx.comanda.count({where:{AND:[base,{estado:'PREPARANDO'}]}}),
+    tx.comanda.count({where:{AND:[base,awaiting]}}),
+    tx.comanda.count({where:{AND:[base,delivered]}})
+   ]);
+   return {data,meta:{page:q.page,limit:q.limit,total,
+    totalPages:Math.ceil(total/q.limit)},
+    totals:{pending,preparing,readyToDeliver,delivered:alreadyDelivered}};
+  });
+ }
  private async ticket(tx:Tx,id:string){
   const row=await tx.comanda.findUnique({where:{id},include:{
    estacion:true,orden:{select:{id:true,numero:true,estado:true,modalidad:true,sucursalId:true}},
@@ -349,20 +385,64 @@ export class KitchenStore{
   });
   return this.detail(u,ticket);
  }
+ private async deliverLineTx(tx:Tx,u:Principal,id:string){
+  const row=await tx.comandaLinea.findUnique({where:{id},
+   include:{comanda:{include:{orden:true}}}});
+  if(!row)throw new NotFoundException('Línea inexistente');
+  await this.engine.allowed(tx,u.id,'kitchen.manage',row.comanda.orden.sucursalId);
+  if(row.canceladaEn||row.comanda.estado==='CANCELADA')
+   throw new ConflictException('Línea de cocina cancelada');
+  if(!row.listaEn)throw new ConflictException('Línea aún no está lista');
+  // A retry must NEVER create a second delivery event for an already delivered line.
+  if(row.entregadaEn)return row.comandaId;
+  const changed=await tx.comandaLinea.updateMany({
+   where:{id,entregadaEn:null,canceladaEn:null},data:{entregadaEn:new Date()}});
+  if(changed.count!==1)return row.comandaId;
+  await tx.eventoComanda.create({data:{comandaId:row.comandaId,usuarioId:u.id,
+   accion:'LINEA_ENTREGADA',nota:id}});
+  await outbox(tx,'KITCHEN_TICKET_UPDATED','Comanda',row.comandaId,row.comanda.orden.sucursalId,{
+   lineaId:id,entregada:true});
+  return row.comandaId;
+ }
  async deliver(u:Principal,id:string){
-  const ticket=await this.engine.tx(async tx=>{
-   const row=await tx.comandaLinea.findUnique({where:{id},
-    include:{comanda:{include:{orden:true}}}});
-   if(!row)throw new NotFoundException('Línea inexistente');
-   await this.engine.allowed(tx,u.id,'kitchen.manage',row.comanda.orden.sucursalId);
-   if(!row.listaEn||row.canceladaEn)throw new ConflictException('Línea aún no está lista');
-   if(!row.entregadaEn)await tx.comandaLinea.update({where:{id},data:{entregadaEn:new Date()}});
-   await tx.eventoComanda.create({data:{comandaId:row.comandaId,usuarioId:u.id,
-    accion:'LINEA_ENTREGADA',nota:id}});
-   await outbox(tx,'KITCHEN_TICKET_UPDATED','Comanda',row.comandaId,row.comanda.orden.sucursalId,{
-    lineaId:id,entregada:true});
-   return row.comandaId;
-  });
+  const ticket=await this.engine.tx(tx=>this.deliverLineTx(tx,u,id));
   return this.detail(u,ticket);
+ }
+ /** One serializable transaction: prepare, mark ready, and register real handoff. */
+ async readyDeliver(u:Principal,id:string,d:{claveOperacion:string}){
+  const result=await this.engine.tx(async tx=>{
+   const ticket=await this.ticket(tx,id);
+   // Authorization before the replay check: revoked permissions reject cached keys.
+   await this.engine.allowed(tx,u.id,'kitchen.manage',ticket.orden.sucursalId);
+   return runOnce(tx,u,d.claveOperacion,'KITCHEN_TICKET_READY_DELIVER',
+    {ticketId:id},async()=>{
+     // An already LISTA ticket can still be handed off after its sale closed.
+     // Do not invoke startTx, which correctly blocks *new preparation* on closed orders.
+     if(ticket.estado!=='LISTA')await this.startTx(tx,u,id);
+     const current=await this.ticket(tx,id);
+     for(const line of current.comandaLineasComoComanda)
+      if(!line.canceladaEn&&!line.listaEn)await this.readyLineTx(tx,u,line.id);
+     for(const line of current.comandaLineasComoComanda)
+      if(!line.canceladaEn)await this.deliverLineTx(tx,u,line.id);
+     return {ticketId:id};
+    });
+  });
+  return this.detail(u,result.ticketId);
+ }
+ /** Individual handoff for partial service: do not deliver unrelated lines. */
+ async readyDeliverLine(u:Principal,id:string,d:{claveOperacion:string}){
+  const result=await this.engine.tx(async tx=>{
+   const line=await tx.comandaLinea.findUnique({where:{id},
+    include:{comanda:{include:{orden:true}}}});
+   if(!line)throw new NotFoundException('Línea inexistente');
+   await this.engine.allowed(tx,u.id,'kitchen.manage',line.comanda.orden.sucursalId);
+   return runOnce(tx,u,d.claveOperacion,'KITCHEN_LINE_READY_DELIVER',
+    {lineId:id},async()=>{
+     await this.readyLineTx(tx,u,id);
+     const ticketId=await this.deliverLineTx(tx,u,id);
+     return {ticketId};
+    });
+  });
+  return this.detail(u,result.ticketId);
  }
 }

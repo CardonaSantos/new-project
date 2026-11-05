@@ -4,16 +4,21 @@ import type {Principal} from '../../../auth/application/auth.service.js';
 import {OrderService} from '../../application/order.service.js';
 import {KitchenService} from '../../application/kitchen.service.js';
 import {TableService} from '../../application/table.service.js';
-import {AddItemsDto,BranchQueryDto,CreateOrderDto,EditLineDto,EditOrderDto,
+import {CollectDto} from '../../../payments/presentation/http/dto/payments.dto.js';
+import {AddItemsDto,BranchQueryDto,CreateOrderDto,QuickCheckoutDto,QuoteOrderDto,EditLineDto,EditOrderDto,
  OrderListDto,ReasonDto,RouteDto,RouteUpdateDto,RoomDto,RoomUpdateDto,TableUpdateDto,KitchenChangesDto,
  CancelOrderDto,SendDto,StartLineDto,StationDto,
- StationUpdateDto,TableDto,TicketListDto} from './dto/orders.dto.js';
+ StationUpdateDto,TableDto,TicketListDto,KitchenActionDto,KitchenQueueDto} from './dto/orders.dto.js';
 
 @Controller('orders')
 export class OrdersController{
  constructor(private readonly orders:OrderService){}
  @Get() list(@CurrentUser() u:Principal,@Query() q:OrderListDto){return this.orders.list(u,q);}
  @Post() create(@CurrentUser() u:Principal,@Body() d:CreateOrderDto){return this.orders.create(u,d);}
+ @Post('quote') quote(@CurrentUser() u:Principal,@Body() d:QuoteOrderDto){
+  return this.orders.quoteOrder(u,d);
+ }
+ @Get('worklist') worklist(@CurrentUser() u:Principal,@Query() q:OrderListDto){return this.orders.worklist(u,q);}
  @Get(':id') detail(@CurrentUser() u:Principal,@Param('id') id:string){return this.orders.detail(u,id);}
  @Patch(':id') edit(@CurrentUser() u:Principal,@Param('id') id:string,
   @Body() d:EditOrderDto){return this.orders.edit(u,id,d);}
@@ -27,10 +32,19 @@ export class OrdersController{
  }
  @Post(':id/send') send(@CurrentUser() u:Principal,@Param('id') id:string,
   @Body() d:SendDto){return this.orders.send(u,id,d);}
+ @Post(':id/pay-and-send') payAndSend(@CurrentUser() u:Principal,
+  @Param('id') id:string,@Body() d:CollectDto){return this.orders.payAndSend(u,id,d);}
  @Post(':id/cancel') cancel(@CurrentUser() u:Principal,@Param('id') id:string,
   @Body() d:CancelOrderDto){return this.orders.cancel(u,id,d);}
  @Post(':id/close') close(@CurrentUser() u:Principal,@Param('id') id:string){
   return this.orders.close(u,id);}
+}
+/** Fast cashier endpoint; does not create an open order on payment failure. */
+@Controller('pos')
+export class PosController{
+ constructor(private readonly orders:OrderService){}
+ @Post('quick-checkout') quickCheckout(@CurrentUser() u:Principal,
+  @Body() d:QuickCheckoutDto){return this.orders.quickCheckout(u,d);}
 }
 @Controller('tables')
 export class TablesController{
@@ -66,6 +80,7 @@ export class KitchenController{
   return this.kitchen.removeRoute(u,id);}
  @Get('changes') changes(@CurrentUser() u:Principal,@Query() q:KitchenChangesDto){
   return this.kitchen.changes(u,q);}
+ @Get('queue') queue(@CurrentUser() u:Principal,@Query() q:KitchenQueueDto){return this.kitchen.queue(u,q);}
  @Get('tickets') tickets(@CurrentUser() u:Principal,@Query() q:TicketListDto){
   return this.kitchen.list(u,q);}
  @Get('tickets/:id') ticket(@CurrentUser() u:Principal,@Param('id') id:string){
@@ -78,6 +93,10 @@ export class KitchenController{
   @Param('id') id:string,@Body() d:StartLineDto){return this.kitchen.startLine(u,id,d);}
  @Post('lines/:id/ready') readyLine(@CurrentUser() u:Principal,
   @Param('id') id:string){return this.kitchen.readyLine(u,id);}
+ @Post('tickets/:id/ready-deliver') readyDeliver(@CurrentUser() u:Principal,
+  @Param('id') id:string,@Body() d:KitchenActionDto){return this.kitchen.readyDeliver(u,id,d);}
+ @Post('lines/:id/ready-deliver') readyDeliverLine(@CurrentUser() u:Principal,
+  @Param('id') id:string,@Body() d:KitchenActionDto){return this.kitchen.readyDeliverLine(u,id,d);}
  @Post('lines/:id/deliver') deliver(@CurrentUser() u:Principal,
   @Param('id') id:string){return this.kitchen.deliver(u,id);}
 }

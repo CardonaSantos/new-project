@@ -1,5 +1,6 @@
 import {ArrayMaxSize,ArrayMinSize,IsArray,IsBoolean,IsEnum,IsInt,IsOptional,IsString,Matches,Max,MaxLength,Min,MinLength,ValidateNested} from 'class-validator';
 import {Type} from 'class-transformer';
+import {PaymentPartDto} from '../../../../payments/presentation/http/dto/payments.dto.js';
 const Q=/^(?!0(?:\.0{1,3})?$)(?:0|[1-9]\d{0,13})(?:\.\d{1,3})?$/;
 export class ModifierSelectionDto{
  @IsString() modificadorId!:string;
@@ -33,6 +34,12 @@ export class CreateOrderDto{
  @Type(()=>OrderItemDto) lineas!:OrderItemDto[];
  @IsOptional() @IsBoolean() enviarCocina?:boolean;
  @IsString() @MinLength(6) @MaxLength(120) claveOperacion!:string;
+}
+/** Strictly immediate, verified POS payment for non-prepared products. */
+export class QuickCheckoutDto extends CreateOrderDto{
+ @IsString() turnoId!:string;
+ @IsArray() @ArrayMinSize(1) @ArrayMaxSize(10) @ValidateNested({each:true})
+ @Type(()=>PaymentPartDto) pagos!:PaymentPartDto[];
 }
 export class AddItemsDto{
  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(100) @ValidateNested({each:true})
@@ -117,6 +124,14 @@ export class KitchenChangesDto{
  @IsOptional() @IsString() cursor?:string;
  @IsOptional() @IsInt() @Type(()=>Number) @Min(1) @Max(100) limit=50;
 }
+/** Server-ordered KDS, counts over the entire selected branch/station, not a single page. */
+export class KitchenQueueDto extends BranchQueryDto{
+ @IsOptional() @IsString() estacionId?:string;
+ @IsOptional() @IsEnum(['ACTIVAS','PARA_ENTREGAR','ENTREGADAS','TODAS'])
+ vista:'ACTIVAS'|'PARA_ENTREGAR'|'ENTREGADAS'|'TODAS'='ACTIVAS';
+ @IsOptional() @IsInt() @Type(()=>Number) @Min(1) page=1;
+ @IsOptional() @IsInt() @Type(()=>Number) @Min(1) @Max(100) limit=30;
+}
 export class TicketListDto{
  @IsString() sucursalId!:string;
  @IsOptional() @IsString() estacionId?:string;
@@ -124,6 +139,9 @@ export class TicketListDto{
  estado?:'PENDIENTE'|'PREPARANDO'|'LISTA'|'CANCELADA';
  @IsOptional() @IsInt() @Type(()=>Number) @Min(1) page=1;
  @IsOptional() @IsInt() @Type(()=>Number) @Min(1) @Max(100) limit=20;
+}
+export class KitchenActionDto{
+ @IsString() @MinLength(6) @MaxLength(120) claveOperacion!:string;
 }
 export class StartLineDto{
  @IsOptional() @IsString() @Matches(Q) cantidad?:string;

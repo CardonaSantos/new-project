@@ -131,7 +131,7 @@ describe('CAT R3 — atomic modifier setups without accidental inventory movemen
  it('creates a group with options and its physical consumption in one transaction',async()=>{
   const {service,tx,db,stockMovement}=mocks();
   const result=await service.createModifierGroupWithOptions('u1',{
-   nombre:'Toppings',minimo:0,maximo:2,varianteId:'v1',
+   nombre:'Toppings',minimo:0,maximo:1,varianteId:'v1',
    opciones:[{nombre:'Canela',incrementoPrecio:'2.00',ingredientes:[{
     articuloId:'article1',unidadId:'unit',cantidad:'0.010',efecto:'SUMAR'
    }]}]

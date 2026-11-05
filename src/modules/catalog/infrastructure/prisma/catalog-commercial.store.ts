@@ -106,8 +106,9 @@ export class CatalogCommercialStore{
     skip:(f.page-1)*f.limit,take:f.limit}),this.db.producto.count({where})]);
   return {data:rows,total};
  }
- async productOptions(f:Options&{sucursalId?:string}){
+ async productOptions(f:Options&{sucursalId?:string;categoriaId?:string}){
   const where:Prisma.ProductoWhereInput={activo:true,
+   ...(f.categoriaId?{categoriaId:f.categoriaId}:{}),
    ...(f.cursor?{id:{gt:f.cursor}}:{}),
    ...(f.search?{OR:[{codigo:{contains:f.search,mode:'insensitive'}},
     {nombre:{contains:f.search,mode:'insensitive'}}]}:{})};

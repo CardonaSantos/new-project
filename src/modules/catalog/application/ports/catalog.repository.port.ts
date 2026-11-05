@@ -27,7 +27,7 @@ export abstract class CatalogRepositoryPort{
  abstract updateCategory(actorId:string,id:string,input:Partial<CategoryInput>):Promise<unknown>;
  abstract statusCategory(actorId:string,id:string,activo:boolean,motivo:string):Promise<unknown>;
  abstract products(f:Paging&{categoriaId?:string;tipo?:CatalogKind}):Promise<Page>;
- abstract productOptions(f:Options&{sucursalId?:string}):Promise<Choice>;
+ abstract productOptions(f:Options&{sucursalId?:string;categoriaId?:string}):Promise<Choice>;
  abstract product(id:string,sucursalId?:string):Promise<unknown|null>;
  abstract createProduct(actorId:string,input:ProductInput):Promise<unknown>;
  abstract updateProduct(actorId:string,id:string,input:Partial<Omit<ProductInput,'codigo'|'tipo'|'variantes'>>):Promise<unknown>;

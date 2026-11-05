@@ -53,7 +53,7 @@ export class CatalogService{
   await this.scope(a,'catalog.read');const r=await this.repo.products(f);
   return {data:await this.present(r.data),meta:paged(f,r.total)};
  }
- async productOptions(a:Principal,f:Options&{sucursalId?:string}){
+ async productOptions(a:Principal,f:Options&{sucursalId?:string;categoriaId?:string}){
   await this.scope(a,'catalog.read');if(f.sucursalId)await this.branchQuery(a,f.sucursalId);
   const r=await this.repo.productOptions(f);
   return {data:await this.present(r.data),meta:options(r.nextCursor)};

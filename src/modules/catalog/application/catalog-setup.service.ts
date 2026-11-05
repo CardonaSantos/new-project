@@ -204,7 +204,7 @@ export class CatalogSetupService{
    if(menu.version!==input.expectedVersion)
     throw new ConflictException('La carta cambió. Recarga antes de publicarla');
    type Problem={codigo:string;mensaje:string;varianteId?:string;
-    nombre?:string;sucursalId?:string;seccion?:string};
+    nombre?:string;sucursalId?:string;seccion?:string;productoId?:string};
    const problemas:Problem[]=[];
    if(!menu.activo)problemas.push({codigo:'MENU_INACTIVO',mensaje:'Activa la carta antes de publicarla'});
    if(!input.sucursalIds.length)
@@ -243,10 +243,11 @@ export class CatalogSetupService{
    if(itemSet.size*Math.max(1,input.sucursalIds.length)>300)
     throw new BadRequestException('La revisión permite hasta 300 combinaciones de presentación y sucursal');
    const variants=await tx.varianteProducto.findMany({where:{id:{in:[...itemSet]}},
-    select:{id:true,nombre:true,producto:{select:{nombre:true}}}});
+    select:{id:true,nombre:true,producto:{select:{id:true,nombre:true}}}});
    const variantMap=new Map(variants.map(v=>[v.id,v]));
    const checked:Array<{varianteId:string;nombre:string;sucursalId:string;
-    sucursal:string;seccion:string;lista:boolean;advertencias:string[]}>=[];
+    sucursal:string;seccion:string;lista:boolean;advertencias:string[];
+    productoId:string;precio:string|null}>=[];
    for(const id of itemSet){
     const v=variantMap.get(id);
     if(!v){problemas.push({codigo:'VARIANTE_NO_EXISTE',varianteId:id,
@@ -257,10 +258,11 @@ export class CatalogSetupService{
      const state=await this.menus.readiness(id,branchId,new Date(),tx);
      checked.push({varianteId:id,nombre:v.producto.nombre+' · '+v.nombre,
       sucursalId:branchId,sucursal:branch.nombre,seccion:sectionNames.get(id)??'',
-      lista:state.lista,advertencias:state.advertencias});
+      lista:state.lista,advertencias:state.advertencias,
+      productoId:v.producto.id,precio:state.precio??null});
      for(const code of state.advertencias)problemas.push({codigo:code,
       mensaje:code,varianteId:id,nombre:v.producto.nombre+' · '+v.nombre,
-      sucursalId:branchId,seccion:sectionNames.get(id)});
+      sucursalId:branchId,seccion:sectionNames.get(id),productoId:v.producto.id});
     }
    }
    return {menuId:id,versionActual:menu.version,publicada:!!menu.publicadoEn,

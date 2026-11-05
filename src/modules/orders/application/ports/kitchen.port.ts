@@ -11,6 +11,7 @@ export abstract class KitchenPort {
  abstract removeRoute(actor:Principal,...args:any[]):Promise<any>;
  abstract changes(actor:Principal,...args:any[]):Promise<any>;
  abstract list(actor:Principal,...args:any[]):Promise<any>;
+ abstract queue(actor:Principal,...args:any[]):Promise<any>;
  abstract detail(actor:Principal,...args:any[]):Promise<any>;
  abstract start(actor:Principal,...args:any[]):Promise<any>;
  abstract startLine(actor:Principal,...args:any[]):Promise<any>;

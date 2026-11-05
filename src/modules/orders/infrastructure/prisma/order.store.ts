@@ -13,7 +13,7 @@ import {PaymentsStore} from '../../../payments/infrastructure/prisma/payments.st
 import {KitchenStore} from './kitchen.store.js';
 import {CustomerSelectionPort} from '../../../customers/application/ports/customers.port.js';
 import type {CollectDto} from '../../../payments/presentation/http/dto/payments.dto.js';
-import type {CreateOrderDto,QuickCheckoutDto,AddItemsDto,OrderItemDto,EditLineDto,EditOrderDto,OrderListDto,ReasonDto,CancelOrderDto,SendDto} from '../../presentation/http/dto/orders.dto.js';
+import type {QuoteOrderDto,CreateOrderDto,QuickCheckoutDto,AddItemsDto,OrderItemDto,EditLineDto,EditOrderDto,OrderListDto,ReasonDto,CancelOrderDto,SendDto} from '../../presentation/http/dto/orders.dto.js';
 import {requiresCancellationAuthorization,requireCancellationClassification} from '../../domain/cancellation.policy.js';
 export type IngredientModifierSnapshot={modificadorId:string;articuloId:string;
  unidadId:string;cantidad:string;efecto:'SUMAR'|'RESTAR'|'SUSTITUIR';
@@ -165,6 +165,30 @@ export class OrderStore{
      orderBy:{abiertaEn:'desc'},skip:(q.page-1)*q.limit,take:q.limit}),
     tx.orden.count({where})]);
    return {data,meta:{page:q.page,limit:q.limit,total,totalPages:Math.ceil(total/q.limit)}};
+  });
+ }
+ /** Priced read-only preview; never reserves inventory or authorizes payment. */
+ async quoteOrder(u:Principal,d:QuoteOrderDto){
+  return this.engine.tx(async tx=>{
+   await this.engine.allowed(tx,u.id,'orders.create',d.sucursalId);
+   const branch=await tx.sucursal.findUnique({where:{id:d.sucursalId}});
+   if(!branch?.activa)throw new ConflictException('Sucursal inexistente o inactiva');
+   const priced=[];
+   for(const item of d.lineas){
+    const q=await this.quote(tx,u,d.sucursalId,item);
+    priced.push({varianteId:q.varianteId,nombre:q.nombre,
+     cantidad:q.cantidad.toFixed(3),precioUnitario:q.unit.toFixed(2),
+     subtotal:q.total.toFixed(2),descuento:q.discount.toFixed(2),
+     total:q.total.minus(q.discount).toFixed(2),
+     modificadores:q.modifiers.map(m=>({id:m.id,nombre:m.nombre,recargo:m.unit.toFixed(2)}))});
+   }
+   const subtotal=priced.reduce((sum,line)=>sum.plus(line.subtotal),new Prisma.Decimal(0));
+   const discount=priced.reduce((sum,line)=>sum.plus(line.descuento),new Prisma.Decimal(0));
+   const config=await tx.configuracionSucursal.findUnique({where:{sucursalId:d.sucursalId}});
+   return {sucursalId:d.sucursalId,moneda:config?.moneda??'GTQ',
+    subtotal:subtotal.toFixed(2),descuentoTotal:discount.toFixed(2),
+    total:subtotal.minus(discount).toFixed(2),lineas:priced,
+    advertencia:'Cotización informativa: precios y existencias se validarán otra vez al confirmar'};
   });
  }
  /** One read for POS and table boards: accounts, pending products and kitchen progress. */

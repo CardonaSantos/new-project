@@ -5,7 +5,7 @@ import {OrderService} from '../../application/order.service.js';
 import {KitchenService} from '../../application/kitchen.service.js';
 import {TableService} from '../../application/table.service.js';
 import {CollectDto} from '../../../payments/presentation/http/dto/payments.dto.js';
-import {AddItemsDto,BranchQueryDto,CreateOrderDto,QuickCheckoutDto,EditLineDto,EditOrderDto,
+import {AddItemsDto,BranchQueryDto,CreateOrderDto,QuickCheckoutDto,QuoteOrderDto,EditLineDto,EditOrderDto,
  OrderListDto,ReasonDto,RouteDto,RouteUpdateDto,RoomDto,RoomUpdateDto,TableUpdateDto,KitchenChangesDto,
  CancelOrderDto,SendDto,StartLineDto,StationDto,
  StationUpdateDto,TableDto,TicketListDto,KitchenActionDto,KitchenQueueDto} from './dto/orders.dto.js';
@@ -15,6 +15,9 @@ export class OrdersController{
  constructor(private readonly orders:OrderService){}
  @Get() list(@CurrentUser() u:Principal,@Query() q:OrderListDto){return this.orders.list(u,q);}
  @Post() create(@CurrentUser() u:Principal,@Body() d:CreateOrderDto){return this.orders.create(u,d);}
+ @Post('quote') quote(@CurrentUser() u:Principal,@Body() d:QuoteOrderDto){
+  return this.orders.quoteOrder(u,d);
+ }
  @Get('worklist') worklist(@CurrentUser() u:Principal,@Query() q:OrderListDto){return this.orders.worklist(u,q);}
  @Get(':id') detail(@CurrentUser() u:Principal,@Param('id') id:string){return this.orders.detail(u,id);}
  @Patch(':id') edit(@CurrentUser() u:Principal,@Param('id') id:string,

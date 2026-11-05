@@ -1,5 +1,6 @@
 import {ArrayMaxSize,ArrayMinSize,IsArray,IsBoolean,IsEnum,IsInt,IsOptional,IsString,Matches,Max,MaxLength,Min,MinLength,ValidateNested} from 'class-validator';
 import {Type} from 'class-transformer';
+import {PaymentPartDto} from '../../../../payments/presentation/http/dto/payments.dto.js';
 const Q=/^(?!0(?:\.0{1,3})?$)(?:0|[1-9]\d{0,13})(?:\.\d{1,3})?$/;
 export class ModifierSelectionDto{
  @IsString() modificadorId!:string;
@@ -33,6 +34,12 @@ export class CreateOrderDto{
  @Type(()=>OrderItemDto) lineas!:OrderItemDto[];
  @IsOptional() @IsBoolean() enviarCocina?:boolean;
  @IsString() @MinLength(6) @MaxLength(120) claveOperacion!:string;
+}
+/** Strictly immediate, verified POS payment for non-prepared products. */
+export class QuickCheckoutDto extends CreateOrderDto{
+ @IsString() turnoId!:string;
+ @IsArray() @ArrayMinSize(1) @ArrayMaxSize(10) @ValidateNested({each:true})
+ @Type(()=>PaymentPartDto) pagos!:PaymentPartDto[];
 }
 export class AddItemsDto{
  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(100) @ValidateNested({each:true})

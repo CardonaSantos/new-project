@@ -204,14 +204,8 @@ export class OrderStore{
     totalPages:Math.ceil(total/q.limit)}};
   });
  }
- async create(u:Principal,d:CreateOrderDto){
-  const result=await this.engine.tx(async tx=>{
-   // Authorization is outside runOnce so replay cannot bypass a revoked role.
-   await this.engine.allowed(tx,u.id,'orders.create',d.sucursalId);
-   const branch=await tx.sucursal.findUnique({where:{id:d.sucursalId}});
-   if(!branch?.activa)throw new ConflictException('Sucursal inexistente o inactiva');
-   if(d.clienteId)await this.customerSelection.assertVisibleInTx(tx,u.id,d.sucursalId,d.clienteId);
-   return runOnce(tx,u,d.claveOperacion,'ORDER_CREATE',d,async()=>{
+ /** Core insertion is shared by ordinary orders and single-transaction express checkout. */
+ private async createCoreTx(tx:Tx,u:Principal,d:CreateOrderDto){
    if(d.modalidad==='MESA'&&!d.mesaId)throw new BadRequestException('Servicio MESA requiere mesaId');
    if(d.modalidad!=='MESA'&&d.mesaId)throw new BadRequestException('mesaId solo en modalidad MESA');
    if(d.clienteId)await this.customerSelection.assertSelectableInTx(tx,u.id,d.sucursalId,d.clienteId);
@@ -231,10 +225,19 @@ export class OrderStore{
    await audit(tx,u,'ORDER_CREATED','Orden',order.id,d.sucursalId,{lineas:d.lineas.length});
    await outbox(tx,'ORDER_CREATED','Orden',order.id,d.sucursalId);
    return {orderId:order.id};
-   });
+ }
+ async create(u:Principal,d:CreateOrderDto){
+  const result=await this.engine.tx(async tx=>{
+   // Authorization is outside runOnce so replay cannot bypass a revoked role.
+   await this.engine.allowed(tx,u.id,'orders.create',d.sucursalId);
+   const branch=await tx.sucursal.findUnique({where:{id:d.sucursalId}});
+   if(!branch?.activa)throw new ConflictException('Sucursal inexistente o inactiva');
+   if(d.clienteId)await this.customerSelection.assertVisibleInTx(tx,u.id,d.sucursalId,d.clienteId);
+   return runOnce(tx,u,d.claveOperacion,'ORDER_CREATE',d,()=>this.createCoreTx(tx,u,d));
   });
   return this.detail(u,result.orderId);
  }
+
  async edit(u:Principal,id:string,d:EditOrderDto){
   const result=await this.engine.tx(async tx=>{
    const order=await this.order(tx,id);

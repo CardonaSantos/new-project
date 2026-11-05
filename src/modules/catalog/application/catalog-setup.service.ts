@@ -25,6 +25,8 @@ export class CatalogSetupService{
   if(new Set(names).size!==names.length)throw new ConflictException('Hay opciones repetidas');
   try{return await this.db.$transaction(async tx=>{
    await permission(tx,actor,'catalog.manage',null);
+   if(dto.opciones.some(o=>o.ingredientes.length))
+    await permission(tx,actor,'recipes.manage',null);
    if(dto.varianteId){
     const variant=await tx.varianteProducto.findUnique({
      where:{id:dto.varianteId},include:{producto:true}});

@@ -7,6 +7,10 @@ import {BranchQueryDto,MenuCreateDto,MenuLayoutDto,MenuListDto,MenuPatchDto,Publ
 @Controller('catalog/menus')
 export class CatalogMenusController{
  constructor(private readonly service:CatalogService,private readonly setup:CatalogSetupService){}
+ @Post(':id/validate') validate(@CurrentUser() a:Principal,@Param('id') id:string,
+  @Body() v:MenuLayoutDto){
+  return this.setup.previewMenuReadiness(a.id,id,v);
+ }
  @Post(':id/commit') commit(@CurrentUser() a:Principal,@Param('id') id:string,@Body() v:MenuLayoutDto){
   return this.setup.commitMenu(a.id,id,v);
  }

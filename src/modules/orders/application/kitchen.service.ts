@@ -14,6 +14,7 @@ export class KitchenService {
  removeRoute(actor:Principal,...args:any[]){return this.port.removeRoute(actor,...args);}
  changes(actor:Principal,...args:any[]){return this.port.changes(actor,...args);}
  list(actor:Principal,...args:any[]){return this.port.list(actor,...args);}
+ queue(actor:Principal,...args:any[]){return this.port.queue(actor,...args);}
  detail(actor:Principal,...args:any[]){return this.port.detail(actor,...args);}
  start(actor:Principal,...args:any[]){return this.port.start(actor,...args);}
  startLine(actor:Principal,...args:any[]){return this.port.startLine(actor,...args);}

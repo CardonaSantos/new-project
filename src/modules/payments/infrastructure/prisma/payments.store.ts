@@ -172,10 +172,9 @@ export class PaymentsStore{
   });
   return result;
  }
- async collect(u:Principal,accountId:string,d:CollectDto){
+ /** Collection core shared by PAY-A and POS, always inside the caller's transaction. */
+ async collectInTx(tx:Tx,u:Principal,accountId:string,d:CollectDto){
   const entries=d.pagos.map(p=>({...p,monto:formatted(money(p.monto))}));
-  const result=await txSerializable(this.db,tx=>runOnce(tx,u,d.claveOperacion,
-   'PAYMENTS_COLLECT',{accountId,...d},async()=>{
    const account=await orderForAccount(tx,accountId);
    const branch=account.orden.sucursalId;
    await allowed(tx,u,branch,'payments.collect');
@@ -210,9 +209,19 @@ export class PaymentsStore{
    if(await this.readyToSettle(tx,account.ordenId))
     await this.settleTx(tx,u,account.ordenId);
    return {accountId,pagoIds:pagos,intentoIds:intentos};
-  }));
+ }
+ /** Reject an unready order instead of creating a partial checkout success. */
+ async settleAfterProcessingTx(tx:Tx,u:Principal,orderId:string){
+  if(!await this.readyToSettle(tx,orderId))
+   throw new ConflictException('La orden no reúne las condiciones para cerrar');
+  return this.settleTx(tx,u,orderId);
+ }
+ async collect(u:Principal,accountId:string,d:CollectDto){
+  const result=await txSerializable(this.db,tx=>runOnce(tx,u,d.claveOperacion,
+   'PAYMENTS_COLLECT',{accountId,...d},()=>this.collectInTx(tx,u,accountId,d)));
   return {...result,cuenta:await this.account(u,accountId)};
  }
+
  async confirm(u:Principal,attemptId:string,d:ConfirmAttemptDto){
   const result=await txSerializable(this.db,tx=>runOnce(tx,u,d.claveOperacion,
    'PAYMENT_ATTEMPT_CONFIRM',{attemptId,...d},async()=>{

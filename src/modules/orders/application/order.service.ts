@@ -7,6 +7,7 @@ export class OrderService {
  constructor(private readonly port:OrderPort){}
  detail(actor:Principal,...args:any[]){return this.port.detail(actor,...args);}
  list(actor:Principal,...args:any[]){return this.port.list(actor,...args);}
+ worklist(actor:Principal,...args:any[]){return this.port.worklist(actor,...args);}
  create(actor:Principal,...args:any[]){return this.port.create(actor,...args);}
  edit(actor:Principal,...args:any[]){return this.port.edit(actor,...args);}
  add(actor:Principal,...args:any[]){return this.port.add(actor,...args);}

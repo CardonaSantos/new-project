@@ -349,20 +349,62 @@ export class KitchenStore{
   });
   return this.detail(u,ticket);
  }
+ private async deliverLineTx(tx:Tx,u:Principal,id:string){
+  const row=await tx.comandaLinea.findUnique({where:{id},
+   include:{comanda:{include:{orden:true}}}});
+  if(!row)throw new NotFoundException('Línea inexistente');
+  await this.engine.allowed(tx,u.id,'kitchen.manage',row.comanda.orden.sucursalId);
+  if(row.canceladaEn||row.comanda.estado==='CANCELADA')
+   throw new ConflictException('Línea de cocina cancelada');
+  if(!row.listaEn)throw new ConflictException('Línea aún no está lista');
+  // A retry must NEVER create a second delivery event for an already delivered line.
+  if(row.entregadaEn)return row.comandaId;
+  const changed=await tx.comandaLinea.updateMany({
+   where:{id,entregadaEn:null,canceladaEn:null},data:{entregadaEn:new Date()}});
+  if(changed.count!==1)return row.comandaId;
+  await tx.eventoComanda.create({data:{comandaId:row.comandaId,usuarioId:u.id,
+   accion:'LINEA_ENTREGADA',nota:id}});
+  await outbox(tx,'KITCHEN_TICKET_UPDATED','Comanda',row.comandaId,row.comanda.orden.sucursalId,{
+   lineaId:id,entregada:true});
+  return row.comandaId;
+ }
  async deliver(u:Principal,id:string){
-  const ticket=await this.engine.tx(async tx=>{
-   const row=await tx.comandaLinea.findUnique({where:{id},
-    include:{comanda:{include:{orden:true}}}});
-   if(!row)throw new NotFoundException('Línea inexistente');
-   await this.engine.allowed(tx,u.id,'kitchen.manage',row.comanda.orden.sucursalId);
-   if(!row.listaEn||row.canceladaEn)throw new ConflictException('Línea aún no está lista');
-   if(!row.entregadaEn)await tx.comandaLinea.update({where:{id},data:{entregadaEn:new Date()}});
-   await tx.eventoComanda.create({data:{comandaId:row.comandaId,usuarioId:u.id,
-    accion:'LINEA_ENTREGADA',nota:id}});
-   await outbox(tx,'KITCHEN_TICKET_UPDATED','Comanda',row.comandaId,row.comanda.orden.sucursalId,{
-    lineaId:id,entregada:true});
-   return row.comandaId;
-  });
+  const ticket=await this.engine.tx(tx=>this.deliverLineTx(tx,u,id));
   return this.detail(u,ticket);
+ }
+ /** One serializable transaction: prepare, mark ready, and register real handoff. */
+ async readyDeliver(u:Principal,id:string,d:{claveOperacion:string}){
+  const result=await this.engine.tx(async tx=>{
+   const ticket=await this.ticket(tx,id);
+   // Authorization before the replay check: revoked permissions reject cached keys.
+   await this.engine.allowed(tx,u.id,'kitchen.manage',ticket.orden.sucursalId);
+   return runOnce(tx,u,d.claveOperacion,'KITCHEN_TICKET_READY_DELIVER',
+    {ticketId:id},async()=>{
+     await this.startTx(tx,u,id);
+     const current=await this.ticket(tx,id);
+     for(const line of current.comandaLineasComoComanda)
+      if(!line.canceladaEn&&!line.listaEn)await this.readyLineTx(tx,u,line.id);
+     for(const line of current.comandaLineasComoComanda)
+      if(!line.canceladaEn)await this.deliverLineTx(tx,u,line.id);
+     return {ticketId:id};
+    });
+  });
+  return this.detail(u,result.ticketId);
+ }
+ /** Individual handoff for partial service: do not deliver unrelated lines. */
+ async readyDeliverLine(u:Principal,id:string,d:{claveOperacion:string}){
+  const result=await this.engine.tx(async tx=>{
+   const line=await tx.comandaLinea.findUnique({where:{id},
+    include:{comanda:{include:{orden:true}}}});
+   if(!line)throw new NotFoundException('Línea inexistente');
+   await this.engine.allowed(tx,u.id,'kitchen.manage',line.comanda.orden.sucursalId);
+   return runOnce(tx,u,d.claveOperacion,'KITCHEN_LINE_READY_DELIVER',
+    {lineId:id},async()=>{
+     await this.readyLineTx(tx,u,id);
+     const ticketId=await this.deliverLineTx(tx,u,id);
+     return {ticketId};
+    });
+  });
+  return this.detail(u,result.ticketId);
  }
 }

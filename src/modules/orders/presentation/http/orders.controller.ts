@@ -7,7 +7,7 @@ import {TableService} from '../../application/table.service.js';
 import {AddItemsDto,BranchQueryDto,CreateOrderDto,EditLineDto,EditOrderDto,
  OrderListDto,ReasonDto,RouteDto,RouteUpdateDto,RoomDto,RoomUpdateDto,TableUpdateDto,KitchenChangesDto,
  CancelOrderDto,SendDto,StartLineDto,StationDto,
- StationUpdateDto,TableDto,TicketListDto,KitchenActionDto} from './dto/orders.dto.js';
+ StationUpdateDto,TableDto,TicketListDto,KitchenActionDto,KitchenQueueDto} from './dto/orders.dto.js';
 
 @Controller('orders')
 export class OrdersController{
@@ -66,6 +66,7 @@ export class KitchenController{
   return this.kitchen.removeRoute(u,id);}
  @Get('changes') changes(@CurrentUser() u:Principal,@Query() q:KitchenChangesDto){
   return this.kitchen.changes(u,q);}
+ @Get('queue') queue(@CurrentUser() u:Principal,@Query() q:KitchenQueueDto){return this.kitchen.queue(u,q);}
  @Get('tickets') tickets(@CurrentUser() u:Principal,@Query() q:TicketListDto){
   return this.kitchen.list(u,q);}
  @Get('tickets/:id') ticket(@CurrentUser() u:Principal,@Param('id') id:string){

@@ -5,6 +5,7 @@ export abstract class OrderPort {
  abstract detail(actor:Principal,...args:any[]):Promise<any>;
  abstract list(actor:Principal,...args:any[]):Promise<any>;
  abstract worklist(actor:Principal,...args:any[]):Promise<any>;
+ abstract quoteOrder(actor:Principal,...args:any[]):Promise<any>;
  abstract create(actor:Principal,...args:any[]):Promise<any>;
  abstract quickCheckout(actor:Principal,...args:any[]):Promise<any>;
  abstract payAndSend(actor:Principal,...args:any[]):Promise<any>;

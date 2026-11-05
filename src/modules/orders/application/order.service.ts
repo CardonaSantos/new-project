@@ -8,6 +8,7 @@ export class OrderService {
  detail(actor:Principal,...args:any[]){return this.port.detail(actor,...args);}
  list(actor:Principal,...args:any[]){return this.port.list(actor,...args);}
  worklist(actor:Principal,...args:any[]){return this.port.worklist(actor,...args);}
+ quoteOrder(actor:Principal,...args:any[]){return this.port.quoteOrder(actor,...args);}
  create(actor:Principal,...args:any[]){return this.port.create(actor,...args);}
  quickCheckout(actor:Principal,...args:any[]){return this.port.quickCheckout(actor,...args);}
  payAndSend(actor:Principal,...args:any[]){return this.port.payAndSend(actor,...args);}

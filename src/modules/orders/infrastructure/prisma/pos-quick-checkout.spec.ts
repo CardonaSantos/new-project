@@ -1,5 +1,6 @@
 import {describe,it,expect,vi} from 'vitest';
 import {ForbiddenException} from '@nestjs/common';
+import {Prisma} from '../../../../generated/prisma/client.js';
 import {OrderStore} from './order.store.js';
 import type {Principal} from '../../../auth/application/auth.service.js';
 import type {PrismaService} from '../../../../infrastructure/database/prisma/prisma.service.js';
@@ -31,8 +32,8 @@ function rig(type:'INVENTARIABLE'|'PREPARADO'='INVENTARIABLE'){
   cuenta:{findFirstOrThrow:vi.fn().mockResolvedValue({id:'account-1'}),
    findMany:vi.fn().mockResolvedValue([{id:'account-1',estado:'ABIERTA'}]),
    findUniqueOrThrow:vi.fn().mockResolvedValue({
-    total:{toFixed:()=> '7.00',lt:()=>false},
-    pagado:{toFixed:()=> '7.00'}})},
+    total:new Prisma.Decimal('7.00'),
+    pagado:new Prisma.Decimal('7.00')})},
   intentoPago:{count:vi.fn().mockResolvedValue(0)},
   comanda:{count:vi.fn().mockResolvedValue(1)},
   orden:{findUnique:vi.fn().mockResolvedValue({id:'order-1',sucursalId:'b1',usuarioId:'cashier',estado:'ABIERTA'}),

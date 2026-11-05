@@ -17,6 +17,7 @@ describe('CAT-A HTTP contracts',()=>{
  let app:INestApplication<App>;
  const setup={
   createProductSetup:vi.fn().mockResolvedValue({id:'p2',codigo:'FLAN-1',preciosConfigurados:[]}),
+  createModifierGroupWithOptions:vi.fn().mockResolvedValue({id:'g1',opciones:[{id:'m1'}]}),
   batchVariantPrices:vi.fn().mockResolvedValue({guardados:1,precios:[]}),
   commitMenu:vi.fn().mockResolvedValue({id:'m1',version:3,publicadoEn:'2026-11-05T00:00:00Z'})
  };
@@ -51,6 +52,24 @@ describe('CAT-A HTTP contracts',()=>{
   await app.init();
  });
  afterEach(async()=>app?.close());
+ it('creates an atomic extras group with validated ingredient quantities',async()=>{
+  const body={nombre:'Toppings',minimo:0,maximo:1,varianteId:'v1',
+   opciones:[{nombre:'Canela',incrementoPrecio:'3.00',
+    ingredientes:[{articuloId:'a1',unidadId:'u1',cantidad:'0.010',efecto:'SUMAR'}]}]};
+  await request(app.getHttpServer()).post('/api/catalog/modifier-groups/setup').send(body).expect(201);
+  expect(setup.createModifierGroupWithOptions).toHaveBeenCalledWith('u1',expect.objectContaining({
+   nombre:'Toppings',opciones:[expect.objectContaining({nombre:'Canela'})]
+  }));
+  await request(app.getHttpServer()).post('/api/catalog/modifier-groups/setup')
+   .send({...body,opciones:[{...body.opciones[0],incrementoPrecio:'3.001'}]}).expect(400);
+  await request(app.getHttpServer()).post('/api/catalog/modifier-groups/setup')
+   .send({...body,opciones:[{...body.opciones[0],
+    ingredientes:[{articuloId:'a1',unidadId:'u1',cantidad:'0',efecto:'SUMAR'}]}]}).expect(400);
+  await request(app.getHttpServer()).post('/api/catalog/modifier-groups/setup')
+   .send({...body,opciones:[{...body.opciones[0],
+    ingredientes:[{articuloId:'a1',unidadId:'u1',cantidad:'0.010',efecto:'RESTAR'}]}]}).expect(400);
+  expect(setup.createModifierGroupWithOptions).toHaveBeenCalledTimes(1);
+ });
  it('sets up flan and variant price with inline physical article in one validated request',async()=>{
   await request(app.getHttpServer()).post('/api/catalog/products/setup').send({
    codigo:'FLAN-1',nombre:'Flan',tipo:'INVENTARIABLE',sucursalId:'b1',

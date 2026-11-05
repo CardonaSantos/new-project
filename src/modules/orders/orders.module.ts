@@ -9,7 +9,7 @@ import {OrderStore} from './infrastructure/prisma/order.store.js';
 import {KitchenStore} from './infrastructure/prisma/kitchen.store.js';
 import {ConsumptionStore} from './infrastructure/prisma/consumption.store.js';
 import {TableStore} from './infrastructure/prisma/table.store.js';
-import {OrdersController,KitchenController,TablesController} from './presentation/http/orders.controller.js';
+import {OrdersController,KitchenController,TablesController,PosController} from './presentation/http/orders.controller.js';
 import {OrderPort} from './application/ports/order.port.js';
 import {OrderService} from './application/order.service.js';
 import {KitchenPort} from './application/ports/kitchen.port.js';
@@ -18,7 +18,7 @@ import {TablePort} from './application/ports/table.port.js';
 import {TableService} from './application/table.service.js';
 @Module({
  imports:[PrismaModule,AuthModule,InventoryModule,RecipesModule,PaymentsModule,CustomersModule],
- controllers:[OrdersController,KitchenController,TablesController],
+ controllers:[OrdersController,KitchenController,TablesController,PosController],
  providers:[OrderStore,KitchenStore,TableStore,ConsumptionStore,
   OrderService,
   {provide:OrderPort,useExisting:OrderStore},

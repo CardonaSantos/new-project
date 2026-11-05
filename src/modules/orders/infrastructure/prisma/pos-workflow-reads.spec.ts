@@ -83,3 +83,28 @@ describe('Workflow data reads use server-side scope, pagination and counts',()=>
   expect(engine.allowed).toHaveBeenCalledWith(tx,'waiter','orders.read','b1');
  });
 });
+
+describe('Price quote for expressive POS totals',()=>{
+ it('provides exact server sums while never writing an order, payment or stock movement',async()=>{
+  const tx={sucursal:{findUnique:vi.fn().mockResolvedValue({id:'b1',activa:true})},
+   configuracionSucursal:{findUnique:vi.fn().mockResolvedValue({moneda:'GTQ'})},
+   orden:{create:vi.fn()},pago:{create:vi.fn()},movimientoInventario:{create:vi.fn()}};
+  const engine={tx:vi.fn(async(cb:(tx:unknown)=>Promise<unknown>)=>cb(tx)),
+   allowed:vi.fn().mockResolvedValue(undefined)};
+  const store=new OrderStore({} as PrismaService,engine as unknown as InventoryPostingEngine,
+   {} as IdentityRepository,{} as TableStore,
+   {} as KitchenStore,{} as PaymentsStore,{} as CustomerSelectionPort);
+  vi.spyOn(store as any,'quote').mockResolvedValue({varianteId:'v1',
+   nombre:'Agua 600 ml',cantidad:money('2'),unit:money('7.00'),
+   total:money('14.00'),discount:money('1.00'),
+   modifiers:[],composition:[],recetaVersionId:null,notas:null});
+  const result=await store.quoteOrder(actor,{sucursalId:'b1',
+   lineas:[{varianteId:'v1',cantidad:'2',descuento:'1.00'}]});
+  expect(result).toMatchObject({moneda:'GTQ',subtotal:'14.00',
+   descuentoTotal:'1.00',total:'13.00',
+   lineas:[{cantidad:'2.000',total:'13.00'}]});
+  expect(tx.orden.create).not.toHaveBeenCalled();
+  expect(tx.pago.create).not.toHaveBeenCalled();
+  expect(tx.movimientoInventario.create).not.toHaveBeenCalled();
+ });
+});

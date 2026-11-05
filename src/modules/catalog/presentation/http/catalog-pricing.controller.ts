@@ -4,10 +4,13 @@ import {CurrentUser} from '../../../auth/presentation/http/decorators/auth.decor
 import {CatalogService} from '../../application/catalog.service.js';
 import {CatalogSetupService} from '../../application/catalog-setup.service.js';
 import {AttachGroupsDto,GroupCreateDto,GroupPatchDto,ModifierCreateDto,ModifierListDto,
- ModifierPatchDto,OptionsDto,PageDto,PriceCreateDto,PriceQueryDto,QuoteDto,VariantPricesBatchDto} from './dto/catalog.dto.js';
+ ModifierPatchDto,OptionsDto,PageDto,PriceCreateDto,PriceQueryDto,QuoteDto,VariantPricesBatchDto,QuickModifierGroupDto} from './dto/catalog.dto.js';
 @Controller('catalog/modifier-groups')
 export class CatalogGroupsController{
- constructor(private readonly service:CatalogService){}
+ constructor(private readonly service:CatalogService,private readonly setup:CatalogSetupService){}
+ @Post('setup') createWithOptions(@CurrentUser() a:Principal,@Body() dto:QuickModifierGroupDto){
+  return this.setup.createModifierGroupWithOptions(a.id,dto);
+ }
  @Get('options') options(@CurrentUser() a:Principal,@Query() q:OptionsDto){return this.service.groupOptions(a,q);}
  @Get() list(@CurrentUser() a:Principal,@Query() q:PageDto){return this.service.groups(a,q);}
  @Post() create(@CurrentUser() a:Principal,@Body() v:GroupCreateDto){return this.service.createGroup(a,v);}

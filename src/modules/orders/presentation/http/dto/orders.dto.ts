@@ -117,6 +117,14 @@ export class KitchenChangesDto{
  @IsOptional() @IsString() cursor?:string;
  @IsOptional() @IsInt() @Type(()=>Number) @Min(1) @Max(100) limit=50;
 }
+/** Server-ordered KDS, counts over the entire selected branch/station, not a single page. */
+export class KitchenQueueDto extends BranchQueryDto{
+ @IsOptional() @IsString() estacionId?:string;
+ @IsOptional() @IsEnum(['ACTIVAS','PARA_ENTREGAR','ENTREGADAS','TODAS'])
+ vista:'ACTIVAS'|'PARA_ENTREGAR'|'ENTREGADAS'|'TODAS'='ACTIVAS';
+ @IsOptional() @IsInt() @Type(()=>Number) @Min(1) page=1;
+ @IsOptional() @IsInt() @Type(()=>Number) @Min(1) @Max(100) limit=30;
+}
 export class TicketListDto{
  @IsString() sucursalId!:string;
  @IsOptional() @IsString() estacionId?:string;

@@ -29,7 +29,10 @@ function rig(type:'INVENTARIABLE'|'PREPARADO'='INVENTARIABLE'){
   },
   varianteProducto:{findMany:vi.fn().mockResolvedValue([{id:'water',producto:{tipo:type}}])},
   cuenta:{findFirstOrThrow:vi.fn().mockResolvedValue({id:'account-1'}),
-   findMany:vi.fn().mockResolvedValue([{id:'account-1',estado:'ABIERTA'}])},
+   findMany:vi.fn().mockResolvedValue([{id:'account-1',estado:'ABIERTA'}]),
+   findUniqueOrThrow:vi.fn().mockResolvedValue({
+    total:{toFixed:()=> '7.00',lt:()=>false},
+    pagado:{toFixed:()=> '7.00'}})},
   intentoPago:{count:vi.fn().mockResolvedValue(0)},
   comanda:{count:vi.fn().mockResolvedValue(1)},
   orden:{findUnique:vi.fn().mockResolvedValue({id:'order-1',sucursalId:'b1',usuarioId:'cashier',estado:'ABIERTA'}),
@@ -129,6 +132,18 @@ describe('Pay-and-send with one confirmed payment transaction',()=>{
   });
   expect(h.engine.allowed).toHaveBeenCalledWith(h.tx,'cashier','orders.manage','b1');
   expect(h.kitchen.sendTx).toHaveBeenCalledWith(h.tx,actor,'order-1','orders.manage');
+ });
+ it('never starts preparation on partial payment',async()=>{
+  const h=rig();
+  h.tx.cuenta.findUniqueOrThrow.mockResolvedValue({
+   total:{lt:()=>false},pagado:{lt:()=>true}
+  });
+  await expect(h.store.payAndSend(actor,'order-1',{
+   turnoId:'shift-1',pagos:[{metodo:'EFECTIVO',monto:'3.00',efectivoRecibido:'3.00'}],
+   claveOperacion:'ORDER:PAY:SEND:PARTIAL'
+  })).rejects.toThrow('pagada completamente');
+  expect(h.kitchen.sendTx).not.toHaveBeenCalled();
+  expect(h.tx.operacionIdempotente.create).not.toHaveBeenCalled();
  });
  it('does not commit idempotency on a financial error',async()=>{
   const h=rig();

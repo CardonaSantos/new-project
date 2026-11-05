@@ -125,6 +125,9 @@ export class TicketListDto{
  @IsOptional() @IsInt() @Type(()=>Number) @Min(1) page=1;
  @IsOptional() @IsInt() @Type(()=>Number) @Min(1) @Max(100) limit=20;
 }
+export class KitchenActionDto{
+ @IsString() @MinLength(6) @MaxLength(120) claveOperacion!:string;
+}
 export class StartLineDto{
  @IsOptional() @IsString() @Matches(Q) cantidad?:string;
  @IsString() @MinLength(6) @MaxLength(120) claveOperacion!:string;

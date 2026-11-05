@@ -166,6 +166,44 @@ export class OrderStore{
    return {data,meta:{page:q.page,limit:q.limit,total,totalPages:Math.ceil(total/q.limit)}};
   });
  }
+ /** One read for POS and table boards: accounts, pending products and kitchen progress. */
+ async worklist(u:Principal,q:OrderListDto){
+  return this.engine.tx(async tx=>{
+   await this.engine.allowed(tx,u.id,'orders.read',q.sucursalId);
+   const where:Prisma.OrdenWhereInput={
+    sucursalId:q.sucursalId,estado:q.estado??'ABIERTA',
+    ...(q.modalidad?{modalidad:q.modalidad}:{}),
+    ...(q.search?{numero:{contains:q.search,mode:'insensitive'}}:{})};
+   const [rows,total]=await Promise.all([
+    tx.orden.findMany({where,include:{
+     ocupacionMesa:{select:{id:true,mesa:{select:{id:true,numero:true,sala:{select:{nombre:true}}}}}},
+     cuentasComoOrden:{select:{id:true,total:true,pagado:true,estado:true}},
+     ordenLineasComoOrden:{select:{id:true,cantidad:true,cantidadEnviada:true,canceladaEn:true}},
+     comandasComoOrden:{select:{id:true,estado:true,comandaLineasComoComanda:{
+      select:{canceladaEn:true,entregadaEn:true}}}}
+    },orderBy:[{abiertaEn:'desc'},{id:'desc'}],skip:(q.page-1)*q.limit,take:q.limit}),
+    tx.orden.count({where})
+   ]);
+   const data=rows.map(order=>{
+    const pagado=order.cuentasComoOrden.reduce((sum,c)=>sum.plus(c.pagado),new Prisma.Decimal(0));
+    const needsProcessing=order.ordenLineasComoOrden.some(line=>
+     !line.canceladaEn&&line.cantidadEnviada.lt(line.cantidad));
+    const tickets=order.comandasComoOrden;
+    const pending=tickets.filter(t=>t.estado==='PENDIENTE').length;
+    const preparing=tickets.filter(t=>t.estado==='PREPARANDO').length;
+    const toDeliver=tickets.filter(t=>t.estado==='LISTA'&&
+     t.comandaLineasComoComanda.some(l=>!l.canceladaEn&&!l.entregadaEn)).length;
+    return {id:order.id,numero:order.numero,modalidad:order.modalidad,
+     estado:order.estado,version:order.version,abiertaEn:order.abiertaEn,
+     ocupacionMesaId:order.ocupacionMesaId,mesa:order.ocupacionMesa?.mesa??null,
+     total:order.total.toFixed(2),pagado:pagado.toFixed(2),
+     saldo:Prisma.Decimal.max(0,order.total.minus(pagado)).toFixed(2),
+     needsProcessing,kitchen:{pending,preparing,toDeliver}};
+   });
+   return {data,meta:{page:q.page,limit:q.limit,total,
+    totalPages:Math.ceil(total/q.limit)}};
+  });
+ }
  async create(u:Principal,d:CreateOrderDto){
   const result=await this.engine.tx(async tx=>{
    // Authorization is outside runOnce so replay cannot bypass a revoked role.

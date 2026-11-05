@@ -7,7 +7,7 @@ import {TableService} from '../../application/table.service.js';
 import {AddItemsDto,BranchQueryDto,CreateOrderDto,EditLineDto,EditOrderDto,
  OrderListDto,ReasonDto,RouteDto,RouteUpdateDto,RoomDto,RoomUpdateDto,TableUpdateDto,KitchenChangesDto,
  CancelOrderDto,SendDto,StartLineDto,StationDto,
- StationUpdateDto,TableDto,TicketListDto} from './dto/orders.dto.js';
+ StationUpdateDto,TableDto,TicketListDto,KitchenActionDto} from './dto/orders.dto.js';
 
 @Controller('orders')
 export class OrdersController{
@@ -78,6 +78,10 @@ export class KitchenController{
   @Param('id') id:string,@Body() d:StartLineDto){return this.kitchen.startLine(u,id,d);}
  @Post('lines/:id/ready') readyLine(@CurrentUser() u:Principal,
   @Param('id') id:string){return this.kitchen.readyLine(u,id);}
+ @Post('tickets/:id/ready-deliver') readyDeliver(@CurrentUser() u:Principal,
+  @Param('id') id:string,@Body() d:KitchenActionDto){return this.kitchen.readyDeliver(u,id,d);}
+ @Post('lines/:id/ready-deliver') readyDeliverLine(@CurrentUser() u:Principal,
+  @Param('id') id:string,@Body() d:KitchenActionDto){return this.kitchen.readyDeliverLine(u,id,d);}
  @Post('lines/:id/deliver') deliver(@CurrentUser() u:Principal,
   @Param('id') id:string){return this.kitchen.deliver(u,id);}
 }

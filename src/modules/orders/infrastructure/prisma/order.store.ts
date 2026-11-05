@@ -323,6 +323,12 @@ export class OrderStore{
     if(await tx.intentoPago.count({where:{cuentaId:accounts[0].id,estado:'PENDIENTE'}}))
      throw new ConflictException('Existen transferencias pendientes de confirmación');
     const paid=await this.payments.collectInTx(tx,u,accounts[0].id,d);
+    // Payment-before-preparation MUST NOT dispatch stock/recipes on an advance.
+    // Partial payments use ordinary PAY-A without automatic kitchen dispatch.
+    const settledAccount=await tx.cuenta.findUniqueOrThrow({where:{id:accounts[0].id},
+     select:{total:true,pagado:true}});
+    if(settledAccount.pagado.lt(settledAccount.total))
+     throw new ConflictException('Para cobrar y enviar, la cuenta debe quedar pagada completamente');
     const current=await tx.orden.findUniqueOrThrow({where:{id}});
     if(current.estado==='ABIERTA')
      await this.kitchen.sendTx(tx,u,id,permission);

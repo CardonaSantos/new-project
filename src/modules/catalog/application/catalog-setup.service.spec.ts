@@ -23,7 +23,7 @@ function mocks(){
    findUnique:vi.fn().mockResolvedValue({id:'unit',dimension:'UNIDAD',esBase:true})},
   articuloInventario:{
    create:vi.fn().mockResolvedValue({id:'article1',codigo:'ART-FLAN-001-1',nombre:'Flan terminado',tipo:'PRODUCTO_TERMINADO'}),
-   findUnique:vi.fn().mockResolvedValue({id:'article1',activo:true,tipo:'PRODUCTO_TERMINADO',
+   findUnique:vi.fn().mockResolvedValue({id:'article1',activo:true,tipo:'PRODUCTO_TERMINADO',unidadBaseId:'unit',
     unidadBase:{dimension:'UNIDAD'}})
   },
   producto:{

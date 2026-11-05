@@ -10,6 +10,7 @@ export class OrderService {
  worklist(actor:Principal,...args:any[]){return this.port.worklist(actor,...args);}
  create(actor:Principal,...args:any[]){return this.port.create(actor,...args);}
  quickCheckout(actor:Principal,...args:any[]){return this.port.quickCheckout(actor,...args);}
+ payAndSend(actor:Principal,...args:any[]){return this.port.payAndSend(actor,...args);}
  edit(actor:Principal,...args:any[]){return this.port.edit(actor,...args);}
  add(actor:Principal,...args:any[]){return this.port.add(actor,...args);}
  editLine(actor:Principal,...args:any[]){return this.port.editLine(actor,...args);}

@@ -49,6 +49,7 @@ export class ProductListDto extends PageDto{
 }
 export class ProductOptionsDto extends OptionsDto{
  @IsOptional() @IsString() sucursalId?:string;
+ @IsOptional() @IsString() categoriaId?:string;
 }
 export class BranchQueryDto{
  @IsOptional() @IsString() sucursalId?:string;

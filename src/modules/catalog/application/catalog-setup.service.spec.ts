@@ -17,7 +17,8 @@ function mocks(){
  const stockMovement=vi.fn();
  const tx={
   usuarioRol:{findFirst:permissions},
-  sucursal:{findUnique:vi.fn().mockResolvedValue({id:'b1',activa:true})},
+  sucursal:{findUnique:vi.fn().mockResolvedValue({id:'b1',activa:true}),
+   findMany:vi.fn().mockResolvedValue([{id:'b1',nombre:'Principal',activa:true}])},
   categoria:{findUnique:vi.fn().mockResolvedValue({id:'category',activa:true})},
   unidadMedida:{findFirst:vi.fn().mockResolvedValue({id:'unit',dimension:'UNIDAD',esBase:true}),
    findUnique:vi.fn().mockResolvedValue({id:'unit',dimension:'UNIDAD',esBase:true})},
@@ -34,7 +35,7 @@ function mocks(){
   varianteProducto:{
    create:vi.fn().mockResolvedValue({id:'v1',nombre:'Única'}),
    findUnique:vi.fn().mockResolvedValue({id:'v1',activo:true,producto:{activo:true,tipo:'PREPARADO'}}),
-   findMany:vi.fn().mockResolvedValue([{id:'v1'}])
+   findMany:vi.fn().mockResolvedValue([{id:'v1',nombre:'Única',producto:{id:'p1',nombre:'Flan'}}])
   },
   precioVariante:{
    findFirst:vi.fn().mockResolvedValue(null),
@@ -172,5 +173,40 @@ describe('CAT R3 — atomic modifier setups without accidental inventory movemen
    ]
   })).rejects.toBeInstanceOf(ConflictException);
   expect(db.$transaction).not.toHaveBeenCalled();
+ });
+});
+
+describe('R3-C read-only menu draft validation',()=>{
+ const layout:MenuLayoutDto={expectedVersion:1,sucursalIds:['b1'],
+  secciones:[{nombre:'Postres',orden:0,items:[{varianteId:'v1',orden:0}]}],horarios:[]};
+ it('returns contextual product and branch details without writing to the DB',async()=>{
+  const {service,tx,menuStore,stockMovement}=mocks();
+  const state=await service.previewMenuReadiness('u1','m1',layout);
+  expect(state.lista).toBe(true);
+  expect(state.comprobadas).toEqual([expect.objectContaining({
+   varianteId:'v1',nombre:'Flan · Única',productoId:'p1',
+   sucursal:'Principal',lista:true
+  })]);
+  expect(menuStore.readiness).toHaveBeenCalledTimes(1);
+  expect(tx.menu.updateMany).not.toHaveBeenCalled();
+  expect(tx.menuSeccion.deleteMany).not.toHaveBeenCalled();
+  expect(stockMovement).not.toHaveBeenCalled();
+ });
+ it('reports exact product and branch when a published recipe is missing',async()=>{
+  const {service,menuStore,tx}=mocks();
+  menuStore.readiness.mockResolvedValue({lista:false,
+   advertencias:['SIN_RECETA_PUBLICADA'],precio:'20.00'});
+  const state=await service.previewMenuReadiness('u1','m1',layout);
+  expect(state.lista).toBe(false);
+  expect(state.problemas).toEqual([expect.objectContaining({
+   codigo:'SIN_RECETA_PUBLICADA',productoId:'p1',varianteId:'v1',sucursalId:'b1'
+  })]);
+  expect(tx.menu.updateMany).not.toHaveBeenCalled();
+ });
+ it('prevents reviewing stale menu versions without changing publication',async()=>{
+  const {service,tx}=mocks();
+  await expect(service.previewMenuReadiness('u1','m1',{...layout,expectedVersion:2}))
+   .rejects.toBeInstanceOf(ConflictException);
+  expect(tx.menu.update).not.toHaveBeenCalled();
  });
 });

@@ -19,7 +19,10 @@ describe('CAT-A HTTP contracts',()=>{
   createProductSetup:vi.fn().mockResolvedValue({id:'p2',codigo:'FLAN-1',preciosConfigurados:[]}),
   createModifierGroupWithOptions:vi.fn().mockResolvedValue({id:'g1',opciones:[{id:'m1'}]}),
   batchVariantPrices:vi.fn().mockResolvedValue({guardados:1,precios:[]}),
-  commitMenu:vi.fn().mockResolvedValue({id:'m1',version:3,publicadoEn:'2026-11-05T00:00:00Z'})
+  commitMenu:vi.fn().mockResolvedValue({id:'m1',version:3,publicadoEn:'2026-11-05T00:00:00Z'}),
+  previewMenuReadiness:vi.fn().mockResolvedValue({lista:false,problemas:[
+   {codigo:'SIN_RECETA_PUBLICADA',varianteId:'v1',productoId:'p1',sucursalId:'b1'}
+  ]})
  };
  const service={
   categories:vi.fn().mockResolvedValue({data:[],meta:{page:1,limit:20,total:0,totalPages:0}}),
@@ -83,6 +86,19 @@ describe('CAT-A HTTP contracts',()=>{
   await request(app.getHttpServer()).post('/api/catalog/products/setup').send({
    codigo:'FLAN-2',nombre:'Flan',tipo:'INVENTARIABLE',variantes:[],
   }).expect(400);
+ });
+ it('reviews a draft menu without committing any changes',async()=>{
+  const draft={expectedVersion:2,sucursalIds:['b1'],
+   secciones:[{nombre:'Postres',orden:0,items:[{varianteId:'v1',orden:0}]}],
+   horarios:[]};
+  const response=await request(app.getHttpServer()).post('/api/catalog/menus/m1/validate')
+   .send(draft).expect(201);
+  expect(response.body.lista).toBe(false);
+  expect(setup.previewMenuReadiness).toHaveBeenCalledWith('u1','m1',
+   expect.objectContaining({expectedVersion:2}));
+  await request(app.getHttpServer()).post('/api/catalog/menus/m1/validate')
+   .send({...draft,secciones:[{...draft.secciones[0],items:[{varianteId:'v1',orden:-1}]}]})
+   .expect(400);
  });
  it('validates atomic batch prices and menu optimistic versions',async()=>{
   await request(app.getHttpServer()).post('/api/catalog/prices/variants/batch').send({

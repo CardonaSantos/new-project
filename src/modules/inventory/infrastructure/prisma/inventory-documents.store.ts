@@ -28,7 +28,9 @@ export class InventoryDocumentsStore{
  }
  private async countDetail(row:any,u:Principal){
   const costAllowed=await this.canReadCosts(u,row.almacen.sucursalId);
-  return {id:row.id,almacenId:row.almacenId,estado:row.estado,
+  return {id:row.id,almacenId:row.almacenId,
+   almacen:{id:row.almacen.id,codigo:row.almacen.codigo,nombre:row.almacen.nombre},
+   estado:row.estado,
    nota:row.nota,creadoEn:row.creadoEn,confirmadoEn:row.confirmadoEn,
    lineas:row.conteoInventarioLineasComoConteo.map((x:any)=>({
     id:x.id,articulo:x.articulo,ubicacion:x.ubicacion,lote:x.lote,

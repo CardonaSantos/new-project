@@ -12,14 +12,15 @@
 - `GET /api/finance/accounts?sucursalId=...`: cuentas financieras, paginadas y con `saldoRegistrado` desde movimientos firmados.
 - `GET /api/finance/accounts/:id`, `GET /api/finance/accounts/:id/movements`.
 - `POST /api/finance/accounts`: alta idempotente, auditada y autorizada. **Cambio de contrato:** sustituye `claveOperacion` (antes enviada por cliente) por `operationId` generado por servidor.
+- `PATCH /api/finance/accounts/:id` body `{"operationId":"...","nombre":"..."}`: renombra la cuenta (intención `FIN_ACCOUNT_RENAME`, mismo permiso `finance.accounts.manage`). El `tipo` y la `moneda` no se pueden cambiar después de creada la cuenta.
 - `saldoRegistrado` no equivale a saldo bancario conciliado.
 
 ## Fase 2: gastos operativos
-- `POST /api/finance/operation-intents` body `{"sucursalId":"...","accion":"FIN_EXPENSE_CREATE"}` o `FIN_ACCOUNT_CREATE`: devuelve `operationId`, vencimiento y contexto.
+- `POST /api/finance/operation-intents` body `{"sucursalId":"...","accion":"FIN_EXPENSE_CREATE"}`, `FIN_ACCOUNT_CREATE` o `FIN_ACCOUNT_RENAME`: devuelve `operationId`, vencimiento y contexto.
 - `POST /api/finance/expenses`:
   - Caja: `{"operationId":"...","sucursalId":"...","origen":"CAJA","turnoId":"...","monto":"75.00","descripcion":"Artículos de limpieza","categoria":"Limpieza"}`.
   - Cuenta externa: `{"operationId":"...","sucursalId":"...","origen":"CUENTA_FINANCIERA","cuentaFinancieraId":"...","monto":"250.00","descripcion":"Electricidad","documentoReferencia":"TRANSFERENCIA-123"}`.
-- `GET /api/finance/expenses?sucursalId=...`, `GET /api/finance/expenses/:id`.
+- `GET /api/finance/expenses?sucursalId=...&origen=CAJA|CUENTA_FINANCIERA&estado=REGISTRADO|REVERSADO&categoria=...&desde=YYYY-MM-DD&hasta=YYYY-MM-DD`, `GET /api/finance/expenses/:id`. Todos los filtros además de `sucursalId` son opcionales. `estado` se deriva de la reversión del movimiento financiero asociado (solo aplica a gastos financiados desde cuenta), así que al filtrar por `estado` la paginación se resuelve después de calcular el estado de cada candidato.
 - Un gasto desde caja inserta **un `GastoOperativo` + un `MovimientoCaja` EGRESO** con `gastoId` único, en una sola transacción. Reutiliza `CashStore.shiftTx` de PAY-A dentro de la transacción, verifica turno propio, sucursal, día operativo, fondos y permisos.
 - Un gasto desde cuenta financiera inserta **un `GastoOperativo` + un `MovimientoFinanciero` negativo** `GASTO_OPERATIVO`, sin movimiento de caja. Exige cuenta activa, sucursal/moneda coincidente y comprobante. Índice parcial de DB impide doble asiento financiero por gasto.
 - Operaciones `SERIALIZABLE`, reintentos de conflictos transitorios, registro de auditoría y outbox; fallos revocan íntegramente la operación. No se registra una salida bancaria real: el gasto indica pago externo declarado, pendiente de conciliación bancaria.

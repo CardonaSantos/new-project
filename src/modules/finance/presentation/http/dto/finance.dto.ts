@@ -8,8 +8,8 @@ export class FinanceAccountQueryDto{
 }
 export class FinanceOperationIntentDto{
  @IsString() @MinLength(1) sucursalId!:string;
- @IsIn(['FIN_ACCOUNT_CREATE','FIN_EXPENSE_CREATE','FIN_EXTERNAL_POST','FIN_ROUTING_UPSERT','FIN_DAY_CLOSE','FIN_STATEMENT_IMPORT','FIN_STATEMENT_MATCH','FIN_STATEMENT_UNMATCH','FIN_LEDGER_REVERSE'])
- accion!:'FIN_ACCOUNT_CREATE'|'FIN_EXPENSE_CREATE'|'FIN_EXTERNAL_POST'|'FIN_ROUTING_UPSERT'|'FIN_DAY_CLOSE'|'FIN_STATEMENT_IMPORT'|'FIN_STATEMENT_MATCH'|'FIN_STATEMENT_UNMATCH'|'FIN_LEDGER_REVERSE';
+ @IsIn(['FIN_ACCOUNT_CREATE','FIN_ACCOUNT_RENAME','FIN_EXPENSE_CREATE','FIN_EXTERNAL_POST','FIN_ROUTING_UPSERT','FIN_DAY_CLOSE','FIN_STATEMENT_IMPORT','FIN_STATEMENT_MATCH','FIN_STATEMENT_UNMATCH','FIN_LEDGER_REVERSE'])
+ accion!:'FIN_ACCOUNT_CREATE'|'FIN_ACCOUNT_RENAME'|'FIN_EXPENSE_CREATE'|'FIN_EXTERNAL_POST'|'FIN_ROUTING_UPSERT'|'FIN_DAY_CLOSE'|'FIN_STATEMENT_IMPORT'|'FIN_STATEMENT_MATCH'|'FIN_STATEMENT_UNMATCH'|'FIN_LEDGER_REVERSE';
 }
 export class FinanceOperationDto{
  @Matches(/^FIN:[0-9a-f-]{36}$/) operationId!:string;
@@ -20,11 +20,20 @@ export class FinanceAccountCreateDto extends FinanceOperationDto{
  @IsIn(['BANCO','TARJETA_EMPRESA','EFECTIVO_EXTERNO'])
  tipo!:'BANCO'|'TARJETA_EMPRESA'|'EFECTIVO_EXTERNO';
 }
+export class FinanceAccountUpdateDto extends FinanceOperationDto{
+ @IsString() @MinLength(2) @MaxLength(160) nombre!:string;
+}
 export class FinanceMovementQueryDto{
  @Type(()=>Number) @IsInt() @Min(1) page=1;
  @Type(()=>Number) @IsInt() @Min(1) @Max(100) limit=20;
 }
-export class FinanceExpenseQueryDto extends FinanceAccountQueryDto{}
+export class FinanceExpenseQueryDto extends FinanceAccountQueryDto{
+ @IsOptional() @IsIn(['CAJA','CUENTA_FINANCIERA']) origen?:'CAJA'|'CUENTA_FINANCIERA';
+ @IsOptional() @IsIn(['REGISTRADO','REVERSADO']) estado?:'REGISTRADO'|'REVERSADO';
+ @IsOptional() @IsString() @MaxLength(100) categoria?:string;
+ @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) desde?:string;
+ @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) hasta?:string;
+}
 export class FinanceExpenseCreateDto extends FinanceOperationDto{
  @IsString() @MinLength(1) sucursalId!:string;
  @IsIn(['CAJA','CUENTA_FINANCIERA']) origen!:'CAJA'|'CUENTA_FINANCIERA';

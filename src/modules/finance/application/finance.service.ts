@@ -2,7 +2,7 @@ import {Injectable} from '@nestjs/common';
 import type {Principal} from '../../auth/application/auth.service.js';
 import {FinanceRepositoryPort} from './ports/finance.repository.port.js';
 import type {FinanceAccountQueryDto,FinanceOperationIntentDto,FinanceAccountCreateDto,
- FinanceMovementQueryDto,FinanceExpenseQueryDto,FinanceExpenseCreateDto,
+ FinanceAccountUpdateDto,FinanceMovementQueryDto,FinanceExpenseQueryDto,FinanceExpenseCreateDto,
  FinanceExternalPendingQueryDto,FinanceExternalPostDto,FinanceRouteUpsertDto}
  from './contracts/finance.types.js';
 @Injectable()
@@ -13,6 +13,7 @@ export class FinanceService{
  movements(u:Principal,id:string,q:FinanceMovementQueryDto){return this.repository.movements(u,id,q)}
  issueIntent(u:Principal,d:FinanceOperationIntentDto){return this.repository.issueIntent(u,d)}
  createAccount(u:Principal,d:FinanceAccountCreateDto){return this.repository.createAccount(u,d)}
+ updateAccount(u:Principal,id:string,d:FinanceAccountUpdateDto){return this.repository.updateAccount(u,id,d)}
  createExpense(u:Principal,d:FinanceExpenseCreateDto){return this.repository.createExpense(u,d)}
  expenses(u:Principal,q:FinanceExpenseQueryDto){return this.repository.expenses(u,q)}
  expense(u:Principal,id:string){return this.repository.expense(u,id)}

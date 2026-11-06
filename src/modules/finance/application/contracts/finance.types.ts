@@ -1,12 +1,16 @@
 export interface FinanceAccountQueryDto{sucursalId:string;page:number;limit:number}
 export interface FinanceOperationIntentDto{
- sucursalId:string;accion:'FIN_ACCOUNT_CREATE'|'FIN_EXPENSE_CREATE'|'FIN_EXTERNAL_POST'|'FIN_ROUTING_UPSERT'|'FIN_DAY_CLOSE'|'FIN_STATEMENT_IMPORT'|'FIN_STATEMENT_MATCH'|'FIN_STATEMENT_UNMATCH'|'FIN_LEDGER_REVERSE'
+ sucursalId:string;accion:'FIN_ACCOUNT_CREATE'|'FIN_ACCOUNT_RENAME'|'FIN_EXPENSE_CREATE'|'FIN_EXTERNAL_POST'|'FIN_ROUTING_UPSERT'|'FIN_DAY_CLOSE'|'FIN_STATEMENT_IMPORT'|'FIN_STATEMENT_MATCH'|'FIN_STATEMENT_UNMATCH'|'FIN_LEDGER_REVERSE'
 }
 export interface FinanceAccountCreateDto{
  operationId:string;sucursalId:string;nombre:string;tipo:'BANCO'|'TARJETA_EMPRESA'|'EFECTIVO_EXTERNO'
 }
+export interface FinanceAccountUpdateDto{operationId:string;nombre:string}
 export interface FinanceMovementQueryDto{page:number;limit:number}
-export interface FinanceExpenseQueryDto extends FinanceAccountQueryDto{}
+export interface FinanceExpenseQueryDto extends FinanceAccountQueryDto{
+ origen?:'CAJA'|'CUENTA_FINANCIERA';estado?:'REGISTRADO'|'REVERSADO';
+ categoria?:string;desde?:string;hasta?:string;
+}
 export interface FinanceExpenseCreateDto{
  operationId:string;sucursalId:string;origen:'CAJA'|'CUENTA_FINANCIERA';
  monto:string;descripcion:string;categoria?:string;proveedorId?:string;

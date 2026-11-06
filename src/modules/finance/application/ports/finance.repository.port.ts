@@ -1,6 +1,6 @@
 import type {Principal} from '../../../auth/application/auth.service.js';
 import type {FinanceAccountQueryDto,FinanceOperationIntentDto,FinanceAccountCreateDto,
- FinanceMovementQueryDto,FinanceExpenseQueryDto,FinanceExpenseCreateDto,
+ FinanceAccountUpdateDto,FinanceMovementQueryDto,FinanceExpenseQueryDto,FinanceExpenseCreateDto,
  FinanceExternalPendingQueryDto,FinanceExternalPostDto,FinanceRouteUpsertDto}
  from '../contracts/finance.types.js';
 export abstract class FinanceRepositoryPort {
@@ -9,6 +9,7 @@ export abstract class FinanceRepositoryPort {
  abstract movements(u:Principal,id:string,q:FinanceMovementQueryDto):Promise<any>;
  abstract issueIntent(u:Principal,d:FinanceOperationIntentDto):Promise<any>;
  abstract createAccount(u:Principal,d:FinanceAccountCreateDto):Promise<any>;
+ abstract updateAccount(u:Principal,id:string,d:FinanceAccountUpdateDto):Promise<any>;
  abstract createExpense(u:Principal,d:FinanceExpenseCreateDto):Promise<any>;
  abstract expenses(u:Principal,q:FinanceExpenseQueryDto):Promise<any>;
  abstract expense(u:Principal,id:string):Promise<any>;

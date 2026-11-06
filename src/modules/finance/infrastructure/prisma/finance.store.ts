@@ -7,7 +7,7 @@ import {CashStore} from '../../../payments/infrastructure/prisma/cash.store.js';
 import {money,operationalDate} from '../../../payments/domain/payment.policy.js';
 import {postVerifiedExternalMovement} from './finance-posting.js';
 import {expenseFundingIssue} from '../../domain/funding.policy.js';
-import type {FinanceAccountCreateDto,FinanceAccountQueryDto,FinanceMovementQueryDto,
+import type {FinanceAccountCreateDto,FinanceAccountUpdateDto,FinanceAccountQueryDto,FinanceMovementQueryDto,
  FinanceOperationIntentDto,FinanceExpenseCreateDto,FinanceExpenseQueryDto,
  FinanceExternalPendingQueryDto,FinanceExternalPostDto,FinanceRouteUpsertDto} from '../../application/contracts/finance.types.js';
 
@@ -127,7 +127,7 @@ export class FinanceStore{
  }
  async issueIntent(u:Principal,d:FinanceOperationIntentDto){
   return this.atomic(async tx=>{
-   const code=d.accion==='FIN_ACCOUNT_CREATE'?'finance.accounts.manage':
+   const code=d.accion==='FIN_ACCOUNT_CREATE'||d.accion==='FIN_ACCOUNT_RENAME'?'finance.accounts.manage':
     d.accion==='FIN_EXPENSE_CREATE'?'finance.expenses.create':
     d.accion==='FIN_ROUTING_UPSERT'?'finance.routing.manage':
     d.accion==='FIN_DAY_CLOSE'?'finance.closing.execute':
@@ -166,6 +166,26 @@ export class FinanceStore{
      agregadoId:row.id,payload:{sucursalId:d.sucursalId,tipo:row.tipo}}});
     return {id:row.id,sucursalId:row.sucursalId,nombre:row.nombre,
      tipo:row.tipo,moneda:row.moneda,activa:row.activa,saldoRegistrado:'0.00'};
+   });
+  });
+ }
+ async updateAccount(u:Principal,id:string,d:FinanceAccountUpdateDto){
+  return this.atomic(async tx=>{
+   const row=await this.accountRow(tx,id);
+   await this.permission(tx,u,row.sucursalId!,'finance.accounts.manage');
+   return this.completeIntent(tx,u,{operationId:d.operationId,sucursalId:row.sucursalId!},
+    'FIN_ACCOUNT_RENAME',async()=>{
+    const name=d.nombre.trim();
+    if(name.length<2)throw new BadRequestException('Nombre de cuenta financiera inválido');
+    if(name!==row.nombre&&await tx.cuentaFinanciera.findFirst(
+     {where:{sucursalId:row.sucursalId!,nombre:name,id:{not:id}}}))
+     throw new ConflictException('Cuenta financiera ya registrada en esta sucursal');
+    const updated=await tx.cuentaFinanciera.update({where:{id},data:{nombre:name}});
+    await tx.eventoAuditoria.create({data:{usuarioId:u.id,sucursalId:row.sucursalId!,
+     accion:'FIN_ACCOUNT_RENAMED',entidad:'CuentaFinanciera',entidadId:id,
+     antes:{nombre:row.nombre},despues:{nombre:updated.nombre}}});
+    const sum=await tx.movimientoFinanciero.aggregate({where:{cuentaId:id},_sum:{monto:true}});
+    return this.shapeAccount(updated,sum._sum.monto);
    });
   });
  }
@@ -415,26 +435,49 @@ export class FinanceStore{
   });
  }
 
+ /** A GASTO_OPERATIVO is only reversible through its linked cuenta-financiera movement today. */
+ private async withExpenseState<T extends {id:string;cuentaFinancieraId:string|null;monto:Prisma.Decimal}>(
+  tx:Tx,rows:T[]
+ ):Promise<(Omit<T,'monto'>&{monto:string;estadoFinanciero:'REGISTRADO'|'REVERSADO'})[]>{
+  const bankIds=rows.filter(x=>x.cuentaFinancieraId).map(x=>x.id);
+  const movements=bankIds.length?await tx.movimientoFinanciero.findMany({
+   where:{referenciaTipo:'GASTO_OPERATIVO',referenciaId:{in:bankIds}},
+   select:{id:true,referenciaId:true}}):[];
+  const reversalIds=movements.length?await tx.reversaFinanciera.findMany({
+   where:{movimientoOriginalId:{in:movements.map(m=>m.id)}},
+   select:{movimientoOriginalId:true}}):[];
+  const reversed=new Set(reversalIds.map(x=>x.movimientoOriginalId));
+  const sources=new Map(movements.map(m=>[m.referenciaId,m.id]));
+  return rows.map(x=>({...x,monto:x.monto.toFixed(2),
+   estadoFinanciero:(sources.has(x.id)&&reversed.has(sources.get(x.id)!)?'REVERSADO':'REGISTRADO') as 'REGISTRADO'|'REVERSADO'}));
+ }
  async expenses(u:Principal,q:FinanceExpenseQueryDto){
   return this.atomic(async tx=>{
    await this.permission(tx,u,q.sucursalId,'finance.expenses.read');
-   const where={sucursalId:q.sucursalId};
-   const [rows,total]=await Promise.all([
-    tx.gastoOperativo.findMany({where,orderBy:[{registradoEn:'desc'},{id:'desc'}],
-     skip:(q.page-1)*q.limit,take:q.limit}),
-    tx.gastoOperativo.count({where})
-   ]);
-   const bankIds=rows.filter(x=>x.cuentaFinancieraId).map(x=>x.id);
-   const movements=bankIds.length?await tx.movimientoFinanciero.findMany({
-    where:{referenciaTipo:'GASTO_OPERATIVO',referenciaId:{in:bankIds}},
-    select:{id:true,referenciaId:true}}):[];
-   const reversalIds=movements.length?await tx.reversaFinanciera.findMany({
-    where:{movimientoOriginalId:{in:movements.map(m=>m.id)}},
-    select:{movimientoOriginalId:true,id:true}}):[];
-   const reversed=new Set(reversalIds.map(x=>x.movimientoOriginalId));
-   const sources=new Map(movements.map(m=>[m.referenciaId,m.id]));
-   return {data:rows.map(x=>({...x,monto:x.monto.toFixed(2),
-    estadoFinanciero:sources.has(x.id)&&reversed.has(sources.get(x.id)!)?'REVERSADO':'REGISTRADO'})),
+   const where:Prisma.GastoOperativoWhereInput={sucursalId:q.sucursalId};
+   if(q.origen==='CAJA')where.cuentaFinancieraId=null;
+   else if(q.origen==='CUENTA_FINANCIERA')where.cuentaFinancieraId={not:null};
+   if(q.categoria?.trim())where.categoria={contains:q.categoria.trim(),mode:'insensitive'};
+   if(q.desde||q.hasta)where.registradoEn={
+    ...(q.desde?{gte:new Date(q.desde+'T00:00:00.000Z')}:{}),
+    ...(q.hasta?{lte:new Date(q.hasta+'T23:59:59.999Z')}:{})};
+   if(!q.estado){
+    const [rows,total]=await Promise.all([
+     tx.gastoOperativo.findMany({where,orderBy:[{registradoEn:'desc'},{id:'desc'}],
+      skip:(q.page-1)*q.limit,take:q.limit}),
+     tx.gastoOperativo.count({where})
+    ]);
+    return {data:await this.withExpenseState(tx,rows),
+     meta:{page:q.page,limit:q.limit,total,totalPages:Math.ceil(total/q.limit)}};
+   }
+   // Reversal state is derived, not a column, so filtering by estado must resolve
+   // every candidate's state before pagination can be applied.
+   const candidates=await tx.gastoOperativo.findMany({where,orderBy:[{registradoEn:'desc'},{id:'desc'}]});
+   const withState=await this.withExpenseState(tx,candidates);
+   const matched=withState.filter(x=>x.estadoFinanciero===q.estado);
+   const total=matched.length;
+   const start=(q.page-1)*q.limit;
+   return {data:matched.slice(start,start+q.limit),
     meta:{page:q.page,limit:q.limit,total,totalPages:Math.ceil(total/q.limit)}};
   });
  }

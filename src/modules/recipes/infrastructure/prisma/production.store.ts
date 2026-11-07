@@ -268,15 +268,24 @@ export class ProductionStore{
  private fingerprint(u:Principal,d:ExecuteProductionDto){
   return createHash('sha256').update(JSON.stringify({...d,claveOperacion:undefined,usuarioId:u.id})).digest('hex');
  }
+ // Reverses the 'PRD:<usuarioId>:' namespace added in createTx() so the client sees the key it submitted.
+ private displayKey(stored:string,usuarioId:string){
+  const prefix='PRD:'+usuarioId+':';
+  return stored.startsWith(prefix)?stored.slice(prefix.length):stored;
+ }
  private async createTx(tx:Tx,u:Principal,d:ExecuteProductionDto){
   const qty=quantity(d.cantidadProducida);
   const dest=await this.engine.location(tx,d.ubicacionDestinoId);
   await this.engine.allowed(tx,u.id,'recipes.produce',dest.almacen.sucursalId);
-  const key=validCode(d.claveOperacion??'PROD:'+randomUUID());
+  const requested=validCode(d.claveOperacion??'PROD:'+randomUUID());
+  // Namespaced by actor so two different users can never collide on the same human-chosen key,
+  // matching the 'SUP:'/'CUS:'/'RSV:' convention used elsewhere. view() strips the prefix back
+  // off so clients still see the key they submitted.
+  const key='PRD:'+u.id+':'+requested;
   const hash=this.fingerprint(u,d);
   const existing=await tx.produccionLote.findUnique({where:{claveOperacion:key}});
   if(existing){
-   if(existing.solicitudHash!==hash||existing.usuarioId!==u.id)
+   if(existing.solicitudHash!==hash)
     throw new ConflictException('Clave de producción reutilizada con contenido diferente');
    return existing;
   }
@@ -376,7 +385,8 @@ export class ProductionStore{
   if(!permissions.includes('recipes.production.read')&&!permissions.includes('recipes.produce'))
    throw new ForbiddenException('No puede consultar esta producción');
   const canCost=(await this.identity.capabilities(u.id,branch)).includes('inventory.costs.read');
-  return {id:row.id,estado:row.estado,claveOperacion:row.claveOperacion,
+  return {id:row.id,estado:row.estado,
+   claveOperacion:row.claveOperacion?this.displayKey(row.claveOperacion,row.usuarioId):row.claveOperacion,
    recetaVersion:row.recetaVersion,ubicacionDestino:row.ubicacionDestino,
    articuloResultado:row.recetaVersion.receta.articuloResultado,
    cantidadProducida:money(row.cantidadProducida),loteResultado:row.loteResultado,
@@ -436,7 +446,11 @@ export class ProductionStore{
   if((since&&!Number.isFinite(since.getTime()))||(until&&!Number.isFinite(until.getTime()))||
    (since&&until&&since>=until))throw new BadRequestException('Rango de fechas inválido');
   const where:Prisma.ProduccionLoteWhereInput={ubicacionDestino:{almacen:{sucursalId:q.sucursalId}},
-   ...((since||until)?{creadoEn:{...(since?{gte:since}:{}),...(until?{lt:until}:{})}}:{})};
+   ...((since||until)?{creadoEn:{...(since?{gte:since}:{}),...(until?{lt:until}:{})}}:{}),
+   ...(q.estado?{estado:q.estado}:{}),
+   ...(q.search?{recetaVersion:{receta:{OR:[
+    {nombre:{contains:q.search,mode:'insensitive' as const}},
+    {articuloResultado:{nombre:{contains:q.search,mode:'insensitive' as const}}}]}}}:{})};
   const [rows,total]=await this.db.$transaction([
    this.db.produccionLote.findMany({where,include:{recetaVersion:{include:{receta:{include:{
     articuloResultado:{select:{id:true,codigo:true,nombre:true,unidadBase:{select:{id:true,codigo:true,nombre:true}}}}}}}},

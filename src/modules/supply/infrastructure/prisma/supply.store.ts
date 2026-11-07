@@ -36,15 +36,18 @@ export class SupplyStore{
  private async once<T extends Record<string,unknown>>(tx:Tx,u:Principal,key:string,
   name:string,payload:unknown,perform:()=>Promise<T>):Promise<T>{
   if(!/^[\w:.-]{6,120}$/.test(key))throw new BadRequestException('Clave de operación inválida');
+  // Namespaced by actor so two different users can never collide on the same raw key,
+  // matching the 'CUS:'/'RSV:' convention used by the customers/reservations modules.
+  const namespaced='SUP:'+u.id+':'+key;
   const digest=createHash('sha256').update(JSON.stringify({user:u.id,name,payload})).digest('hex');
-  const prior=await tx.operacionIdempotente.findUnique({where:{clave:key}});
+  const prior=await tx.operacionIdempotente.findUnique({where:{clave:namespaced}});
   if(prior){
    if(prior.operacion!==name||prior.hashSolicitud!==digest||!prior.finalizada||!prior.resultado)
     throw new ConflictException('Clave reutilizada con parámetros diferentes');
    return prior.resultado as T;
   }
   const result=await perform();
-  await tx.operacionIdempotente.create({data:{clave:key,operacion:name,hashSolicitud:digest,
+  await tx.operacionIdempotente.create({data:{clave:namespaced,operacion:name,hashSolicitud:digest,
    resultado:result as Prisma.InputJsonValue,finalizada:true,
    expiraEn:new Date(Date.now()+365*86400000)}});
   return result;
@@ -83,7 +86,9 @@ export class SupplyStore{
  async list(u:Principal,q:SupplyQueryDto){
   return this.engine.tx(async tx=>{
    await this.permission(tx,u,q.sucursalId,'supply.read');
-   const where={almacenDestino:{sucursalId:q.sucursalId}};
+   const where={almacenDestino:{sucursalId:q.sucursalId},
+    ...(q.estado?{estado:q.estado}:{}),
+    ...(q.search?{numero:{contains:q.search,mode:'insensitive' as const}}:{})};
    const [rows,total]=await Promise.all([
     tx.requisicion.findMany({where,include:reqInclude,orderBy:{creadaEn:'desc'},
      skip:(q.page-1)*q.limit,take:q.limit}),tx.requisicion.count({where})]);

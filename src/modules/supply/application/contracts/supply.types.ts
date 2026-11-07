@@ -1,5 +1,5 @@
 import type {PurchaseOrderDto} from '../../../purchases/presentation/http/dto/purchases.dto.js';
-export interface SupplyQueryDto {sucursalId:string;page:number;limit:number}
+export interface SupplyQueryDto {sucursalId:string;estado?:'ABIERTA'|'ATENDIDA'|'CANCELADA';search?:string;page:number;limit:number}
 export interface SupplyKeyDto {claveOperacion:string}
 export interface SupplyRequestLineDto {articuloId:string;cantidadSolicitada:string}
 export interface SupplyRequestDto extends SupplyKeyDto {

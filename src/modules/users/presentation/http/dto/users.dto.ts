@@ -21,7 +21,7 @@ export class AuditQueryDto extends PageDto {
 export class UserOptionDto {
  @IsOptional() @IsString() @MaxLength(100) search?:string;
  @IsOptional() @IsString() sucursalId?:string;
- @IsOptional() @IsIn(['orders.create','delivery.manage','cash.open','inventory.adjust']) purpose?:string;
+ @IsOptional() @IsIn(['orders.create','delivery.manage','delivery.courier','cash.open','inventory.adjust']) purpose?:string;
  @IsOptional() @IsString() cursor?:string;
  @IsOptional() @Type(()=>Number) @IsInt() @Min(1) @Max(50) limit=20;
 }

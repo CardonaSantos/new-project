@@ -1,9 +1,12 @@
 import {Type} from 'class-transformer';
 import {PurchaseOrderDto} from '../../../../purchases/presentation/http/dto/purchases.dto.js';
-import {ArrayMaxSize,ArrayMinSize,IsArray,IsBoolean,IsInt,IsOptional,IsString,Matches,Max,MaxLength,Min,MinLength,ValidateNested} from 'class-validator';
+import {ArrayMaxSize,ArrayMinSize,IsArray,IsBoolean,IsEnum,IsInt,IsOptional,IsString,Matches,Max,MaxLength,Min,MinLength,ValidateNested} from 'class-validator';
 const quantity=/^(?=.*[1-9])(?:0|[1-9]\d{0,13})(?:\.\d{1,6})?$/;
+const states=['ABIERTA','ATENDIDA','CANCELADA'] as const;
 export class SupplyQueryDto{
  @IsString() sucursalId!:string;
+ @IsOptional() @IsEnum(states) estado?:typeof states[number];
+ @IsOptional() @IsString() @MaxLength(60) search?:string;
  @IsOptional() @Type(()=>Number) @IsInt() @Min(1) page=1;
  @IsOptional() @Type(()=>Number) @IsInt() @Min(1) @Max(100) limit=20;
 }

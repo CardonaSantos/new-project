@@ -136,7 +136,10 @@ export class DeliveryStore extends DeliveryPort{
     throw new ForbiddenException('No puede consultar entregas');
    const where:Prisma.EntregaWhereInput={orden:{sucursalId:q.sucursalId},
     ...(q.estado?{estado:q.estado}:{}),
-    ...(manager?(q.repartidorId?{repartidorId:q.repartidorId}:{}):{repartidorId:u.id})};
+    ...(manager?(q.repartidorId?{repartidorId:q.repartidorId}:{}):{repartidorId:u.id}),
+    ...(q.search?{OR:[
+     {orden:{numero:{contains:q.search,mode:'insensitive' as const}}},
+     {direccionTexto:{contains:q.search,mode:'insensitive' as const}}]}:{})};
    const [rows,total]=await Promise.all([
     tx.entrega.findMany({where,include,orderBy:{id:'desc'},skip:(q.page-1)*q.limit,take:q.limit}),
     tx.entrega.count({where})

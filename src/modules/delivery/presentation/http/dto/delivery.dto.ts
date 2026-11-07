@@ -8,6 +8,7 @@ export class DeliveryListDto{
  @IsOptional() @IsEnum(['PENDIENTE','EN_REPARTO','ENTREGADA','CANCELADA'])
  estado?:'PENDIENTE'|'EN_REPARTO'|'ENTREGADA'|'CANCELADA';
  @IsOptional() @IsString() repartidorId?:string;
+ @IsOptional() @IsString() @MaxLength(60) search?:string;
 }
 export class DeliveryKeyDto{
  @IsString() @Matches(/^[A-Za-z0-9][A-Za-z0-9:_.-]{5,119}$/) claveOperacion!:string;

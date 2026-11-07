@@ -105,6 +105,7 @@ export class RecipeStore{
   const where:Prisma.RecetaWhereInput={
    ...(q.tipo?{tipo:q.tipo}:{}),...(q.varianteId?{varianteId:q.varianteId}:{}),
    ...(q.articuloResultadoId?{articuloResultadoId:q.articuloResultadoId}:{}),
+   ...(q.activa!==undefined?{activa:q.activa}:{}),
    ...(q.search?{nombre:{contains:q.search,mode:'insensitive'}}:{})};
   const page={orderBy:{nombre:'asc' as const},skip:(q.page-1)*q.limit,take:q.limit};
   if(q.vista==='RESUMEN'){
@@ -122,6 +123,7 @@ export class RecipeStore{
   const where:Prisma.RecetaWhereInput={
    ...(q.tipo?{tipo:q.tipo}:{}),...(q.varianteId?{varianteId:q.varianteId}:{}),
    ...(q.articuloResultadoId?{articuloResultadoId:q.articuloResultadoId}:{}),
+   ...(q.activa!==undefined?{activa:q.activa}:{}),
    ...(q.search?{nombre:{contains:q.search,mode:'insensitive'}}:{})};
   const [rows,total]=await this.db.$transaction([
    this.db.receta.findMany({where,include:summaryRecipe,orderBy:{nombre:'asc'},

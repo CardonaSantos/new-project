@@ -1,7 +1,8 @@
 import {ArrayMaxSize,ArrayMinSize,IsArray,IsBoolean,IsEnum,IsInt,IsOptional,IsString,Matches,Max,MaxLength,Min,ValidateNested} from 'class-validator';
-import {Type} from 'class-transformer';
+import {Type,Transform} from 'class-transformer';
 const qty=/^(?!0(?:\.0{1,6})?$)(?:0|[1-9]\d{0,13})(?:\.\d{1,6})?$/;
 const percent=/^(?:0|[1-9]\d{0,2})(?:\.\d{1,4})?$/;
+const bool=(v:unknown)=>v==='true'?true:v==='false'?false:v;
 export class ComponentDto{
  @IsString() articuloId!:string;
  @IsString() unidadId!:string;
@@ -33,6 +34,7 @@ export class ListRecipesDto{
  @IsOptional() @IsString() search?:string;
  @IsOptional() @IsString() varianteId?:string;
  @IsOptional() @IsString() articuloResultadoId?:string;
+ @IsOptional() @Transform(({value})=>bool(value)) @IsBoolean() activa?:boolean;
  @IsOptional() @IsInt() @Min(1) @Type(()=>Number) page=1;
  @IsOptional() @IsInt() @Min(1) @Max(100) @Type(()=>Number) limit=20;
 }
@@ -96,11 +98,14 @@ export class ExecuteProductionDto{
  @IsOptional() @IsString() @MaxLength(120) claveOperacion?:string;
  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) fechaVencimiento?:string;
 }
+const productionStates=['BORRADOR','CONFIRMADA','CANCELADA'] as const;
 export class ListProductionsDto{
  @IsString() sucursalId!:string;
  // Timestamps with offsets; hasta is exclusive. Filter createdEn on list and confirmadoEn in reports.
  @IsOptional() @IsString() @Matches(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/) fechaDesde?:string;
  @IsOptional() @IsString() @Matches(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/) fechaHasta?:string;
+ @IsOptional() @IsEnum(productionStates) estado?:typeof productionStates[number];
+ @IsOptional() @IsString() @MaxLength(60) search?:string;
  @IsOptional() @IsInt() @Min(1) @Type(()=>Number) page=1;
  @IsOptional() @IsInt() @Min(1) @Max(100) @Type(()=>Number) limit=20;
 }

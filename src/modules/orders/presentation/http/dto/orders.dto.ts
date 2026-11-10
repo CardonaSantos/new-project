@@ -30,6 +30,10 @@ export class CreateOrderDto{
  @IsOptional() @IsString() mesaId?:string;
  @IsOptional() @IsString() clienteId?:string;
  @IsOptional() @IsString() @MaxLength(500) observaciones?:string;
+ // Only read when modalidad==='DELIVERY'; createCoreTx chains the Entrega in the same transaction.
+ @IsOptional() @IsString() @MinLength(5) @MaxLength(500) direccionTexto?:string;
+ @IsOptional() @IsString() @MaxLength(500) referenciaDireccion?:string;
+ @IsOptional() @IsString() @MaxLength(45) telefonoContacto?:string;
  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(100) @ValidateNested({each:true})
  @Type(()=>OrderItemDto) lineas!:OrderItemDto[];
  @IsOptional() @IsBoolean() enviarCocina?:boolean;

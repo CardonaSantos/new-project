@@ -12,6 +12,7 @@ import {TableStore} from './table.store.js';
 import {PaymentsStore} from '../../../payments/infrastructure/prisma/payments.store.js';
 import {KitchenStore} from './kitchen.store.js';
 import {CustomerSelectionPort} from '../../../customers/application/ports/customers.port.js';
+import {DeliveryStore} from '../../../delivery/infrastructure/prisma/delivery.store.js';
 import type {CollectDto} from '../../../payments/presentation/http/dto/payments.dto.js';
 import type {QuoteOrderDto,CreateOrderDto,QuickCheckoutDto,AddItemsDto,OrderItemDto,EditLineDto,EditOrderDto,OrderListDto,ReasonDto,CancelOrderDto,SendDto} from '../../presentation/http/dto/orders.dto.js';
 import {requiresCancellationAuthorization,requireCancellationClassification} from '../../domain/cancellation.policy.js';
@@ -27,7 +28,7 @@ export class OrderStore{
  constructor(private readonly db:PrismaService,private readonly engine:InventoryPostingEngine,
   private readonly identity:IdentityRepository,private readonly tables:TableStore,
   private readonly kitchen:KitchenStore,private readonly payments:PaymentsStore,
-  private readonly customerSelection:CustomerSelectionPort){}
+  private readonly customerSelection:CustomerSelectionPort,private readonly delivery:DeliveryStore){}
  private async visible(u:Principal,branch:string){
   const caps=await this.identity.capabilities(u.id,branch);
   if(!['orders.read','orders.create','orders.manage'].some(x=>caps.includes(x)))
@@ -233,6 +234,10 @@ export class OrderStore{
  private async createCoreTx(tx:Tx,u:Principal,d:CreateOrderDto){
    if(d.modalidad==='MESA'&&!d.mesaId)throw new BadRequestException('Servicio MESA requiere mesaId');
    if(d.modalidad!=='MESA'&&d.mesaId)throw new BadRequestException('mesaId solo en modalidad MESA');
+   if(d.modalidad==='DELIVERY'&&!d.direccionTexto)
+    throw new BadRequestException('Servicio DELIVERY requiere direccionTexto');
+   if(d.modalidad!=='DELIVERY'&&(d.direccionTexto||d.referenciaDireccion||d.telefonoContacto))
+    throw new BadRequestException('Los datos de entrega solo aplican en modalidad DELIVERY');
    if(d.clienteId)await this.customerSelection.assertSelectableInTx(tx,u.id,d.sucursalId,d.clienteId);
    const occupant=d.mesaId?await this.tables.findOrOpen(tx,u,d.mesaId,d.sucursalId):null;
    const order=await tx.orden.create({data:{
@@ -244,6 +249,13 @@ export class OrderStore{
    await tx.cuenta.create({data:{ordenId:order.id,nombre:'Cuenta principal'}});
    for(const item of d.lineas)await this.insertLine(tx,order.id,await this.quote(tx,u,d.sucursalId,item));
    await this.recalc(tx,order.id);
+   // Chained Entrega creation: same transaction as the Orden, so a DELIVERY order never
+   // commits without its delivery, and a failed delivery check rolls back the whole order.
+   if(d.modalidad==='DELIVERY')await this.delivery.createForNewOrder(tx,u,
+    {id:order.id,sucursalId:order.sucursalId,clienteId:order.clienteId,
+     modalidad:order.modalidad,estado:order.estado,origen:order.origen},
+    {direccionTexto:d.direccionTexto,referenciaDireccion:d.referenciaDireccion,
+     telefonoContacto:d.telefonoContacto});
    const config=await tx.configuracionSucursal.findUnique({where:{sucursalId:d.sucursalId}});
    if((d.enviarCocina??true)&&!config?.exigeCobroAntesPreparar)
     await this.kitchen.sendTx(tx,u,order.id,'orders.create');

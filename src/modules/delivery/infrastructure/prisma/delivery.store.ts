@@ -191,6 +191,37 @@ export class DeliveryStore extends DeliveryPort{
    return {data};
   });
  }
+ /** Shared by the standalone POST /deliveries and the order-creation chaining path
+  * (OrderStore.createCoreTx, via createForNewOrder below). Caller already resolved
+  * `order` and checked the delivery.manage permission in its own transaction. */
+ private async createCore(tx:Tx,u:Principal,
+  order:{id:string;sucursalId:string;clienteId:string|null;modalidad:string;estado:string;origen:string},
+  d:{direccionId?:string;direccionTexto?:string;referenciaDireccion?:string|null;telefonoContacto?:string|null;
+   repartidorId?:string;canalExternoId?:string;referenciaExterna?:string|null}):Promise<{id:string}>{
+  if(order.modalidad!=='DELIVERY'||order.estado==='CANCELADA')
+   throw new ConflictException('Solo se acepta orden DELIVERY vigente');
+  if(await tx.entrega.findUnique({where:{ordenId:order.id},select:{id:true}}))
+   throw new ConflictException('La orden ya tiene una entrega');
+  const address=await this.address(tx,order.clienteId,d);
+  if(d.repartidorId)await this.courier(tx,d.repartidorId,order.sucursalId);
+  if(d.canalExternoId&&order.origen!=='PLATAFORMA')
+   throw new ConflictException('El canal externo requiere origen PLATAFORMA');
+  if(order.origen==='PLATAFORMA'&&!d.canalExternoId)
+   throw new BadRequestException('Origen PLATAFORMA requiere canalExternoId');
+  if(d.canalExternoId){
+   const channel=await tx.canalExterno.findUnique({where:{id:d.canalExternoId}});
+   if(!channel?.activo)throw new NotFoundException('Canal externo no disponible');
+  }
+  const created=await tx.entrega.create({data:{
+   ordenId:order.id,...address,repartidorId:d.repartidorId??null,
+   canalExternoId:d.canalExternoId??null,
+   referenciaExterna:optionalText(d.referenciaExterna)??null,
+   costoEnvio:new Prisma.Decimal(0),cobrableContraEntrega:new Prisma.Decimal(0)
+  }});
+  const row=await this.get(tx,created.id);
+  await this.event(tx,u,row,'DELIVERY_CREATED');
+  return {id:created.id};
+ }
  async create(u:Principal,d:DeliveryCreate){
   const result=await this.atomic(async tx=>{
    await tx.$queryRaw`SELECT "id" FROM "Orden" WHERE "id"=${d.ordenId} FOR SHARE`;
@@ -199,33 +230,19 @@ export class DeliveryStore extends DeliveryPort{
    if(!order)throw new NotFoundException('Orden inexistente');
    await this.requireManage(tx,u.id,order.sucursalId);
    await this.branch(tx,order.sucursalId);
-   return this.once(tx,u,'DELIVERY_CREATE',d.claveOperacion,d,async()=>{
-    if(order.modalidad!=='DELIVERY'||order.estado==='CANCELADA')
-     throw new ConflictException('Solo se acepta orden DELIVERY vigente');
-    if(await tx.entrega.findUnique({where:{ordenId:order.id},select:{id:true}}))
-     throw new ConflictException('La orden ya tiene una entrega');
-    const address=await this.address(tx,order.clienteId,d);
-    if(d.repartidorId)await this.courier(tx,d.repartidorId,order.sucursalId);
-    if(d.canalExternoId&&order.origen!=='PLATAFORMA')
-     throw new ConflictException('El canal externo requiere origen PLATAFORMA');
-    if(order.origen==='PLATAFORMA'&&!d.canalExternoId)
-     throw new BadRequestException('Origen PLATAFORMA requiere canalExternoId');
-    if(d.canalExternoId){
-     const channel=await tx.canalExterno.findUnique({where:{id:d.canalExternoId}});
-     if(!channel?.activo)throw new NotFoundException('Canal externo no disponible');
-    }
-    const created=await tx.entrega.create({data:{
-     ordenId:order.id,...address,repartidorId:d.repartidorId??null,
-     canalExternoId:d.canalExternoId??null,
-     referenciaExterna:optionalText(d.referenciaExterna)??null,
-     costoEnvio:new Prisma.Decimal(0),cobrableContraEntrega:new Prisma.Decimal(0)
-    }});
-    const row=await this.get(tx,created.id);
-    await this.event(tx,u,row,'DELIVERY_CREATED');
-    return {id:created.id};
-   });
+   return this.once(tx,u,'DELIVERY_CREATE',d.claveOperacion,d,()=>this.createCore(tx,u,order,d));
   });
   return this.detail(u,result.id);
+ }
+ /** Called from inside the OrderStore.createCoreTx transaction right after the Orden
+  * row is inserted, so a DELIVERY order and its Entrega are committed atomically or not
+  * at all. `order` is the just-created row (never CANCELADA, never already has an Entrega),
+  * so this only re-asserts permission and delegates to the same validations as create(). */
+ async createForNewOrder(tx:Tx,u:Principal,
+  order:{id:string;sucursalId:string;clienteId:string|null;modalidad:string;estado:string;origen:string},
+  d:{direccionTexto?:string;referenciaDireccion?:string;telefonoContacto?:string}):Promise<void>{
+  await this.requireManage(tx,u.id,order.sucursalId);
+  await this.createCore(tx,u,order,d);
  }
  async destination(u:Principal,id:string,d:DeliveryDestination){
   const result=await this.atomic(async tx=>{

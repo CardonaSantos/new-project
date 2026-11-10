@@ -21,6 +21,8 @@ import {DeliveryController} from './presentation/http/delivery.controller.js';
   SettlementCommon,CourierSettlementsStore,PlatformSettlementsStore,
   DeliverySettlementsStore,DeliverySettlementsService,
   {provide:DeliverySettlementsPort,useExisting:DeliverySettlementsStore}],
- exports:[DeliveryService,DeliveryPort,DeliverySettlementsService]
+ // DeliveryStore itself is exported so OrdersModule can chain Entrega creation inside
+ // its own Orden-creation transaction (see OrderStore.createCoreTx).
+ exports:[DeliveryService,DeliveryPort,DeliverySettlementsService,DeliveryStore]
 })
 export class DeliveryModule{}

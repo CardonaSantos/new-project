@@ -54,12 +54,18 @@ export class RealtimeGateway implements RealtimePort,OnGatewayConnection,OnGatew
   this.log.log('Conexión '+client.id+' se unió a sucursal:'+sucursalId);
  }
 
- /** Fire-and-forget: a missing/disconnected server must never fail the caller's transaction. */
+ /** Fire-and-forget: a missing/disconnected server must never fail the caller's transaction.
+  * The diagnostic room-size read below is wrapped on its own so a failure there can never
+  * block the real emit (it previously did: server.sockets.adapter is undefined on a namespaced
+  * server — the adapter lives directly at server.adapter — so the typo threw before the emit
+  * below ever ran, silently dropping every event). */
  emit(sucursalId:string,event:string,payload:Record<string,unknown>):void{
+  const room='sucursal:'+sucursalId;
   try{
-   const room='sucursal:'+sucursalId;
-   const size=this.server?.sockets.adapter.rooms.get(room)?.size??0;
+   const size=this.server?.adapter.rooms.get(room)?.size??0;
    this.log.log('Emitiendo '+event+' a '+room+' ('+size+' cliente(s) conectado(s))');
+  }catch(e){this.log.warn('No se pudo leer el tamaño de '+room+': '+(e as Error).message)}
+  try{
    this.server?.to(room).emit(event,payload);
   }catch(e){this.log.warn('No se pudo emitir '+event+': '+(e as Error).message)}
  }

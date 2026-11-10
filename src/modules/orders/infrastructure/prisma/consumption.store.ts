@@ -6,6 +6,7 @@ import {InventoryPostingEngine} from '../../../inventory/infrastructure/prisma/i
 import {ProductionStore} from '../../../recipes/infrastructure/prisma/production.store.js';
 import type {OrderModifierComponent} from '../../../recipes/infrastructure/prisma/production.store.js';
 import {localDate} from '../../../inventory/domain/stock.policy.js';
+import {money} from '../../../recipes/domain/recipe.policy.js';
 import {sha} from '../../domain/order.policy.js';
 import type {Tx} from './order-shared.js';
 
@@ -91,9 +92,20 @@ export class ConsumptionStore{
   }
   const planned=await this.recipes.planForOrder(tx,versionId,quantity,locationId,
    modifiers,modality,components);
-  if(planned.short.length)throw new ConflictException({
-   message:'Ingredientes insuficientes o no utilizables',insuficientes:planned.short
-  });
+  if(planned.short.length){
+   // Resolve readable names/units so Cocina can show "falta Café en grano: tienes 5, necesitas 10"
+   // instead of a bare articuloId. Mirrors the naming done in ProductionStore.preview/planned.
+   const articles=await tx.articuloInventario.findMany({
+    where:{id:{in:planned.short.map(x=>x.articuloId)}},
+    select:{id:true,codigo:true,nombre:true,unidadBase:{select:{id:true,codigo:true,nombre:true}}}});
+   const articleNames=new Map(articles.map(x=>[x.id,x]));
+   throw new ConflictException({
+    message:'Ingredientes insuficientes o no utilizables',
+    insuficientes:planned.short.map(x=>({...x,
+     articulo:articleNames.get(x.articuloId)??null,
+     faltante:money(Prisma.Decimal.max(0,new Prisma.Decimal(x.requerido).minus(x.disponible)))}))
+   });
+  }
   const doc=await tx.consumoOrden.create({data:{
    ordenId:orderId,ordenLineaId:orderLineId,comandaLineaId:ticketLineId,
    tipo:'RECETA',recetaVersionId:versionId,cantidadPreparada:quantity,

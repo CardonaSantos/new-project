@@ -5,6 +5,7 @@ import {CustomersModule} from '../customers/customers.module.js';
 import {PrismaModule} from '../../infrastructure/database/prisma/prisma.module.js';
 import {InventoryModule} from '../inventory/inventory.module.js';
 import {RecipesModule} from '../recipes/recipes.module.js';
+import {DeliveryModule} from '../delivery/delivery.module.js';
 import {OrderStore} from './infrastructure/prisma/order.store.js';
 import {KitchenStore} from './infrastructure/prisma/kitchen.store.js';
 import {ConsumptionStore} from './infrastructure/prisma/consumption.store.js';
@@ -17,7 +18,7 @@ import {KitchenService} from './application/kitchen.service.js';
 import {TablePort} from './application/ports/table.port.js';
 import {TableService} from './application/table.service.js';
 @Module({
- imports:[PrismaModule,AuthModule,InventoryModule,RecipesModule,PaymentsModule,CustomersModule],
+ imports:[PrismaModule,AuthModule,InventoryModule,RecipesModule,PaymentsModule,CustomersModule,DeliveryModule],
  controllers:[OrdersController,KitchenController,TablesController,PosController],
  providers:[OrderStore,KitchenStore,TableStore,ConsumptionStore,
   OrderService,

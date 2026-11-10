@@ -7,12 +7,13 @@ import {InventoryPostingEngine} from '../../../inventory/infrastructure/prisma/i
 import {decimal,distinct,qty} from '../../domain/order.policy.js';
 import {audit,outbox,runOnce,ticketInclude,type Tx} from './order-shared.js';
 import {ConsumptionStore} from './consumption.store.js';
+import {RealtimeGateway} from '../../../realtime/realtime.gateway.js';
 import type {RouteDto,RouteUpdateDto,KitchenChangesDto,StartLineDto,StationDto,StationUpdateDto,TicketListDto,KitchenQueueDto} from '../../presentation/http/dto/orders.dto.js';
 type Perm='orders.create'|'orders.manage';
 @Injectable()
 export class KitchenStore{
  constructor(private readonly db:PrismaService,private readonly engine:InventoryPostingEngine,
-  private readonly consumption:ConsumptionStore){}
+  private readonly consumption:ConsumptionStore,private readonly realtime:RealtimeGateway){}
  async stations(u:Principal,branch:string){
   return this.engine.tx(async tx=>{
    await this.engine.allowed(tx,u.id,'kitchen.read',branch);
@@ -335,15 +336,20 @@ export class KitchenStore{
   return ticket.id;
  }
  async start(u:Principal,id:string){
-  const result=await this.engine.tx(tx=>this.startTx(tx,u,id));
-  return this.detail(u,result);
+  const result=await this.engine.tx(async tx=>{
+   const ticketId=await this.startTx(tx,u,id);
+   return {ticketId,branch:(await this.ticket(tx,ticketId)).orden.sucursalId};
+  });
+  this.realtime.emit(result.branch,'KITCHEN_TICKET_UPDATED',{comandaId:result.ticketId});
+  return this.detail(u,result.ticketId);
  }
  async startLine(u:Principal,id:string,d:StartLineDto){
   const result=await this.engine.tx(tx=>runOnce(tx,u,d.claveOperacion,'KITCHEN_LINE_START',
    {id,cantidad:d.cantidad??null},async()=>{
     const ticketId=await this.startLineTx(tx,u,id,d.cantidad?decimal(d.cantidad):undefined);
-    return {ticketId};
+    return {ticketId,branch:(await this.ticket(tx,ticketId)).orden.sucursalId};
    }));
+  this.realtime.emit(result.branch,'KITCHEN_TICKET_UPDATED',{comandaId:result.ticketId});
   return this.detail(u,result.ticketId);
  }
  private async readyLineTx(tx:Tx,u:Principal,id:string){
@@ -370,20 +376,25 @@ export class KitchenStore{
   return row.comandaId;
  }
  async readyLine(u:Principal,id:string){
-  const ticket=await this.engine.tx(tx=>this.readyLineTx(tx,u,id));
-  return this.detail(u,ticket);
+  const result=await this.engine.tx(async tx=>{
+   const ticketId=await this.readyLineTx(tx,u,id);
+   return {ticketId,branch:(await this.ticket(tx,ticketId)).orden.sucursalId};
+  });
+  this.realtime.emit(result.branch,'KITCHEN_TICKET_UPDATED',{comandaId:result.ticketId});
+  return this.detail(u,result.ticketId);
  }
  async ready(u:Principal,id:string){
-  const ticket=await this.engine.tx(async tx=>{
+  const result=await this.engine.tx(async tx=>{
    const row=await this.ticket(tx,id);
    if(row.estado==='CANCELADA')throw new ConflictException('Comanda cancelada');
    await this.engine.allowed(tx,u.id,'kitchen.manage',row.orden.sucursalId);
    await this.startTx(tx,u,id);
    for(const line of row.comandaLineasComoComanda)
     if(!line.canceladaEn&&!line.listaEn)await this.readyLineTx(tx,u,line.id);
-   return id;
+   return {ticketId:id,branch:row.orden.sucursalId};
   });
-  return this.detail(u,ticket);
+  this.realtime.emit(result.branch,'KITCHEN_TICKET_UPDATED',{comandaId:result.ticketId});
+  return this.detail(u,result.ticketId);
  }
  private async deliverLineTx(tx:Tx,u:Principal,id:string){
   const row=await tx.comandaLinea.findUnique({where:{id},
@@ -405,8 +416,12 @@ export class KitchenStore{
   return row.comandaId;
  }
  async deliver(u:Principal,id:string){
-  const ticket=await this.engine.tx(tx=>this.deliverLineTx(tx,u,id));
-  return this.detail(u,ticket);
+  const result=await this.engine.tx(async tx=>{
+   const ticketId=await this.deliverLineTx(tx,u,id);
+   return {ticketId,branch:(await this.ticket(tx,ticketId)).orden.sucursalId};
+  });
+  this.realtime.emit(result.branch,'KITCHEN_TICKET_UPDATED',{comandaId:result.ticketId});
+  return this.detail(u,result.ticketId);
  }
  /** One serializable transaction: prepare, mark ready, and register real handoff. */
  async readyDeliver(u:Principal,id:string,d:{claveOperacion:string}){
@@ -424,9 +439,10 @@ export class KitchenStore{
       if(!line.canceladaEn&&!line.listaEn)await this.readyLineTx(tx,u,line.id);
      for(const line of current.comandaLineasComoComanda)
       if(!line.canceladaEn)await this.deliverLineTx(tx,u,line.id);
-     return {ticketId:id};
+     return {ticketId:id,branch:ticket.orden.sucursalId};
     });
   });
+  this.realtime.emit(result.branch,'KITCHEN_TICKET_UPDATED',{comandaId:result.ticketId});
   return this.detail(u,result.ticketId);
  }
  /** Individual handoff for partial service: do not deliver unrelated lines. */
@@ -440,9 +456,10 @@ export class KitchenStore{
     {lineId:id},async()=>{
      await this.readyLineTx(tx,u,id);
      const ticketId=await this.deliverLineTx(tx,u,id);
-     return {ticketId};
+     return {ticketId,branch:line.comanda.orden.sucursalId};
     });
   });
+  this.realtime.emit(result.branch,'KITCHEN_TICKET_UPDATED',{comandaId:result.ticketId});
   return this.detail(u,result.ticketId);
  }
 }

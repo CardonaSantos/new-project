@@ -2,7 +2,8 @@ import type {Principal} from '../../../auth/application/auth.service.js';
 import type {DeliveryState} from '../../domain/delivery.policy.js';
 
 export type DeliveryQuery={
- sucursalId:string;page:number;limit:number;estado?:DeliveryState;repartidorId?:string;search?:string
+ sucursalId:string;page:number;limit:number;estado?:DeliveryState;repartidorId?:string;
+ ordenId?:string;search?:string
 };
 export type DeliveryCreate={
  ordenId:string;claveOperacion:string;direccionId?:string;

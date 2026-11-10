@@ -34,6 +34,7 @@ export class CreateOrderDto{
  @IsOptional() @IsString() @MinLength(5) @MaxLength(500) direccionTexto?:string;
  @IsOptional() @IsString() @MaxLength(500) referenciaDireccion?:string;
  @IsOptional() @IsString() @MaxLength(45) telefonoContacto?:string;
+ @IsOptional() @IsString() repartidorId?:string;
  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(100) @ValidateNested({each:true})
  @Type(()=>OrderItemDto) lineas!:OrderItemDto[];
  @IsOptional() @IsBoolean() enviarCocina?:boolean;

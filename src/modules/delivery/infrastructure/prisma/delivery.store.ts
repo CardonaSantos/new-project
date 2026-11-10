@@ -136,6 +136,7 @@ export class DeliveryStore extends DeliveryPort{
     throw new ForbiddenException('No puede consultar entregas');
    const where:Prisma.EntregaWhereInput={orden:{sucursalId:q.sucursalId},
     ...(q.estado?{estado:q.estado}:{}),
+    ...(q.ordenId?{ordenId:q.ordenId}:{}),
     ...(manager?(q.repartidorId?{repartidorId:q.repartidorId}:{}):{repartidorId:u.id}),
     ...(q.search?{OR:[
      {orden:{numero:{contains:q.search,mode:'insensitive' as const}}},
@@ -240,7 +241,7 @@ export class DeliveryStore extends DeliveryPort{
   * so this only re-asserts permission and delegates to the same validations as create(). */
  async createForNewOrder(tx:Tx,u:Principal,
   order:{id:string;sucursalId:string;clienteId:string|null;modalidad:string;estado:string;origen:string},
-  d:{direccionTexto?:string;referenciaDireccion?:string;telefonoContacto?:string}):Promise<void>{
+  d:{direccionTexto?:string;referenciaDireccion?:string;telefonoContacto?:string;repartidorId?:string}):Promise<void>{
   await this.requireManage(tx,u.id,order.sucursalId);
   await this.createCore(tx,u,order,d);
  }

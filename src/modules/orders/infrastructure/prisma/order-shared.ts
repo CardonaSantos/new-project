@@ -11,12 +11,14 @@ export const orderInclude={
    cantidadPreparada:true,listaEn:true,entregadaEn:true,canceladaEn:true}}}},
  cuentasComoOrden:{include:{cuentaLineasComoCuenta:true}},
  ocupacionMesa:{include:{mesa:{include:{sala:true}}}},
- comandasComoOrden:{select:{id:true,numero:true,estado:true,estacionId:true,enviadaEn:true}}
+ comandasComoOrden:{select:{id:true,numero:true,estado:true,estacionId:true,enviadaEn:true}},
+ cliente:{select:{id:true,nombre:true,telefono:true}}
 } as const;
 export const ticketInclude={
  estacion:{select:{id:true,nombre:true,ubicacionConsumoId:true}},
  orden:{select:{id:true,numero:true,modalidad:true,estado:true,observaciones:true,
-  ocupacionMesa:{select:{mesa:{select:{numero:true}}}}}},
+  ocupacionMesa:{select:{mesa:{select:{numero:true}}}},
+  cliente:{select:{id:true,nombre:true}}}},
  comandaLineasComoComanda:{include:{
   ordenLinea:{include:{ordenLineaModificadoresComoOrdenLinea:true,
    variante:{select:{id:true,nombre:true,producto:{select:{nombre:true,tipo:true}}}}}}

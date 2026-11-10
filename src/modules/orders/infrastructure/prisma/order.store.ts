@@ -162,7 +162,8 @@ export class OrderStore{
     ...(q.search?{numero:{contains:q.search,mode:'insensitive'}}:{})};
    const [data,total]=await Promise.all([
     tx.orden.findMany({where,select:{id:true,numero:true,modalidad:true,origen:true,
-     estado:true,version:true,total:true,abiertaEn:true,ocupacionMesaId:true},
+     estado:true,version:true,total:true,abiertaEn:true,ocupacionMesaId:true,
+     clienteId:true,cliente:{select:{id:true,nombre:true}}},
      orderBy:{abiertaEn:'desc'},skip:(q.page-1)*q.limit,take:q.limit}),
     tx.orden.count({where})]);
    return {data,meta:{page:q.page,limit:q.limit,total,totalPages:Math.ceil(total/q.limit)}};
@@ -206,7 +207,8 @@ export class OrderStore{
      cuentasComoOrden:{select:{id:true,total:true,pagado:true,estado:true}},
      ordenLineasComoOrden:{select:{id:true,cantidad:true,cantidadEnviada:true,canceladaEn:true}},
      comandasComoOrden:{select:{id:true,estado:true,comandaLineasComoComanda:{
-      select:{canceladaEn:true,entregadaEn:true}}}}
+      select:{canceladaEn:true,entregadaEn:true}}}},
+     cliente:{select:{id:true,nombre:true}}
     },orderBy:[{abiertaEn:'desc'},{id:'desc'}],skip:(q.page-1)*q.limit,take:q.limit}),
     tx.orden.count({where})
    ]);
@@ -222,6 +224,7 @@ export class OrderStore{
     return {id:order.id,numero:order.numero,modalidad:order.modalidad,
      estado:order.estado,version:order.version,abiertaEn:order.abiertaEn,
      ocupacionMesaId:order.ocupacionMesaId,mesa:order.ocupacionMesa?.mesa??null,
+     cliente:order.cliente?{id:order.cliente.id,nombre:order.cliente.nombre}:null,
      total:order.total.toFixed(2),pagado:pagado.toFixed(2),
      saldo:Prisma.Decimal.max(0,order.total.minus(pagado)).toFixed(2),
      needsProcessing,kitchen:{pending,preparing,toDeliver}};

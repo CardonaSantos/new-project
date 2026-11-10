@@ -32,7 +32,8 @@ export class TableStore{
    const rows=await tx.mesa.findMany({where:{sala:{sucursalId}},
     include:{sala:{select:{id:true,nombre:true}},ocupacionMesasComoMesa:{
      where:{cerradaEn:null},include:{ordenesComoOcupacionMesa:{
-      select:{id:true,numero:true,estado:true,total:true,cerradaEn:true}}}}},orderBy:{numero:'asc'}});
+      select:{id:true,numero:true,estado:true,total:true,cerradaEn:true,
+       clienteId:true,cliente:{select:{id:true,nombre:true}}}}}}},orderBy:{numero:'asc'}});
    return rows.map(x=>({id:x.id,numero:x.numero,capacidad:x.capacidad,activa:x.activa,
     sala:x.sala,ocupacion:x.ocupacionMesasComoMesa[0]??null}));
   });

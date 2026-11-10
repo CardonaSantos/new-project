@@ -208,6 +208,12 @@ export class KitchenStore{
    await tx.eventoComanda.create({data:{comandaId:ticket.id,usuarioId:u.id,accion:'ENVIADA'}});
    await outbox(tx,'KITCHEN_TICKET_CREATED','Comanda',ticket.id,order.sucursalId,{
     ordenId:order.id,estacionId:station.id});
+   // sendTx runs inside the caller's own transaction (order.store.ts), not one of its own, so
+   // unlike the post-commit emits elsewhere in this file this fires before the outer tx commits.
+   // That's fine here: the socket carries no business payload, only a "refetch now" hint (see
+   // RealtimeGateway's docstring), so on the rare rollback a client just does one wasted refetch
+   // and finds nothing new — never a false "ticket exists" state.
+   this.realtime.emit(order.sucursalId,'KITCHEN_TICKET_CREATED',{comandaId:ticket.id});
   }
   await tx.orden.update({where:{id:order.id},data:{version:{increment:1}}});
   await audit(tx,u,'ORDER_SENT','Orden',order.id,order.sucursalId,{

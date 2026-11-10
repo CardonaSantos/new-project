@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
+import type { Socket } from 'socket.io';
 import {
   AuthService,
   type Principal,
@@ -22,6 +23,18 @@ export class AuthenticationGuard implements CanActivate {
     const targets = [context.getHandler(), context.getClass()];
     if (this.reflector.getAllAndOverride<boolean>('auth:isPublic', targets))
       return true;
+    // This guard is registered globally (APP_GUARD), so it also runs for every WS
+    // @SubscribeMessage — there is no HTTP request to read a bearer token from there.
+    // A gateway authenticates once at the socket handshake (see
+    // RealtimeGateway.handleConnection) and stashes the result on client.data.auth;
+    // per-message checks here just read that back instead of re-parsing headers.
+    if (context.getType() === 'ws') {
+      const client = context
+        .switchToWs()
+        .getClient<Socket & { data: { auth?: Principal } }>();
+      if (!client.data?.auth) throw new UnauthorizedException('Token requerido');
+      return true;
+    }
     const req = context
       .switchToHttp()
       .getRequest<Request & { auth?: Principal }>();

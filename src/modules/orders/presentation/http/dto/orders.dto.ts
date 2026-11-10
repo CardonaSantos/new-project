@@ -79,6 +79,7 @@ export class OrderListDto{
  @IsOptional() @IsEnum(['ABIERTA','CERRADA','CANCELADA']) estado?:'ABIERTA'|'CERRADA'|'CANCELADA';
  @IsOptional() @IsEnum(['MESA','MOSTRADOR','PARA_LLEVAR','DELIVERY']) modalidad?:'MESA'|'MOSTRADOR'|'PARA_LLEVAR'|'DELIVERY';
  @IsOptional() @IsString() search?:string;
+ @IsOptional() @IsString() clienteId?:string;
  @IsOptional() @IsInt() @Type(()=>Number) @Min(1) page=1;
  @IsOptional() @IsInt() @Type(()=>Number) @Min(1) @Max(100) limit=20;
 }

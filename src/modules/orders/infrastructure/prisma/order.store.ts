@@ -159,7 +159,8 @@ export class OrderStore{
    await this.engine.allowed(tx,u.id,'orders.read',q.sucursalId);
    const where:Prisma.OrdenWhereInput={sucursalId:q.sucursalId,
     ...(q.estado?{estado:q.estado}:{}),...(q.modalidad?{modalidad:q.modalidad}:{}),
-    ...(q.search?{numero:{contains:q.search,mode:'insensitive'}}:{})};
+    ...(q.search?{numero:{contains:q.search,mode:'insensitive'}}:{}),
+    ...(q.clienteId?{clienteId:q.clienteId}:{})};
    const [data,total]=await Promise.all([
     tx.orden.findMany({where,select:{id:true,numero:true,modalidad:true,origen:true,
      estado:true,version:true,total:true,abiertaEn:true,ocupacionMesaId:true,

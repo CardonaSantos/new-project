@@ -1,6 +1,6 @@
 import {Injectable,Logger} from '@nestjs/common';
 import {
- ConnectedSocket,MessageBody,OnGatewayConnection,OnGatewayDisconnect,
+ ConnectedSocket,MessageBody,OnGatewayDisconnect,OnGatewayInit,
  SubscribeMessage,WebSocketGateway,WebSocketServer,
 } from '@nestjs/websockets';
 import type {Namespace,Socket} from 'socket.io';
@@ -24,7 +24,7 @@ import {RealtimePort} from '../../application/ports/realtime.port.js';
  */
 @WebSocketGateway({cors:{origin:true,credentials:true},namespace:'/realtime'})
 @Injectable()
-export class RealtimeGateway implements RealtimePort,OnGatewayConnection,OnGatewayDisconnect{
+export class RealtimeGateway implements RealtimePort,OnGatewayInit,OnGatewayDisconnect{
  private readonly log=new Logger(RealtimeGateway.name);
  // Typed as Namespace, not Server: the "namespace" option above means Nest binds this field to
  // server.of('/realtime') at runtime, not the top-level Server. That distinction matters for
@@ -33,18 +33,29 @@ export class RealtimeGateway implements RealtimePort,OnGatewayConnection,OnGatew
  @WebSocketServer() private server!:Namespace;
  constructor(private readonly auth:AuthService){}
 
- /** Authenticates once per connection; AuthenticationGuard reads the result back from
-  * client.data.auth for every @SubscribeMessage instead of re-parsing a bearer header. */
- async handleConnection(client:Socket&{data:{auth?:Principal}}):Promise<void>{
-  const token=String(client.handshake.auth?.['token']??'');
-  if(!token){this.log.log('Conexión '+client.id+' rechazada: sin token');client.disconnect(true);return}
-  try{
-   client.data.auth=await this.auth.authenticate(token);
-   this.log.log('Conexión '+client.id+' autenticada (usuario '+client.data.auth.id+')');
-  }catch(e){
-   this.log.log('Conexión '+client.id+' rechazada: token inválido ('+(e as Error).message+')');
-   client.disconnect(true);
-  }
+ /** Authenticates during the handshake itself, as namespace middleware — NOT in handleConnection.
+  * Socket.IO starts dispatching a client's own messages (join:sucursal, in our case) as soon as
+  * the transport connects, which can race an async handleConnection() callback: the client's
+  * first message could reach @SubscribeMessage before client.data.auth was ever set, so the
+  * AuthenticationGuard's WS branch silently rejects it — no "se unió a sucursal" log, no visible
+  * error either side, room always stays at 0 clients. Middleware registered via server.use(...)
+  * always finishes (calls next()) before the socket is considered connected or any message is
+  * delivered, which removes that race entirely. */
+ afterInit(server:Namespace):void{
+  server.use((client:Socket&{data:{auth?:Principal}},next:(err?:Error)=>void)=>{
+   void(async()=>{
+    const token=String(client.handshake.auth?.['token']??'');
+    if(!token){this.log.log('Conexión '+client.id+' rechazada: sin token');next(new Error('Token requerido'));return}
+    try{
+     client.data.auth=await this.auth.authenticate(token);
+     this.log.log('Conexión '+client.id+' autenticada (usuario '+client.data.auth.id+')');
+     next();
+    }catch(e){
+     this.log.log('Conexión '+client.id+' rechazada: token inválido ('+(e as Error).message+')');
+     next(new Error('Token inválido'));
+    }
+   })();
+  });
  }
 
  handleDisconnect(client:Socket):void{this.log.log('Conexión '+client.id+' cerrada')}

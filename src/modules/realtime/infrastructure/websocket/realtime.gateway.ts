@@ -33,15 +33,17 @@ export class RealtimeGateway implements RealtimePort,OnGatewayConnection,OnGatew
   * client.data.auth for every @SubscribeMessage instead of re-parsing a bearer header. */
  async handleConnection(client:Socket&{data:{auth?:Principal}}):Promise<void>{
   const token=String(client.handshake.auth?.['token']??'');
-  if(!token){client.disconnect(true);return}
+  if(!token){this.log.log('Conexión '+client.id+' rechazada: sin token');client.disconnect(true);return}
   try{
    client.data.auth=await this.auth.authenticate(token);
-  }catch{
+   this.log.log('Conexión '+client.id+' autenticada (usuario '+client.data.auth.id+')');
+  }catch(e){
+   this.log.log('Conexión '+client.id+' rechazada: token inválido ('+(e as Error).message+')');
    client.disconnect(true);
   }
  }
 
- handleDisconnect(_client:Socket):void{}
+ handleDisconnect(client:Socket):void{this.log.log('Conexión '+client.id+' cerrada')}
 
  /** A client only ever needs events for its current active sucursal. */
  @SubscribeMessage('join:sucursal')
@@ -49,11 +51,16 @@ export class RealtimeGateway implements RealtimePort,OnGatewayConnection,OnGatew
   if(typeof sucursalId!=='string'||!sucursalId)return;
   for(const room of client.rooms)if(room.startsWith('sucursal:'))client.leave(room);
   client.join('sucursal:'+sucursalId);
+  this.log.log('Conexión '+client.id+' se unió a sucursal:'+sucursalId);
  }
 
  /** Fire-and-forget: a missing/disconnected server must never fail the caller's transaction. */
  emit(sucursalId:string,event:string,payload:Record<string,unknown>):void{
-  try{this.server?.to('sucursal:'+sucursalId).emit(event,payload)}
-  catch(e){this.log.warn('No se pudo emitir '+event+': '+(e as Error).message)}
+  try{
+   const room='sucursal:'+sucursalId;
+   const size=this.server?.sockets.adapter.rooms.get(room)?.size??0;
+   this.log.log('Emitiendo '+event+' a '+room+' ('+size+' cliente(s) conectado(s))');
+   this.server?.to(room).emit(event,payload);
+  }catch(e){this.log.warn('No se pudo emitir '+event+': '+(e as Error).message)}
  }
 }

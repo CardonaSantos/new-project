@@ -3,7 +3,7 @@ import {
  ConnectedSocket,MessageBody,OnGatewayConnection,OnGatewayDisconnect,
  SubscribeMessage,WebSocketGateway,WebSocketServer,
 } from '@nestjs/websockets';
-import type {Server,Socket} from 'socket.io';
+import type {Namespace,Socket} from 'socket.io';
 import {AuthService,type Principal} from '../../../auth/application/auth.service.js';
 import {RealtimePort} from '../../application/ports/realtime.port.js';
 
@@ -26,7 +26,11 @@ import {RealtimePort} from '../../application/ports/realtime.port.js';
 @Injectable()
 export class RealtimeGateway implements RealtimePort,OnGatewayConnection,OnGatewayDisconnect{
  private readonly log=new Logger(RealtimeGateway.name);
- @WebSocketServer() private server!:Server;
+ // Typed as Namespace, not Server: the "namespace" option above means Nest binds this field to
+ // server.of('/realtime') at runtime, not the top-level Server. That distinction matters for
+ // typing .adapter below — on Server it's the adapter-swap method (io.adapter(CustomAdapter)),
+ // on Namespace it's the actual connected Adapter instance with .rooms.
+ @WebSocketServer() private server!:Namespace;
  constructor(private readonly auth:AuthService){}
 
  /** Authenticates once per connection; AuthenticationGuard reads the result back from

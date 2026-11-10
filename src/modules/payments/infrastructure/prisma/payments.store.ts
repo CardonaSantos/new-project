@@ -332,7 +332,8 @@ export class PaymentsStore{
   return txSerializable(this.db,async tx=>{
    const sale=await tx.venta.findUnique({where:{id},
     include:{ventaLineasComoVenta:true,cuenta:{include:{orden:{select:{
-     id:true,numero:true,modalidad:true,estado:true}}}}}});
+     id:true,numero:true,modalidad:true,estado:true,
+     cliente:{select:{id:true,nombre:true}}}}}}}});
    if(!sale)throw new NotFoundException('Venta inexistente');
    await allowed(tx,u,sale.sucursalId,'sales.read');
    return sale;
@@ -383,7 +384,8 @@ export class PaymentsStore{
     tx.venta.findMany({where,orderBy:[{cerradaEn:'desc'},{id:'desc'}],
      skip:(q.page-1)*q.limit,take:q.limit,
      include:{ventaLineasComoVenta:true,cuenta:{include:{orden:{select:{
-      id:true,numero:true,modalidad:true,estado:true}}}}}}),
+      id:true,numero:true,modalidad:true,estado:true,
+      cliente:{select:{id:true,nombre:true}}}}}}}}),
     tx.venta.count({where})]);
    return {data,meta:{page:q.page,limit:q.limit,total,totalPages:Math.ceil(total/q.limit)}};
   });

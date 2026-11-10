@@ -55,6 +55,7 @@ describe('Workflow data reads use server-side scope, pagination and counts',()=>
     modalidad:'MESA',version:2,abiertaEn:new Date('2026-11-05T09:00:00Z'),
     ocupacionMesaId:'occupancy',ocupacionMesa:{mesa:{id:'table',
      numero:'3',sala:{nombre:'Principal'}}},
+    cliente:{id:'customer-1',nombre:'Cardona Santos'},
     total:money('24'),cuentasComoOrden:[{id:'a1',total:money('24'),
      pagado:money('4'),estado:'ABIERTA'}],
     ordenLineasComoOrden:[{id:'l1',cantidad:money('2'),
@@ -77,7 +78,8 @@ describe('Workflow data reads use server-side scope, pagination and counts',()=>
   expect(result.meta).toEqual({page:1,limit:10,total:21,totalPages:3});
   expect(result.data[0]).toMatchObject({numero:'ORD-1',total:'24.00',
    pagado:'4.00',saldo:'20.00',needsProcessing:true,
-   kitchen:{pending:0,preparing:1,toDeliver:1},mesa:{numero:'3'}});
+   kitchen:{pending:0,preparing:1,toDeliver:1},mesa:{numero:'3'},
+   cliente:{id:'customer-1',nombre:'Cardona Santos'}});
   expect(tx.orden.findMany).toHaveBeenCalledOnce();
   expect(tx.orden.count).toHaveBeenCalledOnce();
   expect(engine.allowed).toHaveBeenCalledWith(tx,'waiter','orders.read','b1');

@@ -7,13 +7,13 @@ import {InventoryPostingEngine} from '../../../inventory/infrastructure/prisma/i
 import {decimal,distinct,qty} from '../../domain/order.policy.js';
 import {audit,outbox,runOnce,ticketInclude,type Tx} from './order-shared.js';
 import {ConsumptionStore} from './consumption.store.js';
-import {RealtimeGateway} from '../../../realtime/realtime.gateway.js';
+import {RealtimePort} from '../../../realtime/application/ports/realtime.port.js';
 import type {RouteDto,RouteUpdateDto,KitchenChangesDto,StartLineDto,StationDto,StationUpdateDto,TicketListDto,KitchenQueueDto} from '../../presentation/http/dto/orders.dto.js';
 type Perm='orders.create'|'orders.manage';
 @Injectable()
 export class KitchenStore{
  constructor(private readonly db:PrismaService,private readonly engine:InventoryPostingEngine,
-  private readonly consumption:ConsumptionStore,private readonly realtime:RealtimeGateway){}
+  private readonly consumption:ConsumptionStore,private readonly realtime:RealtimePort){}
  async stations(u:Principal,branch:string){
   return this.engine.tx(async tx=>{
    await this.engine.allowed(tx,u.id,'kitchen.read',branch);

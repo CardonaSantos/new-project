@@ -4,7 +4,8 @@ import {
  SubscribeMessage,WebSocketGateway,WebSocketServer,
 } from '@nestjs/websockets';
 import type {Server,Socket} from 'socket.io';
-import {AuthService} from '../auth/application/auth.service.js';
+import {AuthService,type Principal} from '../../../auth/application/auth.service.js';
+import {RealtimePort} from '../../application/ports/realtime.port.js';
 
 /**
  * Push layer over the existing EventoOutbox (see order-shared.ts). Clients still fetch state from
@@ -15,19 +16,26 @@ import {AuthService} from '../auth/application/auth.service.js';
  * CORS is intentionally permissive here (unlike the HTTP server's CORS_ORIGINS allowlist): the
  * handshake below requires a valid access token on every connection, so the real access boundary
  * is authentication, not origin. Tighten this later with an explicit allowlist if needed.
+ *
+ * Single-process only: Socket.IO's default in-memory adapter only reaches clients connected to
+ * THIS Node process. If the backend ever runs as more than one instance, add Socket.IO's Redis
+ * adapter (@socket.io/redis-adapter) at bootstrap so `emit` fans out across instances — nothing
+ * here on the application side needs to change, since callers only know about RealtimePort.
  */
 @WebSocketGateway({cors:{origin:true,credentials:true},namespace:'/realtime'})
 @Injectable()
-export class RealtimeGateway implements OnGatewayConnection,OnGatewayDisconnect{
+export class RealtimeGateway implements RealtimePort,OnGatewayConnection,OnGatewayDisconnect{
  private readonly log=new Logger(RealtimeGateway.name);
  @WebSocketServer() private server!:Server;
  constructor(private readonly auth:AuthService){}
 
- async handleConnection(client:Socket):Promise<void>{
+ /** Authenticates once per connection; AuthenticationGuard reads the result back from
+  * client.data.auth for every @SubscribeMessage instead of re-parsing a bearer header. */
+ async handleConnection(client:Socket&{data:{auth?:Principal}}):Promise<void>{
   const token=String(client.handshake.auth?.['token']??'');
   if(!token){client.disconnect(true);return}
   try{
-   await this.auth.authenticate(token);
+   client.data.auth=await this.auth.authenticate(token);
   }catch{
    client.disconnect(true);
   }

@@ -85,11 +85,16 @@ export class PrismaUsersRepository extends UsersRepositoryPort {
   return {data:rows.map(UsersMapper.user),total};
  }
  async options(f:{search?:string;sucursalId:string|null;purpose?:string;cursor?:string;limit:number}){
-  const roleWhere:Prisma.RolWhereInput={
-   activo:true,
-   ...(!f.sucursalId?{alcance:'GLOBAL' as const}:{}),
-   ...(f.purpose?{rolPermisosComoRol:{some:{permiso:{codigo:f.purpose}}}}:{})
-  };
+  const permissionWhere:Prisma.RolWhereInput=
+   f.purpose?{rolPermisosComoRol:{some:{permiso:{codigo:f.purpose}}}}:{};
+  const globalRoleWhere:Prisma.RolWhereInput={activo:true,alcance:'GLOBAL',...permissionWhere};
+  // A GLOBAL-scope role is always assigned with sucursalId:null, so it never matches an
+  // exact-branch filter below; without this OR, global-scoped staff (e.g. a courier role
+  // granted org-wide) silently disappear from every branch-scoped picker.
+  const assignmentWhere:Prisma.UsuarioRolWhereInput=f.sucursalId?{OR:[
+   {sucursalId:f.sucursalId,rol:{activo:true,...permissionWhere}},
+   {sucursalId:null,rol:globalRoleWhere}
+  ]}:{sucursalId:null,rol:globalRoleWhere};
   const where:Prisma.UsuarioWhereInput={
    activo:true,
    ...(f.cursor?{id:{gt:f.cursor}}:{}),
@@ -98,7 +103,7 @@ export class PrismaUsersRepository extends UsersRepositoryPort {
     {email:{contains:f.search,mode:'insensitive'}},
     {perfil:{is:{apellidos:{contains:f.search,mode:'insensitive'}}}}
    ]}:{}),
-   usuarioRolesComoUsuario:{some:{sucursalId:f.sucursalId,rol:roleWhere}}
+   usuarioRolesComoUsuario:{some:assignmentWhere}
   };
   const rows=await this.db.usuario.findMany({
    where,include:userInclude,orderBy:{id:'asc'},take:f.limit+1

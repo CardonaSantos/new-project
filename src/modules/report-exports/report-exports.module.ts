@@ -16,6 +16,11 @@ import {SalesReportService} from './application/sales-report.service.js';
 import {SalesReportPort} from './application/ports/sales-report.port.js';
 import {SalesReportStore} from './infrastructure/prisma/sales-report.store.js';
 import {SalesReportExportService} from './application/sales-report-export.service.js';
+import {CustomerReportController} from './presentation/http/customer-report.controller.js';
+import {CustomerReportService} from './application/customer-report.service.js';
+import {CustomerReportPort} from './application/ports/customer-report.port.js';
+import {CustomerReportStore} from './infrastructure/prisma/customer-report.store.js';
+import {CustomerReportExportService} from './application/customer-report-export.service.js';
 
 /**
  * Printable/exportable reports: the 15 raw record sources browsable in-app
@@ -32,7 +37,8 @@ import {SalesReportExportService} from './application/sales-report-export.servic
  */
 @Module({
  imports:[PrismaModule],
- controllers:[DomainReportsController,ReportExportController,DailyReportController,SalesReportController],
+ controllers:[DomainReportsController,ReportExportController,DailyReportController,
+  SalesReportController,CustomerReportController],
  providers:[DomainReportsStore,DomainReportsService,
   {provide:DomainReportsPort,useExisting:DomainReportsStore},
   ReportExportService,
@@ -41,8 +47,11 @@ import {SalesReportExportService} from './application/sales-report-export.servic
   DailyReportExportService,
   SalesReportStore,SalesReportService,
   {provide:SalesReportPort,useExisting:SalesReportStore},
-  SalesReportExportService],
+  SalesReportExportService,
+  CustomerReportStore,CustomerReportService,
+  {provide:CustomerReportPort,useExisting:CustomerReportStore},
+  CustomerReportExportService],
  exports:[DomainReportsService,DomainReportsPort,DailyReportService,DailyReportPort,
-  SalesReportService,SalesReportPort]
+  SalesReportService,SalesReportPort,CustomerReportService,CustomerReportPort]
 })
 export class ReportExportsModule{}

@@ -2,12 +2,17 @@ import {Body,Controller,Get,Header,Param,Patch,Post,Query} from '@nestjs/common'
 import {CurrentUser} from '../../../auth/presentation/http/decorators/auth.decorators.js';
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {ReservationsService} from '../../application/reservations.service.js';
-import {AvailabilityDto,ReservationCreateDto,ReservationListDto,ReservationUpdateDto,ReservationReasonDto} from './dto/reservations.dto.js';
+import {AvailabilityDto,ReservationCreateDto,ReservationListDto,ReservationUpdateDto,ReservationReasonDto,ReminderListDto,ReminderActionDto} from './dto/reservations.dto.js';
 @Controller('reservations')
 export class ReservationsController{
  constructor(private readonly reservations:ReservationsService){}
  @Get('availability') @Header('Cache-Control','no-store')
  availability(@CurrentUser() u:Principal,@Query() q:AvailabilityDto){return this.reservations.availability(u,q);}
+ // Static 'reminders' segment must be declared before the ':id' routes below,
+ // or Nest would try to match it as a reservation id.
+ @Get('reminders') @Header('Cache-Control','no-store')
+ reminders(@CurrentUser() u:Principal,@Query() q:ReminderListDto){return this.reservations.reminders(u,q);}
+ @Patch('reminders/:id') reminderAction(@CurrentUser() u:Principal,@Param('id') id:string,@Body() d:ReminderActionDto){return this.reservations.reminderAction(u,id,d);}
  @Get() @Header('Cache-Control','no-store')
  list(@CurrentUser() u:Principal,@Query() q:ReservationListDto){return this.reservations.list(u,q);}
  @Post() create(@CurrentUser() u:Principal,@Body() d:ReservationCreateDto){return this.reservations.create(u,d);}

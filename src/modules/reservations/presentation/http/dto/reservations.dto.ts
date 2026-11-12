@@ -47,3 +47,15 @@ export class ReservationUpdateDto{
 export class ReservationReasonDto{
  @IsString() @MinLength(5) @MaxLength(500) motivo!:string;
 }
+const reminderStates=['PENDIENTE','ENVIADO','FALLIDO','CANCELADO'] as const;
+export class ReminderListDto{
+ @IsString() @MinLength(1) sucursalId!:string;
+ @IsOptional() @IsEnum(reminderStates) estado?:typeof reminderStates[number];
+ @IsOptional() @IsISO8601({strict:true}) @Matches(timezone) desde?:string;
+ @IsOptional() @IsISO8601({strict:true}) @Matches(timezone) hasta?:string;
+}
+export class ReminderActionDto{
+ // Internal checklist only: marking ENVIADO just means "staff contacted the
+ // customer", not that an SMS/email provider actually sent anything.
+ @IsEnum(['ENVIADO','CANCELADO']) estado!:'ENVIADO'|'CANCELADO';
+}

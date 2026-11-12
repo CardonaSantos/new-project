@@ -1,7 +1,7 @@
 import {Injectable} from '@nestjs/common';
 import type {Principal} from '../../auth/application/auth.service.js';
 import {ReservationsPort} from './ports/reservations.port.js';
-import type {AvailabilityDto,ReservationCreateDto,ReservationListDto,ReservationUpdateDto,ReservationReasonDto} from '../presentation/http/dto/reservations.dto.js';
+import type {AvailabilityDto,ReservationCreateDto,ReservationListDto,ReservationUpdateDto,ReservationReasonDto,ReminderListDto,ReminderActionDto} from '../presentation/http/dto/reservations.dto.js';
 @Injectable()
 export class ReservationsService{
  constructor(private readonly port:ReservationsPort){}
@@ -14,4 +14,6 @@ export class ReservationsService{
  cancel(u:Principal,id:string,d:ReservationReasonDto){return this.port.cancel(u,id,d);}
  noShow(u:Principal,id:string,d:ReservationReasonDto){return this.port.noShow(u,id,d);}
  checkIn(u:Principal,id:string){return this.port.checkIn(u,id);}
+ reminders(u:Principal,q:ReminderListDto){return this.port.reminders(u,q);}
+ reminderAction(u:Principal,id:string,d:ReminderActionDto){return this.port.reminderAction(u,id,d);}
 }

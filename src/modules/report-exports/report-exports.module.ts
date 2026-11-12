@@ -11,6 +11,11 @@ import {DailyReportService} from './application/daily-report.service.js';
 import {DailyReportPort} from './application/ports/daily-report.port.js';
 import {DailyReportStore} from './infrastructure/prisma/daily-report.store.js';
 import {DailyReportExportService} from './application/daily-report-export.service.js';
+import {SalesReportController} from './presentation/http/sales-report.controller.js';
+import {SalesReportService} from './application/sales-report.service.js';
+import {SalesReportPort} from './application/ports/sales-report.port.js';
+import {SalesReportStore} from './infrastructure/prisma/sales-report.store.js';
+import {SalesReportExportService} from './application/sales-report-export.service.js';
 
 /**
  * Printable/exportable reports: the 15 raw record sources browsable in-app
@@ -27,13 +32,17 @@ import {DailyReportExportService} from './application/daily-report-export.servic
  */
 @Module({
  imports:[PrismaModule],
- controllers:[DomainReportsController,ReportExportController,DailyReportController],
+ controllers:[DomainReportsController,ReportExportController,DailyReportController,SalesReportController],
  providers:[DomainReportsStore,DomainReportsService,
   {provide:DomainReportsPort,useExisting:DomainReportsStore},
   ReportExportService,
   DailyReportStore,DailyReportService,
   {provide:DailyReportPort,useExisting:DailyReportStore},
-  DailyReportExportService],
- exports:[DomainReportsService,DomainReportsPort,DailyReportService,DailyReportPort]
+  DailyReportExportService,
+  SalesReportStore,SalesReportService,
+  {provide:SalesReportPort,useExisting:SalesReportStore},
+  SalesReportExportService],
+ exports:[DomainReportsService,DomainReportsPort,DailyReportService,DailyReportPort,
+  SalesReportService,SalesReportPort]
 })
 export class ReportExportsModule{}

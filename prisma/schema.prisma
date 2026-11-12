@@ -1455,6 +1455,9 @@ model OcupacionMesa {
   mesa         Mesa      @relation("OcupacionMesa_mesa_Mesa", fields: [mesaId], references: [id], onDelete: Restrict)
   reservaId    String?
   reserva      Reserva?  @relation("OcupacionMesa_reserva_Reserva", fields: [reservaId], references: [id], onDelete: SetNull)
+  // Optional headcount for this walk-in occupation (Mesa.capacidad and Reserva.personas
+  // already existed; this was the one gap — how many people actually sat at the table).
+  personas     Int?
   abiertaEn    DateTime  @default(now()) @db.Timestamptz(3)
   cerradaEn    DateTime? @db.Timestamptz(3)
   abiertaPorId String

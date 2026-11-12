@@ -242,8 +242,10 @@ export class OrderStore{
     throw new BadRequestException('Servicio DELIVERY requiere direccionTexto');
    if(d.modalidad!=='DELIVERY'&&(d.direccionTexto||d.referenciaDireccion||d.telefonoContacto))
     throw new BadRequestException('Los datos de entrega solo aplican en modalidad DELIVERY');
+   if(d.modalidad!=='MESA'&&d.personas)
+    throw new BadRequestException('personas solo aplica en modalidad MESA');
    if(d.clienteId)await this.customerSelection.assertSelectableInTx(tx,u.id,d.sucursalId,d.clienteId);
-   const occupant=d.mesaId?await this.tables.findOrOpen(tx,u,d.mesaId,d.sucursalId):null;
+   const occupant=d.mesaId?await this.tables.findOrOpen(tx,u,d.mesaId,d.sucursalId,d.personas):null;
    const order=await tx.orden.create({data:{
     sucursalId:d.sucursalId,numero:'ORD-'+randomUUID().slice(0,12),
     modalidad:d.modalidad,origen:d.origen??'CAJA',usuarioId:u.id,

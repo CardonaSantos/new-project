@@ -28,6 +28,9 @@ export class CreateOrderDto{
  @IsOptional() @IsEnum(['CAJA','MESERO','QUIOSCO','QR','WEB','TELEFONO','PLATAFORMA'])
  origen?:'CAJA'|'MESERO'|'QUIOSCO'|'QR'|'WEB'|'TELEFONO'|'PLATAFORMA';
  @IsOptional() @IsString() mesaId?:string;
+ // Only read when modalidad==='MESA' and mesaId opens a new occupation; ignored if
+ // the table is already occupied (its headcount, once set, isn't silently overwritten).
+ @IsOptional() @IsInt() @Min(1) @Max(100) personas?:number;
  @IsOptional() @IsString() clienteId?:string;
  @IsOptional() @IsString() @MaxLength(500) observaciones?:string;
  // Only read when modalidad==='DELIVERY'; createCoreTx chains the Entrega in the same transaction.

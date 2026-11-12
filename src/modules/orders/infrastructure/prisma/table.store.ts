@@ -51,7 +51,7 @@ export class TableStore{
    return row;
   });
  }
- async findOrOpen(tx:Tx,u:Principal,mesaId:string,branch:string){
+ async findOrOpen(tx:Tx,u:Principal,mesaId:string,branch:string,personas?:number){
   const table=await tx.mesa.findUnique({where:{id:mesaId},include:{sala:true}});
   if(!table||!table.activa||!table.sala.activa||table.sala.sucursalId!==branch)
    throw new ConflictException('Mesa inactiva o ajena a sucursal');
@@ -64,7 +64,8 @@ export class TableStore{
    estado:{in:['PENDIENTE','CONFIRMADA']},inicio:{lte:now},fin:{gt:now}
   }},select:{reservaId:true}});
   if(reserved)throw new ConflictException('Mesa reservada en este horario; registre llegada de la reserva');
-  const created=await tx.ocupacionMesa.create({data:{mesaId,abiertaPorId:u.id}});
+  const created=await tx.ocupacionMesa.create({data:{mesaId,abiertaPorId:u.id,
+   ...(personas?{personas}:{})}});
   await audit(tx,u,'TABLE_OCCUPIED','OcupacionMesa',created.id,branch,{mesaId});
   await outbox(tx,'TABLE_OCCUPIED','Mesa',mesaId,branch,{ocupacionId:created.id});
   return created;

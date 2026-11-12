@@ -19,6 +19,7 @@ import {DeliveryModule} from './modules/delivery/delivery.module.js';
 import {ReservationsModule} from './modules/reservations/reservations.module.js';
 import {ReportsModule} from './modules/reports/reports.module.js';
 import {ReportExportsModule} from './modules/report-exports/report-exports.module.js';
+import {SelfServiceModule} from './modules/self-service/self-service.module.js';
 @Module({
  imports:[
   ConfigModule.forRoot({isGlobal:true,cache:true,validate:validateEnvironment}),
@@ -39,6 +40,7 @@ import {ReportExportsModule} from './modules/report-exports/report-exports.modul
   ReservationsModule,
   ReportsModule,
   ReportExportsModule,
+  SelfServiceModule,
   CoreModule,
  ],
 })

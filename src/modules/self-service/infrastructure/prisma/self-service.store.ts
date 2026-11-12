@@ -19,6 +19,17 @@ const SESSION_TTL_MS=3*60*60*1000;
  * NOT NULL, so every self-service order needs a real attributable Usuario. */
 const SERVICE_ACCOUNT_EMAIL='autoservicio@sistema.interno';
 
+/** Narrow shape read from CatalogService.branchMenu's output (declared Promise<unknown>
+ * on CatalogRepositoryPort; see catalog-menu.store.ts#branchMenu + catalog-media.service.ts#enrich
+ * for the full raw projection this is read from). Only the fields menu() below extracts. */
+interface RawBranchMenu{sucursalId:string;menus:Array<{id:string;nombre:string;descripcion:string|null;
+ secciones:Array<{id:string;nombre:string;orden:number;items:Array<{id:string;precio:string;moneda:string;
+  variante:{id:string;nombre:string;imagenPrincipalUrl:string|null;
+   producto:{nombre:string;descripcion:string|null;imagenPrincipalUrl:string|null}};
+  gruposModificadores:Array<{grupoId:string;grupo:string;orden:number;minimo:number;maximo:number;
+   opciones:Array<{id:string;nombre:string;recargo:string}>}>;
+ }>}>}>}
+
 @Injectable()
 export class SelfServiceStore extends SelfServicePort{
  private serviceActorId:string|null=null;
@@ -102,7 +113,24 @@ export class SelfServiceStore extends SelfServicePort{
  }
 
  async menu(s:SelfServiceSession){
-  return this.catalog.branchMenu(await this.serviceActor(),s.sucursalId);
+  // CatalogService.branchMenu is built for staff/POS and returns the raw
+  // projection (Prisma relations, articuloInventario, etc.) — never pass that
+  // through to an unauthenticated customer. Reshape to only what's needed to
+  // render and order: name, price, image, modifier choices.
+  const raw=await this.catalog.branchMenu(await this.serviceActor(),s.sucursalId) as RawBranchMenu;
+  return {sucursalId:raw.sucursalId,menus:raw.menus.map(m=>({
+   id:m.id,nombre:m.nombre,descripcion:m.descripcion,
+   secciones:m.secciones.map(sec=>({id:sec.id,nombre:sec.nombre,orden:sec.orden,
+    items:sec.items.map(item=>{
+     const v=item.variante,p=v.producto;
+     return {id:item.id,varianteId:v.id,
+      nombre:v.nombre&&v.nombre!=='Única'?`${p.nombre} — ${v.nombre}`:p.nombre,
+      descripcion:p.descripcion,precio:item.precio,moneda:item.moneda,
+      imagenUrl:v.imagenPrincipalUrl??p.imagenPrincipalUrl??null,
+      gruposModificadores:item.gruposModificadores.map(g=>({grupoId:g.grupoId,grupo:g.grupo,
+       orden:g.orden,minimo:g.minimo,maximo:g.maximo,
+       opciones:g.opciones.map(o=>({id:o.id,nombre:o.nombre,recargo:o.recargo}))}))};
+    })}))}))};
  }
  async cart(s:SelfServiceSession){
   if(!s.ordenId)return {ordenId:null,orden:null};

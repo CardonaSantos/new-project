@@ -40,3 +40,20 @@ export interface SelfServiceItemInput{
  modificadores?:Array<{modificadorId:string}>;
  notasCocina?:string;
 }
+
+/** Public, customer-safe projection of a branch's published menu — reshaped in
+ * SelfServiceStore.menu() from CatalogService.branchMenu's staff/POS-oriented
+ * raw output, which must never reach an unauthenticated client as-is. */
+export interface SelfServiceMenuModifierOption{id:string;nombre:string;recargo:string}
+export interface SelfServiceMenuModifierGroup{
+ grupoId:string;grupo:string;orden:number;minimo:number;maximo:number;
+ opciones:SelfServiceMenuModifierOption[];
+}
+export interface SelfServiceMenuItem{
+ id:string;varianteId:string;nombre:string;descripcion:string|null;
+ precio:string;moneda:string;imagenUrl:string|null;
+ gruposModificadores:SelfServiceMenuModifierGroup[];
+}
+export interface SelfServiceMenuSection{id:string;nombre:string;orden:number;items:SelfServiceMenuItem[]}
+export interface SelfServiceMenuCard{id:string;nombre:string;descripcion:string|null;secciones:SelfServiceMenuSection[]}
+export interface SelfServiceMenuResponse{sucursalId:string;menus:SelfServiceMenuCard[]}

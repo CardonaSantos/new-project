@@ -1,5 +1,5 @@
 import type {Principal} from '../../../auth/application/auth.service.js';
-import type {SelfServiceAccess,SelfServiceItemInput,SelfServiceSession,
+import type {SelfServiceAccess,SelfServiceItemInput,SelfServiceMenuResponse,SelfServiceSession,
  TableQrIssued,TableQrSummary} from '../contracts/self-service.types.js';
 
 export abstract class SelfServicePort{
@@ -9,7 +9,7 @@ export abstract class SelfServicePort{
  abstract revokeTableQr(u:Principal,id:string):Promise<void>;
  // Customer-facing.
  abstract access(token:string):Promise<SelfServiceAccess>;
- abstract menu(s:SelfServiceSession):Promise<unknown>;
+ abstract menu(s:SelfServiceSession):Promise<SelfServiceMenuResponse>;
  abstract cart(s:SelfServiceSession):Promise<unknown>;
  abstract addItems(s:SelfServiceSession,items:SelfServiceItemInput[]):Promise<{session:SelfServiceSession;orden:unknown}>;
  abstract send(s:SelfServiceSession):Promise<unknown>;

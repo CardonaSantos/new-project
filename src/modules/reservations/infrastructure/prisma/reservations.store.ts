@@ -4,7 +4,7 @@ import {Prisma} from '../../../../generated/prisma/client.js';
 import {PrismaService} from '../../../../infrastructure/database/prisma/prisma.service.js';
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {ReservationsPort} from '../../application/ports/reservations.port.js';
-import type {AvailabilityDto,ReservationCreateDto,ReservationListDto,ReservationUpdateDto,ReservationReasonDto} from '../../presentation/http/dto/reservations.dto.js';
+import type {AvailabilityDto,ReservationCreateDto,ReservationListDto,ReservationUpdateDto,ReservationReasonDto,ReminderListDto,ReminderActionDto} from '../../presentation/http/dto/reservations.dto.js';
 import {checkInWindow,noShowWindow,requireEditable,servicePhase,validateCapacity,validateWindow} from '../../domain/reservation.policy.js';
 
 type Tx=Prisma.TransactionClient;
@@ -133,6 +133,25 @@ export class ReservationsStore extends ReservationsPort{
   await tx.eventoOutbox.create({data:{tipo:action,agregado:'Reserva',agregadoId:id,
    payload:{sucursalId:branch,estadoAccion:action} as Prisma.InputJsonValue}});
  }
+ // Reminders are an internal "remember to call/confirm" checklist only — no SMS/email
+ // provider is wired up. A pending reminder is just a RecordatorioReserva row the staff
+ // marks ENVIADO (contacted) or CANCELADO by hand from the reminders list.
+ private readonly reminderLeadMs=2*60*60000;
+ private async scheduleReminder(tx:Tx,reservaId:string,nombreContacto:string,personas:number,
+  telefono:string|null,email:string|null,inicio:Date){
+  const destino=telefono||email;
+  if(!destino)return;
+  const programadoPara=new Date(inicio.getTime()-this.reminderLeadMs);
+  if(programadoPara.getTime()<=Date.now())return;
+  const canal=telefono?'WHATSAPP':'EMAIL';
+  await tx.recordatorioReserva.create({data:{reservaId,canal,destino,
+   textoSnapshot:`Confirmar reserva de ${nombreContacto} (${personas} personas)`,
+   programadoPara}});
+ }
+ private async cancelPendingReminders(tx:Tx,reservaId:string){
+  await tx.recordatorioReserva.updateMany({where:{reservaId,estado:'PENDIENTE'},
+   data:{estado:'CANCELADO'}});
+ }
  private async row(tx:Tx,id:string){
   const data=await tx.reserva.findUnique({where:{id}});
   if(!data)throw new NotFoundException('Reservación inexistente');
@@ -241,6 +260,7 @@ export class ReservationsStore extends ReservationsPort{
     reservaMesasComoReserva:{create:tableIds.map(mesaId=>({mesaId}))}
    }});
    await this.event(tx,u,r.id,d.sucursalId,'RESERVATION_CREATED');
+   await this.scheduleReminder(tx,r.id,r.nombreContacto,r.personas,r.telefonoContacto,r.emailContacto,inicio);
    await tx.operacionIdempotente.create({data:{clave:operation,operacion:'RESERVATION_CREATE',
     hashSolicitud:digest,resultado:{id:r.id},finalizada:true,expiraEn:new Date(Date.now()+90*86400000)}});
    return r.id;
@@ -283,6 +303,16 @@ export class ReservationsStore extends ReservationsPort{
    ];
    await this.event(tx,u,id,r.sucursalId,'RESERVATION_UPDATED',
     fields.length?'Campos actualizados: '+fields.join(', '):'Sin cambios de contenido');
+   // Any change that could invalidate a pending reminder's timing or contact info
+   // cancels it and schedules a fresh one from the up-to-date data.
+   if(d.inicio!==undefined||d.telefonoContacto!==undefined||d.emailContacto!==undefined||d.personas!==undefined){
+    await this.cancelPendingReminders(tx,id);
+    await this.scheduleReminder(tx,id,
+     d.nombreContacto!==undefined?d.nombreContacto.trim():r.nombreContacto,persons,
+     d.telefonoContacto!==undefined?(d.telefonoContacto?.trim()||null):r.telefonoContacto,
+     d.emailContacto!==undefined?(d.emailContacto?.trim()||null):r.emailContacto,
+     window.inicio);
+   }
   });
   return this.detail(u,id);
  }
@@ -305,6 +335,7 @@ export class ReservationsStore extends ReservationsPort{
    requireEditable(r.estado);
    await tx.reserva.update({where:{id},data:{estado:'CANCELADA'}});
    await this.event(tx,u,id,r.sucursalId,'RESERVATION_CANCELLED',d.motivo.trim());
+   await this.cancelPendingReminders(tx,id);
   });
   return this.detail(u,id);
  }
@@ -317,6 +348,7 @@ export class ReservationsStore extends ReservationsPort{
    noShowWindow(r.inicio);
    await tx.reserva.update({where:{id},data:{estado:'NO_ASISTIO'}});
    await this.event(tx,u,id,r.sucursalId,'RESERVATION_NO_SHOW',d.motivo.trim());
+   await this.cancelPendingReminders(tx,id);
   });
   return this.detail(u,id);
  }
@@ -342,11 +374,48 @@ export class ReservationsStore extends ReservationsPort{
    }))});
    await tx.reserva.update({where:{id},data:{estado:'COMPLETADA'}});
    await this.event(tx,u,id,r.sucursalId,'RESERVATION_CHECKED_IN');
+   // Customer already arrived; any pending "remember to confirm" reminder is moot.
+   await this.cancelPendingReminders(tx,id);
    for(const mesaId of ids){
     await tx.eventoOutbox.create({data:{tipo:'TABLE_OCCUPIED',agregado:'Mesa',agregadoId:mesaId,
      payload:{sucursalId:r.sucursalId,reservaId:id} as Prisma.InputJsonValue}});
    }
   });
   return this.detail(u,id);
+ }
+ async reminders(u:Principal,q:ReminderListDto){
+  return this.tx(async tx=>{
+   await this.authorize(tx,u,q.sucursalId);
+   await this.branch(tx,q.sucursalId);
+   const where:Prisma.RecordatorioReservaWhereInput={
+    reserva:{sucursalId:q.sucursalId},
+    estado:q.estado??'PENDIENTE',
+    ...((q.desde||q.hasta)?{programadoPara:{
+     ...(q.desde?{gte:new Date(q.desde)}:{}),
+     ...(q.hasta?{lte:new Date(q.hasta)}:{})
+    }}:{})
+   };
+   const rows=await tx.recordatorioReserva.findMany({where,orderBy:[{programadoPara:'asc'},{id:'asc'}],
+    include:{reserva:{select:{id:true,nombreContacto:true,telefonoContacto:true,emailContacto:true,
+     personas:true,inicio:true,fin:true,estado:true}}}});
+   return rows.map(x=>({id:x.id,reservaId:x.reservaId,canal:x.canal,destino:x.destino,
+    textoSnapshot:x.textoSnapshot,programadoPara:x.programadoPara,estado:x.estado,
+    enviadoEn:x.enviadoEn,reserva:x.reserva}));
+  });
+ }
+ async reminderAction(u:Principal,id:string,d:ReminderActionDto){
+  return this.tx(async tx=>{
+   const rem=await tx.recordatorioReserva.findUnique({where:{id},
+    select:{id:true,estado:true,enviadoEn:true,reservaId:true,reserva:{select:{sucursalId:true}}}});
+   if(!rem)throw new NotFoundException('Recordatorio inexistente');
+   await this.authorize(tx,u,rem.reserva.sucursalId,true);
+   if(rem.estado!=='PENDIENTE')return {id:rem.id,estado:rem.estado,enviadoEn:rem.enviadoEn};
+   const updated=await tx.recordatorioReserva.update({where:{id},data:{
+    estado:d.estado,...(d.estado==='ENVIADO'?{enviadoEn:new Date()}:{})
+   }});
+   await tx.eventoAuditoria.create({data:{usuarioId:u.id,sucursalId:rem.reserva.sucursalId,
+    accion:'RESERVATION_REMINDER_'+d.estado,entidad:'RecordatorioReserva',entidadId:id}});
+   return {id:updated.id,estado:updated.estado,enviadoEn:updated.enviadoEn};
+  });
  }
 }

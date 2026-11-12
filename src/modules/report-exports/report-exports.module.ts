@@ -26,6 +26,11 @@ import {InventoryReportService} from './application/inventory-report.service.js'
 import {InventoryReportPort} from './application/ports/inventory-report.port.js';
 import {InventoryReportStore} from './infrastructure/prisma/inventory-report.store.js';
 import {InventoryReportExportService} from './application/inventory-report-export.service.js';
+import {CashSessionReportController} from './presentation/http/cash-session-report.controller.js';
+import {CashSessionReportService} from './application/cash-session-report.service.js';
+import {CashSessionReportPort} from './application/ports/cash-session-report.port.js';
+import {CashSessionReportStore} from './infrastructure/prisma/cash-session-report.store.js';
+import {CashSessionReportExportService} from './application/cash-session-report-export.service.js';
 
 /**
  * Printable/exportable reports: the 15 raw record sources browsable in-app
@@ -43,7 +48,8 @@ import {InventoryReportExportService} from './application/inventory-report-expor
 @Module({
  imports:[PrismaModule],
  controllers:[DomainReportsController,ReportExportController,DailyReportController,
-  SalesReportController,CustomerReportController,InventoryReportController],
+  SalesReportController,CustomerReportController,InventoryReportController,
+  CashSessionReportController],
  providers:[DomainReportsStore,DomainReportsService,
   {provide:DomainReportsPort,useExisting:DomainReportsStore},
   ReportExportService,
@@ -58,9 +64,13 @@ import {InventoryReportExportService} from './application/inventory-report-expor
   CustomerReportExportService,
   InventoryReportStore,InventoryReportService,
   {provide:InventoryReportPort,useExisting:InventoryReportStore},
-  InventoryReportExportService],
+  InventoryReportExportService,
+  CashSessionReportStore,CashSessionReportService,
+  {provide:CashSessionReportPort,useExisting:CashSessionReportStore},
+  CashSessionReportExportService],
  exports:[DomainReportsService,DomainReportsPort,DailyReportService,DailyReportPort,
   SalesReportService,SalesReportPort,CustomerReportService,CustomerReportPort,
-  InventoryReportService,InventoryReportPort]
+  InventoryReportService,InventoryReportPort,
+  CashSessionReportService,CashSessionReportPort]
 })
 export class ReportExportsModule{}

@@ -57,3 +57,20 @@ export interface SelfServiceMenuItem{
 export interface SelfServiceMenuSection{id:string;nombre:string;orden:number;items:SelfServiceMenuItem[]}
 export interface SelfServiceMenuCard{id:string;nombre:string;descripcion:string|null;secciones:SelfServiceMenuSection[]}
 export interface SelfServiceMenuResponse{sucursalId:string;menus:SelfServiceMenuCard[]}
+
+/** Public, customer-safe projection of an Orden — reshaped in
+ * SelfServiceStore.cart() from OrderService.detail()'s raw Prisma row (same one
+ * POS uses internally), which carries internal references (usuarioId, cliente
+ * PII, recipe composition snapshots, kitchen ticket state, claveOperacion) that
+ * must never reach an unauthenticated client. */
+export interface SelfServiceOrderLineModifier{nombre:string;cantidad:number;recargoUnitario:string}
+export interface SelfServiceOrderLine{
+ id:string;nombre:string;cantidad:string;precioUnitario:string;descuento:string;
+ subtotal:string;notasCocina:string|null;modificadores:SelfServiceOrderLineModifier[];
+}
+export interface SelfServiceOrderSummary{
+ id:string;numero:string;estado:'ABIERTA'|'CERRADA'|'CANCELADA';
+ subtotal:string;descuentoTotal:string;total:string;
+ lineas:SelfServiceOrderLine[];
+}
+export interface SelfServiceCart{ordenId:string|null;orden:SelfServiceOrderSummary|null}

@@ -7,7 +7,7 @@ import type {Principal} from '../../../auth/application/auth.service.js';
 import {OrderService} from '../../../orders/application/order.service.js';
 import {CatalogService} from '../../../catalog/application/catalog.service.js';
 import {SelfServicePort} from '../../application/ports/self-service.repository.js';
-import type {SelfServiceAccess,SelfServiceItemInput,SelfServiceSession,
+import type {SelfServiceAccess,SelfServiceCart,SelfServiceItemInput,SelfServiceSession,
  TableQrIssued,TableQrSummary} from '../../application/contracts/self-service.types.js';
 import {digest,randomToken} from '../security/token.util.js';
 
@@ -29,6 +29,22 @@ interface RawBranchMenu{sucursalId:string;menus:Array<{id:string;nombre:string;d
   gruposModificadores:Array<{grupoId:string;grupo:string;orden:number;minimo:number;maximo:number;
    opciones:Array<{id:string;nombre:string;recargo:string}>}>;
  }>}>}>}
+
+/** Narrow shape read from OrderService.detail()/create()/add()'s raw Orden row
+ * (orderInclude in orders/infrastructure/prisma/order-shared.ts). Only the
+ * fields shapeOrder() below extracts; everything else (usuarioId, cliente PII,
+ * recipe composition snapshots, kitchen ticket state, claveOperacion) is
+ * deliberately left out of the customer-facing projection. */
+interface RawOrden{id:string;numero:string;estado:'ABIERTA'|'CERRADA'|'CANCELADA';
+ subtotal:{toFixed(n:number):string};descuentoTotal:{toFixed(n:number):string};
+ total:{toFixed(n:number):string};
+ ordenLineasComoOrden:Array<{id:string;nombreSnapshot:string;notasCocina:string|null;
+  cantidad:{toFixed(n:number):string};precioUnitario:{toFixed(n:number):string};
+  descuento:{toFixed(n:number):string};subtotal:{toFixed(n:number):string};
+  ordenLineaModificadoresComoOrdenLinea:Array<{nombreSnapshot:string;cantidad:number;
+   recargoUnitario:{toFixed(n:number):string}}>;
+ }>;
+}
 
 @Injectable()
 export class SelfServiceStore extends SelfServicePort{
@@ -132,25 +148,38 @@ export class SelfServiceStore extends SelfServicePort{
        opciones:g.opciones.map(o=>({id:o.id,nombre:o.nombre,recargo:o.recargo}))}))};
     })}))}))};
  }
- async cart(s:SelfServiceSession){
-  if(!s.ordenId)return {ordenId:null,orden:null};
-  return {ordenId:s.ordenId,orden:await this.orders.detail(await this.serviceActor(),s.ordenId)};
+ private shapeOrder(ordenId:string,raw:RawOrden):SelfServiceCart{
+  return {ordenId,orden:{id:raw.id,numero:raw.numero,estado:raw.estado,
+   subtotal:raw.subtotal.toFixed(2),descuentoTotal:raw.descuentoTotal.toFixed(2),
+   total:raw.total.toFixed(2),
+   lineas:raw.ordenLineasComoOrden.map(l=>({id:l.id,nombre:l.nombreSnapshot,
+    cantidad:l.cantidad.toFixed(2),precioUnitario:l.precioUnitario.toFixed(2),
+    descuento:l.descuento.toFixed(2),subtotal:l.subtotal.toFixed(2),notasCocina:l.notasCocina,
+    modificadores:l.ordenLineaModificadoresComoOrdenLinea.map(m=>({nombre:m.nombreSnapshot,
+     cantidad:m.cantidad,recargoUnitario:m.recargoUnitario.toFixed(2)}))}))}};
  }
- async addItems(s:SelfServiceSession,items:SelfServiceItemInput[]){
+ async cart(s:SelfServiceSession):Promise<SelfServiceCart>{
+  if(!s.ordenId)return {ordenId:null,orden:null};
+  const raw=await this.orders.detail(await this.serviceActor(),s.ordenId) as RawOrden;
+  return this.shapeOrder(s.ordenId,raw);
+ }
+ async addItems(s:SelfServiceSession,items:SelfServiceItemInput[]):Promise<SelfServiceCart>{
   const actor=await this.serviceActor();
   if(!s.ordenId){
    const created=await this.orders.create(actor,{sucursalId:s.sucursalId,modalidad:'MESA',
-    origen:'QR',mesaId:s.mesaId,lineas:items,enviarCocina:false,claveOperacion:randomUUID()});
+    origen:'QR',mesaId:s.mesaId,lineas:items,enviarCocina:false,claveOperacion:randomUUID()}) as RawOrden;
    await this.db.sesionAutoservicio.update({where:{id:s.sesionId},data:{ordenId:created.id}});
-   return {session:{...s,ordenId:created.id},orden:created};
+   return this.shapeOrder(created.id,created);
   }
   const updated=await this.orders.add(actor,s.ordenId,{lineas:items,enviarCocina:false,
-   claveOperacion:randomUUID()});
-  return {session:s,orden:updated};
+   claveOperacion:randomUUID()}) as RawOrden;
+  return this.shapeOrder(s.ordenId,updated);
  }
- async send(s:SelfServiceSession){
+ async send(s:SelfServiceSession):Promise<SelfServiceCart>{
   if(!s.ordenId)throw new BadRequestException('No hay un pedido para enviar');
-  return this.orders.send(await this.serviceActor(),s.ordenId,{claveOperacion:randomUUID()});
+  const raw=await this.orders.send(await this.serviceActor(),s.ordenId,
+   {claveOperacion:randomUUID()}) as RawOrden;
+  return this.shapeOrder(s.ordenId,raw);
  }
  async closeSession(s:SelfServiceSession):Promise<void>{
   await this.db.sesionAutoservicio.updateMany({where:{id:s.sesionId,estado:'ACTIVA'},

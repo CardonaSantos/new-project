@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import {PrismaPg} from '@prisma/adapter-pg';
 import {PrismaClient,Prisma} from '../../src/generated/prisma/client.js';
-import {salesCostAttribution} from '../../src/modules/reports/infrastructure/prisma/sales-cost-attribution.js';
-import {orderCostOutcomes} from '../../src/modules/reports/infrastructure/prisma/order-cost-outcomes.js';
+import {salesCostAttribution} from '../../src/modules/report-exports/infrastructure/prisma/sales-cost-attribution.js';
+import {orderCostOutcomes} from '../../src/modules/report-exports/infrastructure/prisma/order-cost-outcomes.js';
 
 // Executes the REAL reporting SQL against the migrated PostgreSQL schema,
 // even when no business fixtures are seeded. DEV Postman still validates data.

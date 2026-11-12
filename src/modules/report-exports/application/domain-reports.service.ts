@@ -1,6 +1,6 @@
 import {BadRequestException,Injectable} from '@nestjs/common';
 import type {Principal} from '../../auth/application/auth.service.js';
-import type {TicketQuery,ConsolidatedQuery} from './contracts/reporting.types.js';
+import type {TicketQuery,ConsolidatedQuery} from './contracts/report-export.types.js';
 import {REPORT_SOURCES,DomainReportsPort,type ReportSource} from './ports/domain-reports.port.js';
 @Injectable()
 export class DomainReportsService{

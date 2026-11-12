@@ -1,0 +1,6 @@
+import type {ReportPeriodInput} from '../../domain/report-period.policy.js';
+export interface ReportingQuery extends ReportPeriodInput {sucursalId:string;}
+export interface TicketQuery extends ReportingQuery {page:number;limit:number;}
+
+/** R6: up to ten individually authorized branches. No cross-currency grand total. */
+export interface ConsolidatedQuery extends ReportPeriodInput {sucursalIds:string;}

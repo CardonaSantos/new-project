@@ -6,9 +6,9 @@ import type {App} from 'supertest/types';
 import type {Request,Response,NextFunction} from 'express';
 import type {Principal} from '../src/modules/auth/application/auth.service.js';
 import {PrismaService} from '../src/infrastructure/database/prisma/prisma.service.js';
-import {DomainReportsService} from '../src/modules/reports/application/domain-reports.service.js';
-import {ReportExportController} from '../src/modules/reports/presentation/http/report-export.controller.js';
-import {ReportExportService} from '../src/modules/reports/application/report-export.service.js';
+import {DomainReportsService} from '../src/modules/report-exports/application/domain-reports.service.js';
+import {ReportExportController} from '../src/modules/report-exports/presentation/http/report-export.controller.js';
+import {ReportExportService} from '../src/modules/report-exports/application/report-export.service.js';
 const user:Principal={id:'u1',nombre:'Audit',email:'audit@example.com',
  sessionId:'sess',versionAutorizacion:1,debeCambiarContrasena:false};
 const snapshot={source:'SALES_LINES',sucursal:{id:'s1',nombre:'Principal'},

@@ -1,6 +1,8 @@
-import {sourceKeys,fieldLabel,isMoney,presentationValue} from './professional-export-model.js';
-import {renderProfessionalXlsx} from './professional-xlsx.js';
-import {renderProfessionalPdf} from './professional-pdf.js';
+import {sourceKeys,fieldLabel,isMoney,presentationValue} from './report-export-model.js';
+import {renderXlsxReport} from './xlsx-renderer.js';
+import {renderPdfReport} from './pdf-renderer.js';
+// ExcelJS/pdfkit assemble their output asynchronously (unlike the old hand-rolled
+// writers), so XLSX/PDF are Promise<Buffer> here; CSV stays a plain synchronous Buffer.
 export type ExportFormat='CSV'|'XLSX'|'PDF';
 export type ExportPayload={
  source:string;currency:string;
@@ -29,10 +31,10 @@ const csvValue=(s:string)=>{
 };
 export function renderCsv(r:ExportPayload):Buffer{
  const t=exportTable(r);
- return Buffer.from('\uFEFF'+[
+ return Buffer.from('﻿'+[
   t.headers.map(h=>csvValue(fieldLabel(h)+(isMoney(h)?' ('+(r.currency==='GTQ'?'Q':r.currency)+')':''))).join(','),
   ...t.rows.map(row=>row.map(csvValue).join(','))
  ].join('\r\n')+'\r\n','utf8');
 }
-export const renderXlsx=renderProfessionalXlsx;
-export const renderPdf=renderProfessionalPdf;
+export const renderXlsx:(r:ExportPayload)=>Promise<Buffer>=renderXlsxReport;
+export const renderPdf:(r:ExportPayload)=>Promise<Buffer>=renderPdfReport;

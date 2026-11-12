@@ -5,9 +5,9 @@ import request from 'supertest';
 import type {App} from 'supertest/types';
 import type {Request,Response,NextFunction} from 'express';
 import type {Principal} from '../src/modules/auth/application/auth.service.js';
-import {DomainReportsController} from '../src/modules/reports/presentation/http/domain-reports.controller.js';
-import {DomainReportsService} from '../src/modules/reports/application/domain-reports.service.js';
-import {DomainReportsPort,REPORT_SOURCES} from '../src/modules/reports/application/ports/domain-reports.port.js';
+import {DomainReportsController} from '../src/modules/report-exports/presentation/http/domain-reports.controller.js';
+import {DomainReportsService} from '../src/modules/report-exports/application/domain-reports.service.js';
+import {DomainReportsPort,REPORT_SOURCES} from '../src/modules/report-exports/application/ports/domain-reports.port.js';
 const u:Principal={id:'u1',nombre:'Admin',email:'admin@dev.example',
  sessionId:'sess',versionAutorizacion:1,debeCambiarContrasena:false};
 const fake={records:vi.fn().mockResolvedValue({source:'INVENTORY_MOVEMENTS',data:[],meta:{total:0}}),

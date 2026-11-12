@@ -1,5 +1,5 @@
 import type {Principal} from '../../../auth/application/auth.service.js';
-import type {TicketQuery,ConsolidatedQuery} from '../contracts/reporting.types.js';
+import type {TicketQuery,ConsolidatedQuery} from '../contracts/report-export.types.js';
 export const REPORT_SOURCES=[
  'SALES_LINES','INVENTORY_MOVEMENTS','PURCHASE_INVOICES','PURCHASE_RECEIPT_LINES',
  'DELIVERY_EVENTS','RESERVATION_EVENTS','SUPPLY_REQUESTS','SUPPLY_TRANSFERS',

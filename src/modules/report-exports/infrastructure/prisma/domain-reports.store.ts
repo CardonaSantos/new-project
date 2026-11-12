@@ -5,7 +5,7 @@ import {operationalDate} from '../../../payments/domain/payment.policy.js';
 import {financialBusinessWindow} from '../../../finance/domain/operational-close.policy.js';
 import {resolvePeriod,ensurePage} from '../../domain/report-period.policy.js';
 import type {Principal} from '../../../auth/application/auth.service.js';
-import type {TicketQuery,ConsolidatedQuery} from '../../application/contracts/reporting.types.js';
+import type {TicketQuery,ConsolidatedQuery} from '../../application/contracts/report-export.types.js';
 import {salesCostAttribution} from './sales-cost-attribution.js';
 import {orderCostOutcomes} from './order-cost-outcomes.js';
 import {paymentSalesReconciliation,supplierBalances,platformSettlements,bankMatchStatus} from './financial-reconciliation.js';

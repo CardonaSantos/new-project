@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import {PrismaPg} from '@prisma/adapter-pg';
 import {PrismaClient,Prisma} from '../../src/generated/prisma/client.js';
 import {paymentSalesReconciliation,supplierBalances,platformSettlements,bankMatchStatus}
- from '../../src/modules/reports/infrastructure/prisma/financial-reconciliation.js';
-import {financialBranchRollup} from '../../src/modules/reports/infrastructure/prisma/branch-rollup.js';
-import {exportDaily} from '../../src/modules/reports/infrastructure/prisma/export-daily.js';
+ from '../../src/modules/report-exports/infrastructure/prisma/financial-reconciliation.js';
+import {financialBranchRollup} from '../../src/modules/report-exports/infrastructure/prisma/branch-rollup.js';
+import {exportDaily} from '../../src/modules/report-exports/infrastructure/prisma/export-daily.js';
 
 // Real PostgreSQL migrations + raw SQL/type/shape smoke. This does not replace
 // the real DEV reconciliation Postman collections.

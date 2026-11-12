@@ -3,9 +3,9 @@ import {Injectable,PayloadTooLargeException} from '@nestjs/common';
 import type {Principal} from '../../auth/application/auth.service.js';
 import {PrismaService} from '../../../infrastructure/database/prisma/prisma.service.js';
 import {DomainReportsService} from './domain-reports.service.js';
-import {renderCsv,renderPdf,renderXlsx,type ExportPayload,type ExportFormat}
- from './report-export-formats.js';
-import type {ReportExportDto} from '../presentation/http/dto/reports.dto.js';
+import {renderCsv,renderXlsx,renderPdf,type ExportPayload,type ExportFormat}
+ from './report-table.js';
+import type {ReportExportDto} from '../presentation/http/dto/report-export.dto.js';
 
 const mime:Record<ExportFormat,string>={
  CSV:'text/csv; charset=utf-8',
@@ -21,13 +21,15 @@ export class ReportExportService{
    sucursalId:q.sucursalId,periodo:q.periodo,
    fecha:q.fecha,desde:q.desde,hasta:q.hasta,page:1,limit:100
   }) as ExportPayload;
-  const render:Record<ExportFormat,(r:ExportPayload)=>Buffer>={
+  // CSV stays synchronous; XLSX/PDF are Promise<Buffer> under ExcelJS/pdfkit — await
+  // works unconditionally on both since awaiting a plain value is a no-op.
+  const render:Record<ExportFormat,(r:ExportPayload)=>Buffer|Promise<Buffer>>={
    CSV:renderCsv,XLSX:renderXlsx,PDF:renderPdf
   };
   if(Buffer.byteLength(JSON.stringify(snapshot),'utf8')>5_000_000)
    throw new PayloadTooLargeException('Exportación supera 5 MB de datos; reduzca período');
   let buffer:Buffer;
-  try{buffer=render[q.format](snapshot);}
+  try{buffer=await render[q.format](snapshot);}
   catch(e){
    if(e instanceof RangeError)
     throw new PayloadTooLargeException('PDF excesivamente extenso; use CSV/XLSX o reduzca período');

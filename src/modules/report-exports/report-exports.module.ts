@@ -21,6 +21,11 @@ import {CustomerReportService} from './application/customer-report.service.js';
 import {CustomerReportPort} from './application/ports/customer-report.port.js';
 import {CustomerReportStore} from './infrastructure/prisma/customer-report.store.js';
 import {CustomerReportExportService} from './application/customer-report-export.service.js';
+import {InventoryReportController} from './presentation/http/inventory-report.controller.js';
+import {InventoryReportService} from './application/inventory-report.service.js';
+import {InventoryReportPort} from './application/ports/inventory-report.port.js';
+import {InventoryReportStore} from './infrastructure/prisma/inventory-report.store.js';
+import {InventoryReportExportService} from './application/inventory-report-export.service.js';
 
 /**
  * Printable/exportable reports: the 15 raw record sources browsable in-app
@@ -38,7 +43,7 @@ import {CustomerReportExportService} from './application/customer-report-export.
 @Module({
  imports:[PrismaModule],
  controllers:[DomainReportsController,ReportExportController,DailyReportController,
-  SalesReportController,CustomerReportController],
+  SalesReportController,CustomerReportController,InventoryReportController],
  providers:[DomainReportsStore,DomainReportsService,
   {provide:DomainReportsPort,useExisting:DomainReportsStore},
   ReportExportService,
@@ -50,8 +55,12 @@ import {CustomerReportExportService} from './application/customer-report-export.
   SalesReportExportService,
   CustomerReportStore,CustomerReportService,
   {provide:CustomerReportPort,useExisting:CustomerReportStore},
-  CustomerReportExportService],
+  CustomerReportExportService,
+  InventoryReportStore,InventoryReportService,
+  {provide:InventoryReportPort,useExisting:InventoryReportStore},
+  InventoryReportExportService],
  exports:[DomainReportsService,DomainReportsPort,DailyReportService,DailyReportPort,
-  SalesReportService,SalesReportPort,CustomerReportService,CustomerReportPort]
+  SalesReportService,SalesReportPort,CustomerReportService,CustomerReportPort,
+  InventoryReportService,InventoryReportPort]
 })
 export class ReportExportsModule{}

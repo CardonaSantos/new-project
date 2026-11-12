@@ -1,5 +1,5 @@
 import {Prisma} from '../../../generated/prisma/client.js';
-import type {ExportPayload} from './report-export-formats.js';
+import type {ExportPayload} from './report-table.js';
 
 type Row=Record<string,unknown>;
 export type Metric={key:string;label:string;value:string;precision:number};

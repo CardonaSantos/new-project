@@ -1,5 +1,5 @@
 import {mkdirSync,writeFileSync} from 'node:fs';
-import {renderCsv,renderXlsx,renderPdf} from '../../src/modules/reports/application/report-export-formats.js';
+import {renderCsv,renderXlsx,renderPdf} from '../../src/modules/report-exports/application/report-table.js';
 const dir='/tmp/rep2b-smoke';
 mkdirSync(dir,{recursive:true});
 const report={
@@ -19,7 +19,8 @@ const report={
   ingreso:'22.00',costoDirecto:'1.542857',margenAntesEmpaque:'20.457143',
   detalle:'Café con leche'}
  ]};
-writeFileSync(dir+'/report.xlsx',renderXlsx(report));
-writeFileSync(dir+'/report.pdf',renderPdf(report));
+// renderXlsx/renderPdf are async under ExcelJS/pdfkit; renderCsv stays synchronous.
+writeFileSync(dir+'/report.xlsx',await renderXlsx(report));
+writeFileSync(dir+'/report.pdf',await renderPdf(report));
 writeFileSync(dir+'/report.csv',renderCsv(report));
 console.info('REP-2B binary fixtures created: '+dir);

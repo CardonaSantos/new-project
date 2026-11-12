@@ -3,7 +3,7 @@ import type {Response} from 'express';
 import {CurrentUser} from '../../../auth/presentation/http/decorators/auth.decorators.js';
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {ReportExportService} from '../../application/report-export.service.js';
-import {ReportExportDto} from './dto/reports.dto.js';
+import {ReportExportDto} from './dto/report-export.dto.js';
 
 @Controller('reports/analytics/exports')
 export class ReportExportController{

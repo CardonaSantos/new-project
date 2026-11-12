@@ -80,7 +80,7 @@ export class ReservationsStore extends ReservationsPort{
   const [reserved,occupied]=await Promise.all([
    tx.reservaMesa.findMany({where:{mesaId:{in:ids},reserva:{
     estado:{in:[...active]},inicio:{lt:end},fin:{gt:start}}},
-    select:{mesaId:true,reserva:{select:{id:true,inicio:true,fin:true,estado:true}}}}),
+    select:{mesaId:true,reserva:{select:{id:true,inicio:true,fin:true,estado:true,nombreContacto:true}}}}),
    tx.ocupacionMesa.findMany({where:{mesaId:{in:ids},cerradaEn:null},
     select:{id:true,mesaId:true,reservaId:true,abiertaEn:true}})
   ]);
@@ -93,6 +93,8 @@ export class ReservationsStore extends ReservationsPort{
    disponible:!busyReservations.has(t.id)&&!busyOccupancies.has(t.id),
    motivo:busyReservations.has(t.id)?'RESERVADA':busyOccupancies.has(t.id)?'OCUPADA':null,
    reservaConflictoId:busyReservations.get(t.id)?.id??null,
+   reservaConflictoInicio:busyReservations.get(t.id)?.inicio??null,
+   reservaConflictoContacto:busyReservations.get(t.id)?.nombreContacto??null,
    ocupacionId:busyOccupancies.get(t.id)?.id??null
   }));
  }

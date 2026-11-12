@@ -47,8 +47,13 @@ export class ReportingStore extends ReportingPort{
    const b=await this.access(tx,u,q.sucursalId);
    const now=new Date();
    const upcoming=new Date(now.getTime()+120*60000);
+   // "Próximas reservas" is a separate, longer-range lookahead (48h) from the 120-minute
+   // KPI counters above: those counters are about what needs attention *right now*, this
+   // list is "what's coming up that staff should be aware of", e.g. a confirmed booking
+   // for tomorrow morning.
+   const reservationLookahead=new Date(now.getTime()+48*3600000);
    const [openOrders,pendingKitchen,inProgressKitchen,occupiedTables,
-    inDelivery,confirmedBookings,pendingBookings,openShifts]=await Promise.all([
+    inDelivery,confirmedBookings,pendingBookings,openShifts,upcomingReservations]=await Promise.all([
     tx.orden.count({where:{sucursalId:b.id,estado:'ABIERTA'}}),
     tx.comanda.count({where:{orden:{sucursalId:b.id},estado:'PENDIENTE'}}),
     tx.comanda.count({where:{orden:{sucursalId:b.id},estado:'PREPARANDO'}}),
@@ -56,14 +61,19 @@ export class ReportingStore extends ReportingPort{
     tx.entrega.count({where:{orden:{sucursalId:b.id},estado:'EN_REPARTO'}}),
     tx.reserva.count({where:{sucursalId:b.id,estado:'CONFIRMADA',inicio:{gte:now,lt:upcoming}}}),
     tx.reserva.count({where:{sucursalId:b.id,estado:'PENDIENTE',inicio:{gte:now,lt:upcoming}}}),
-    tx.turnoCaja.count({where:{caja:{sucursalId:b.id},cerradaEn:null}})
+    tx.turnoCaja.count({where:{caja:{sucursalId:b.id},cerradaEn:null}}),
+    tx.reserva.findMany({where:{sucursalId:b.id,estado:{in:['CONFIRMADA','PENDIENTE']},
+     inicio:{gte:now,lt:reservationLookahead}},orderBy:{inicio:'asc'},take:8,
+     select:{id:true,nombreContacto:true,personas:true,inicio:true,estado:true}})
    ]);
    return {sucursal:b,generatedAt:now.toISOString(),freshness:'LIVE_READ',
-    horizonMinutes:120,
+    horizonMinutes:120,reservationLookaheadHours:48,
     kpis:{pedidosAbiertos:openOrders,comandasPendientes:pendingKitchen,
      comandasPreparando:inProgressKitchen,mesasOcupadas:occupiedTables,
      entregasEnReparto:inDelivery,reservasConfirmadasProximas:confirmedBookings,
-     reservasPendientesProximas:pendingBookings,turnosCajaAbiertos:openShifts}};
+     reservasPendientesProximas:pendingBookings,turnosCajaAbiertos:openShifts},
+    proximasReservas:upcomingReservations.map(r=>({id:r.id,nombreContacto:r.nombreContacto,
+     personas:r.personas,inicio:r.inicio.toISOString(),estado:r.estado}))};
   });
  }
  async overview(u:Principal,q:ReportingQuery){

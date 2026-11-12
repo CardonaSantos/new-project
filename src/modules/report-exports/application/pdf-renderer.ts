@@ -10,32 +10,32 @@ import {businessColumns,fieldLabel,formatMoney,isMoney,presentationValue,
 // Avoid depending on the ambient PDFKit.* namespace being globally visible (it comes
 // from @types/pdfkit and its exposure varies by TS config); derive the instance type
 // straight from the imported class instead.
-type PdfDoc=InstanceType<typeof PDFDocument>;
+export type PdfDoc=InstanceType<typeof PDFDocument>;
 
-const W=842,H=595,M=36,INNER=W-2*M;
-const navy='#142638',teal='#263747',pale='#F5F7F9',
+export const W=842,H=595,M=36,INNER=W-2*M;
+export const navy='#142638',teal='#263747',pale='#F5F7F9',
  ink='#172B3C',muted='#53677B',line='#DCE6EB',stripe='#F4F7F9',white='#FFFFFF';
 const isDay=(r:ExportPayload)=>r.periodo.desde===r.periodo.hasta;
 const money=(key:string,value:string,r:ExportPayload)=>isMoney(key)?formatMoney(value,r.currency,2):value;
 
-function header(doc:PdfDoc,title:string,category:string,period:string){
+export function header(doc:PdfDoc,title:string,category:string,period:string){
  doc.rect(0,0,W,68).fill(navy);
  doc.fillColor(white).font('Helvetica-Bold').fontSize(11).text('GASTRO CORE  /  '+category,M,22);
  doc.font('Helvetica').fontSize(10).fillColor('#C7D9E5').text(title,M,42,{width:INNER-280});
  doc.font('Helvetica').fontSize(9).fillColor(white).text(period,W-M-260,42,{width:260,align:'right'});
  doc.fillColor(ink);
 }
-function footer(doc:PdfDoc,index:number,total:number){
+export function footer(doc:PdfDoc,index:number,total:number){
  doc.moveTo(M,H-40).lineTo(W-M,H-40).lineWidth(0.6).strokeColor(line).stroke();
  doc.font('Helvetica').fontSize(8).fillColor(muted)
   .text('Gastro Core | Reporte para revisión administrativa',M,H-32)
   .text('Gastro Core  -  '+index+' / '+total,W-M-140,H-32,{width:140,align:'right'});
 }
-type TableOpts={startY:number;maxY?:number;fontSize?:number};
+export type TableOpts={startY:number;maxY?:number;fontSize?:number};
 /** Draws a header band + rows, wrapping text within column widths. Returns the Y after
  * the last row drawn, and how many rows were actually drawn (may be fewer than given,
  * if space ran out — caller is expected to paginate the remainder onto a new page). */
-function table(doc:PdfDoc,headers:string[],rows:string[][],
+export function table(doc:PdfDoc,headers:string[],rows:string[][],
  x:number,widths:number[],opts:TableOpts):{y:number;drawn:number}{
  const size=opts.fontSize??9,maxY=opts.maxY??H-55;
  let y=opts.startY;
@@ -59,7 +59,7 @@ function table(doc:PdfDoc,headers:string[],rows:string[][],
  }
  return {y,drawn};
 }
-function columnWidths(keys:string[],available:number):number[]{
+export function columnWidths(keys:string[],available:number):number[]{
  const weights=keys.map(k=>/descripcion|producto|proveedor|nombre|numeroOrden/i.test(k)?1.7:
   /fecha|fecha operativa/i.test(k)?1.35:/cantidad|pagos|estado|cobertura/i.test(k)?1.05:1.15);
  const sum=weights.reduce((a,b)=>a+b,0);

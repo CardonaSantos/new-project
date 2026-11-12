@@ -8,7 +8,9 @@ import {fieldLabel,isMoney,presentationValue,reportDaily,reportMetrics,
 // recurring complaint. ExcelJS owns the zip/XML structure now; this file only decides
 // content and styling, never byte layout.
 
-const colors={
+// Exported so other renderers in this module (e.g. the daily-report workbook) share the
+// same visual language instead of re-deriving it; still local to report-exports only.
+export const colors={
  navy:'FF142638',teal:'FF34475A',pale:'FFF4F6F8',line:'FFE2E7EC',
  gray:'FFF7F8F9',white:'FFFFFFFF',muted:'FF53677B',ink:'FF172B3C'
 };
@@ -16,7 +18,7 @@ const decimalRe=/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/;
 const isIdField=(k:string)=>/id$/i.test(k)||/documentosConsumo/.test(k);
 
 /** Returns an Excel number format for a money/plain-numeric column, or undefined for text. */
-function numberFormat(key:string,raw:string,currency:string):string|undefined{
+export function numberFormat(key:string,raw:string,currency:string):string|undefined{
  if(isIdField(key)||!decimalRe.test(raw))return undefined;
  const dp=raw.includes('.')?raw.split('.')[1].length:0;
  if(isMoney(key)){
@@ -26,7 +28,7 @@ function numberFormat(key:string,raw:string,currency:string):string|undefined{
  if(dp>0)return '#,##0.'+'0'.repeat(Math.min(dp,6));
  return '#,##0';
 }
-function titleRow(ws:ExcelJS.Worksheet,text:string,opts:{size:number;bold?:boolean;color?:string;fill?:string;height?:number}){
+export function titleRow(ws:ExcelJS.Worksheet,text:string,opts:{size:number;bold?:boolean;color?:string;fill?:string;height?:number}){
  const row=ws.addRow([text]);
  row.height=opts.height??22;
  ws.mergeCells(row.number,1,row.number,4);
@@ -65,7 +67,7 @@ function summarySheet(wb:ExcelJS.Workbook,r:ExportPayload){
  titleRow(ws,'La hoja Diario agrupa los registros por fecha. La hoja Detalle muestra los documentos.',{size:9,color:colors.muted,height:18});
  titleRow(ws,'Importes según registros originales. Las diferencias de cobro y venta requieren conciliación.',{size:9,color:colors.muted,height:18});
 }
-function headerRow(ws:ExcelJS.Worksheet,labels:string[]){
+export function headerRow(ws:ExcelJS.Worksheet,labels:string[]){
  const row=ws.addRow(labels);
  row.height=22;
  row.eachCell(cell=>{

@@ -27,6 +27,12 @@ export function currency(value: string): string {
     throw new BadRequestException('Moneda ISO de tres letras requerida');
   return v;
 }
+export function hexColor(value: string): string {
+  const v = value.trim().toUpperCase();
+  if (!/^#[0-9A-F]{6}$/.test(v))
+    throw new BadRequestException('Color inválido, use formato #RRGGBB');
+  return v;
+}
 export function cutoff(value: string): string {
   if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value))
     throw new BadRequestException('Hora de corte inválida (HH:mm)');

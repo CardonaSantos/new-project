@@ -274,6 +274,10 @@ model EmpresaConfiguracion {
   moneda           String           @default("GTQ") @db.VarChar(3)
   zonaHoraria      String           @default("America/Guatemala")
   metodoValoracion MetodoValoracion @default(PROMEDIO_PONDERADO)
+  colorPrimario    String?          @db.VarChar(7)
+  tema             Json?
+  logoMediaId      String?          @unique
+  logoMedia        Media?           @relation("EmpresaConfiguracion_logoMedia_Media", fields: [logoMediaId], references: [id], onDelete: SetNull)
   creadoEn         DateTime         @default(now()) @db.Timestamptz(3)
   actualizadoEn    DateTime         @updatedAt @db.Timestamptz(3)
 }
@@ -2323,6 +2327,7 @@ model Media {
   variantesComoMedia VarianteProductoMedia[] @relation("VarianteProductoMedia_media_Media")
   articulosComoMedia ArticuloInventarioMedia[] @relation("ArticuloInventarioMedia_media_Media")
   categoriasComoMedia CategoriaMedia[] @relation("CategoriaMedia_media_Media")
+  empresaComoLogo    EmpresaConfiguracion? @relation("EmpresaConfiguracion_logoMedia_Media")
 
   @@unique([proveedor, bucket, claveObjeto])
   @@index([eliminadaEn])

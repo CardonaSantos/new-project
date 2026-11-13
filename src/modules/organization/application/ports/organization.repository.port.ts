@@ -4,6 +4,7 @@ import type {
   BranchChanges,
   BranchConfig,
   BranchOverview,
+  Branding,
   Company,
   CompanyChanges,
   ConfigChanges,
@@ -21,6 +22,7 @@ export interface AccessScope {
 }
 export abstract class OrganizationRepositoryPort {
   abstract company(): Promise<Company | null>;
+  abstract branding(): Promise<Branding>;
   abstract updateCompany(
     actorId: string,
     changes: CompanyChanges,

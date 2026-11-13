@@ -19,10 +19,12 @@ import {
   currency,
   cutoff,
   deviceCode,
+  hexColor,
   name,
   requireChanges,
   timezone,
 } from '../domain/organization.policy.js';
+import { parseTheme } from '../domain/theme.js';
 import {
   OrganizationRepositoryPort,
   type AccessScope,
@@ -94,7 +96,22 @@ export class OrganizationService {
         changes.zonaHoraria === undefined
           ? undefined
           : timezone(changes.zonaHoraria),
+      colorPrimario:
+        changes.colorPrimario === undefined
+          ? undefined
+          : changes.colorPrimario === null
+            ? null
+            : hexColor(changes.colorPrimario),
+      // Rejects unknown tokens and non-hex values before they reach the column.
+      tema: changes.tema === undefined ? undefined : parseTheme(changes.tema),
     });
+  }
+  // Unlike company()/updateCompany(), this is deliberately NOT gated behind
+  // 'organization.read': every authenticated user (any role) needs the
+  // trade name, logo and brand color to render the shell correctly, and
+  // none of these three fields are sensitive the way nit/razonSocial are.
+  async branding() {
+    return this.repo.branding();
   }
   async branches(actor: Principal, q: ListFilter) {
     const scope = await this.scope(actor, 'branches.read');

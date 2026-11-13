@@ -1,6 +1,12 @@
 export type MediaTipo = 'IMAGEN' | 'VIDEO' | 'DOCUMENTO';
 export type MediaContexto =
-  'GENERAL' | 'PERFIL' | 'PRODUCTO' | 'INVENTARIO' | 'CATEGORIA' | 'DOCUMENTO';
+  | 'GENERAL'
+  | 'PERFIL'
+  | 'PRODUCTO'
+  | 'INVENTARIO'
+  | 'CATEGORIA'
+  | 'DOCUMENTO'
+  | 'MARCA';
 
 export interface MediaRecord {
   id: string;

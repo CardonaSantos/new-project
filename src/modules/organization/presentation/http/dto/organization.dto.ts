@@ -3,6 +3,7 @@ import {
   IsBoolean,
   IsIn,
   IsInt,
+  IsObject,
   IsOptional,
   IsString,
   Matches,
@@ -51,6 +52,14 @@ export class UpdateCompanyDto {
   @ValidateIf((_, v) => v !== undefined)
   @IsIn(['PROMEDIO_PONDERADO', 'FIFO'])
   metodoValoracion?: 'PROMEDIO_PONDERADO' | 'FIFO';
+  @IsOptional()
+  @Matches(/^#[0-9A-Fa-f]{6}$/)
+  colorPrimario?: string | null;
+  // Shape is checked in the domain (parseTheme), which owns the token
+  // allow-list; class-validator only confirms it is an object or an explicit
+  // null meaning "drop the custom theme".
+  @IsOptional() @IsObject() tema?: unknown;
+  @IsOptional() @IsString() logoMediaId?: string | null;
 }
 export class CreateBranchDto {
   @IsString() @Matches(/^[A-Za-z][A-Za-z0-9_-]{1,31}$/) codigo!: string;

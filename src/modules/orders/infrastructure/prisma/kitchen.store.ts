@@ -290,7 +290,19 @@ export class KitchenStore{
   return this.engine.tx(async tx=>{
    const row=await this.ticket(tx,id);
    await this.engine.allowed(tx,u.id,'kitchen.read',row.orden.sucursalId);
-   return tx.comanda.findUniqueOrThrow({where:{id},include:ticketInclude});
+   const ticket=await tx.comanda.findUniqueOrThrow({where:{id},include:ticketInclude});
+   // Direct-sale (INVENTARIABLE) lines never get a ComandaLinea — sendTx() deducts their
+   // stock immediately and routes nothing to a station (see sendTx() above) — so without this,
+   // whoever assembles/delivers the order from this ticket would have no way of knowing the
+   // order also includes something that needs grabbing, not cooking. Queried separately,
+   // rather than widening ticketInclude, so list()/queue() (the live board, many tickets at
+   // once) don't carry this extra payload on every row.
+   const extraRows=await tx.ordenLinea.findMany({where:{ordenId:ticket.ordenId,canceladaEn:null,
+    cantidadEnviada:{gt:0},variante:{producto:{tipo:'INVENTARIABLE'}}},
+    select:{id:true,nombreSnapshot:true,cantidadEnviada:true}});
+   const tambienEntregar=extraRows.map(r=>({id:r.id,nombreSnapshot:r.nombreSnapshot,
+    cantidad:r.cantidadEnviada}));
+   return {...ticket,tambienEntregar};
   });
  }
  /** Mirrors orders-kitchen-print-page.ts's HTML ticket, as an actual PDF file — see
@@ -318,6 +330,10 @@ export class KitchenStore{
    nombre:l.ordenLinea?.nombreSnapshot??l.ordenLinea?.variante?.producto?.nombre??'Producto',
    modificadores:receiptModifiers(l.ordenLinea?.ordenLineaModificadoresComoOrdenLinea??[]),
    nota:l.ordenLinea?.notasCocina||l.notasSnapshot||null}));
+  // Direct-sale items on the same order (water bottles, cans, etc.) never become a
+  // ComandaLinea — list them separately so whoever delivers this ticket's order knows to
+  // also grab them, without mixing them into the "needs preparation" list above.
+  const extraLines=ticket.tambienEntregar.map(e=>({qty:qtyText(e.cantidad),nombre:e.nombreSnapshot}));
   // Internal kitchen ticket: no restaurant brand (staff already know where they work), no
   // Estado (it's always PENDIENTE at print time — that's the point of printing it), no
   // closing disclaimer — kept as short as possible to save paper. The date/time moves into
@@ -325,7 +341,7 @@ export class KitchenStore{
   const buffer=await renderReceipt({brand:'',kind:'COMANDA',
    numero:ticket.numero,meta:receiptInstant(ticket.enviadaEn,tz),fields,
    note:ticket.orden?.observaciones?{title:'Nota de pedido',text:ticket.orden.observaciones}:null,
-   lines,emptyText:'No hay líneas activas en esta comanda.',
+   lines,extraLines,emptyText:'No hay líneas activas en esta comanda.',
    footer:''});
   return {buffer,filename:'comanda-'+ticket.numero+'.pdf'};
  }

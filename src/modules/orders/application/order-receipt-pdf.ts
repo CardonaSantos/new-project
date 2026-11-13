@@ -14,6 +14,10 @@ export interface ReceiptContent{
  fields:ReceiptField[];
  note:{title:string;text:string}|null;
  lines:ReceiptLine[];
+ // Direct-sale items riding along on the same order (no prep, nothing to track beyond
+ // "grab this too") — kept out of `lines` so they read as a distinct, shorter checklist
+ // rather than more prep work.
+ extraLines?:{qty:string;nombre:string}[];
  emptyText:string;
  footer:string;
 }
@@ -69,6 +73,11 @@ export async function renderReceipt(content:ReceiptContent):Promise<Buffer>{
    }
   }else{
    text(content.emptyText,{size:8,gap:2});
+  }
+  if(content.extraLines?.length){
+   divider();
+   text('TAMBIÉN INCLUIR',{bold:true,size:7.5,gap:3});
+   for(const e of content.extraLines)text(e.qty+' x '+e.nombre,{size:8,gap:2});
   }
   // Internal tickets pass an empty footer (nothing worth stating to staff is worth the
   // paper), so skip both the closing divider and the text rather than print a blank line.

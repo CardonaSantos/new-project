@@ -3,6 +3,7 @@ import {randomBytes} from 'node:crypto';
 import {PrismaPg} from '@prisma/adapter-pg';
 import {PrismaClient} from '../src/generated/prisma/client.js';
 import {argon2id,hash} from 'argon2';
+import {baseUnits,operationalRoles,unitConversions} from './seed-roles.js';
 const url=process.env.DIRECT_URL??process.env.DATABASE_URL;
 const password=process.env.BOOTSTRAP_ADMIN_PASSWORD;
 if(!url)throw Error('DATABASE_URL (o DIRECT_URL) requerido para seed');
@@ -118,6 +119,85 @@ try{
   }});
   if(!selfServiceHasRol)await tx.usuarioRol.create({
    data:{usuarioId:selfServiceUser.id,rolId:selfServiceRol.id,sucursalId:null}});
+
+  // Ready-made roles so the first admin can create staff without assembling
+  // permission sets by hand. Permissions are only added, never removed: an
+  // admin who tailors a role keeps their changes across re-runs.
+  for(const role of operationalRoles){
+   // update:{} on purpose — an admin who renamed, re-described or disabled one
+   // of these keeps that; re-running the seed must not undo their work.
+   const rolOperativo=await tx.rol.upsert({where:{codigo:role.codigo},update:{},
+    create:{codigo:role.codigo,nombre:role.nombre,descripcion:role.descripcion,
+     alcance:'SUCURSAL'}});
+   for(const code of role.permissions){
+    const permiso=await tx.permiso.findUnique({where:{codigo:code}});
+    if(!permiso)throw Error(`Permiso ${code} del rol ${role.codigo} no existe en la lista del seed`);
+    await tx.rolPermiso.upsert({
+     where:{rolId_permisoId:{rolId:rolOperativo.id,permisoId:permiso.id}},
+     update:{},create:{rolId:rolOperativo.id,permisoId:permiso.id}});
+   }
+  }
+
+  // Reference units. Articles, recipe components and purchase presentations
+  // all require one, so without these the catalog can't be populated at all.
+  const units=new Map<string,string>();
+  for(const unit of baseUnits){
+   const row=await tx.unidadMedida.upsert({where:{codigo:unit.codigo},
+    update:{nombre:unit.nombre,dimension:unit.dimension,esBase:unit.esBase},
+    create:{codigo:unit.codigo,nombre:unit.nombre,dimension:unit.dimension,
+     esBase:unit.esBase}});
+   units.set(unit.codigo,row.id);
+  }
+  for(const [from,to,factor] of unitConversions){
+   const origen=units.get(from)!,destino=units.get(to)!;
+   await tx.conversionUnidad.upsert({
+    where:{unidadOrigenId_unidadDestinoId:{unidadOrigenId:origen,unidadDestinoId:destino}},
+    update:{factor},create:{unidadOrigenId:origen,unidadDestinoId:destino,factor}});
+  }
+
+  // Per-branch operating bones. One warehouse with a single location that is
+  // both where purchases land and where the kitchen consumes from: separating
+  // reception from consumption would force a transfer before anything can be
+  // used, which is friction on a fresh install. Extra locations can be added
+  // later from the app.
+  const almacen=await tx.almacen.upsert({
+   where:{sucursalId_codigo:{sucursalId:principal.id,codigo:'PRINCIPAL'}},
+   update:{},create:{sucursalId:principal.id,codigo:'PRINCIPAL',nombre:'Almacén principal'}});
+  const ubicacion=await tx.ubicacionAlmacen.upsert({
+   where:{almacenId_codigo:{almacenId:almacen.id,codigo:'GENERAL'}},
+   update:{},create:{almacenId:almacen.id,codigo:'GENERAL',nombre:'General',esRecepcion:true}});
+
+  // A station with a consumption location is what makes "send to kitchen"
+  // work: with none configured, that call fails with "Falta configurar la ruta
+  // de cocina o ubicación de consumo". One active station needs no routes —
+  // every product falls back to it until the business adds more.
+  const station=await tx.estacionPreparacion.findUnique({
+   where:{sucursalId_nombre:{sucursalId:principal.id,nombre:'Cocina'}}});
+  if(!station){
+   await tx.estacionPreparacion.create({
+    data:{sucursalId:principal.id,nombre:'Cocina',ubicacionConsumoId:ubicacion.id}});
+  }else if(!station.ubicacionConsumoId){
+   // Only fills the gap that would break sending to kitchen; a location the
+   // admin already chose is left alone.
+   await tx.estacionPreparacion.update({where:{id:station.id},
+    data:{ubicacionConsumoId:ubicacion.id}});
+  }
+
+  // Collecting cash needs an open shift, and a shift needs a register.
+  await tx.caja.upsert({
+   where:{sucursalId_codigo:{sucursalId:principal.id,codigo:'CAJA-1'}},
+   update:{},create:{sucursalId:principal.id,codigo:'CAJA-1',nombre:'Caja principal'}});
+
+  // The room that tables hang off. Tables themselves are the business's own
+  // floor plan, so they're left to the admin rather than guessed here.
+  await tx.sala.upsert({
+   where:{sucursalId_nombre:{sucursalId:principal.id,nombre:'Sala principal'}},
+   update:{},create:{sucursalId:principal.id,nombre:'Sala principal'}});
  });
- process.stdout.write('Seed inicial completado; credenciales no impresas.\n');
+ process.stdout.write(
+  'Seed inicial completado; credenciales no impresas.\n'+
+  'Listo para operar: empresa, sucursal PRINCIPAL, SUPER_ADMIN, roles operativos\n'+
+  '(ADMIN_SUCURSAL, CAJERO, MESERO, COCINA, ALMACEN), unidades de medida,\n'+
+  'almacén con ubicación, estación de cocina, caja y sala principal.\n'+
+  'Falta por configurar desde la app: mesas, catálogo y cuentas financieras.\n');
 }finally{await db.$disconnect();}

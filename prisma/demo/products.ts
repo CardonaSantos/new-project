@@ -204,10 +204,19 @@ export const products: DemoProduct[] = [
     ],
   },
   {
-    codigo: 'PRD-MATCHA-LATTE', nombre: 'Matcha latte', tipo: 'PREPARADO', categoria: 'CAT-BEBIDAS-FRIAS',
+    codigo: 'PRD-REFRESCO-NATURAL', nombre: 'Refresco natural', tipo: 'PREPARADO',
+    categoria: 'CAT-BEBIDAS-FRIAS',
+    descripcion: 'De jamaica o de horchata, preparados en casa.',
     variantes: [
-      { sku: 'SKU-MATCHA-12', nombre: '12 oz', modificadores: ['MOD-LECHE', 'MOD-ENDULZANTE'] },
-      { sku: 'SKU-MATCHA-16', nombre: '16 oz', modificadores: ['MOD-LECHE', 'MOD-ENDULZANTE'] },
+      { sku: 'SKU-JAMAICA-16', nombre: 'Jamaica 16 oz', modificadores: ['MOD-ENDULZANTE'] },
+      { sku: 'SKU-HORCHATA-16', nombre: 'Horchata 16 oz', modificadores: ['MOD-ENDULZANTE'] },
+    ],
+  },
+  {
+    codigo: 'PRD-LICUADO', nombre: 'Licuado', tipo: 'PREPARADO', categoria: 'CAT-BEBIDAS-FRIAS',
+    variantes: [
+      { sku: 'SKU-LICUADO-BANANO', nombre: 'De banano', modificadores: ['MOD-LECHE', 'MOD-ENDULZANTE'] },
+      { sku: 'SKU-LICUADO-FRESA', nombre: 'De fresa', modificadores: ['MOD-LECHE', 'MOD-ENDULZANTE'] },
     ],
   },
   {
@@ -261,6 +270,11 @@ export const products: DemoProduct[] = [
     variantes: [{ sku: 'SKU-REBANADA-FRESA', nombre: 'Porción' }],
   },
   {
+    codigo: 'PRD-TRES-LECHES', nombre: 'Pastel de tres leches', tipo: 'PREPARADO',
+    categoria: 'CAT-PASTELERIA',
+    variantes: [{ sku: 'SKU-TRES-LECHES', nombre: 'Porción' }],
+  },
+  {
     codigo: 'PRD-CHEESECAKE', nombre: 'Cheesecake', tipo: 'PREPARADO', categoria: 'CAT-PASTELERIA',
     variantes: [{ sku: 'SKU-CHEESECAKE', nombre: 'Porción' }],
   },
@@ -284,6 +298,10 @@ export const products: DemoProduct[] = [
   {
     codigo: 'PRD-GALLETA', nombre: 'Galleta de chocolate', tipo: 'PREPARADO', categoria: 'CAT-PANADERIA',
     variantes: [{ sku: 'SKU-GALLETA', nombre: 'Unidad' }],
+  },
+  {
+    codigo: 'PRD-CHAMPURRADA', nombre: 'Champurrada', tipo: 'PREPARADO', categoria: 'CAT-PANADERIA',
+    variantes: [{ sku: 'SKU-CHAMPURRADA', nombre: 'Unidad' }],
   },
 
   // --- Pasteles enteros: producidos a stock, venta directa --------------

@@ -262,19 +262,39 @@ export const saleRecipes: DemoSaleRecipe[] = [
     ],
   },
   {
-    sku: 'SKU-MATCHA-12', nombre: 'Matcha latte 12 oz',
+    sku: 'SKU-JAMAICA-16', nombre: 'Refresco de jamaica 16 oz',
     componentes: [
-      { articulo: 'ING-MATCHA', cantidad: 6 },
-      { articulo: 'ING-LECHE', cantidad: 240, merma: 5 },
-      { articulo: 'ING-AZUCAR', cantidad: 10 },
+      { articulo: 'ING-JAMAICA', cantidad: 12 },
+      { articulo: 'ING-AZUCAR', cantidad: 35 },
+      { articulo: 'ING-HIELO', cantidad: 200 },
     ],
   },
   {
-    sku: 'SKU-MATCHA-16', nombre: 'Matcha latte 16 oz',
+    sku: 'SKU-HORCHATA-16', nombre: 'Horchata 16 oz',
     componentes: [
-      { articulo: 'ING-MATCHA', cantidad: 8 },
-      { articulo: 'ING-LECHE', cantidad: 320, merma: 5 },
-      { articulo: 'ING-AZUCAR', cantidad: 10 },
+      { articulo: 'ING-ARROZ', cantidad: 45 },
+      { articulo: 'ING-CANELA', cantidad: 3 },
+      { articulo: 'ING-AZUCAR', cantidad: 35 },
+      { articulo: 'ING-LECHE', cantidad: 120 },
+      { articulo: 'ING-HIELO', cantidad: 180 },
+    ],
+  },
+  {
+    sku: 'SKU-LICUADO-BANANO', nombre: 'Licuado de banano',
+    componentes: [
+      { articulo: 'ING-BANANO', cantidad: 160, merma: 30 },
+      { articulo: 'ING-LECHE', cantidad: 250 },
+      { articulo: 'ING-AZUCAR', cantidad: 20 },
+      { articulo: 'ING-HIELO', cantidad: 120 },
+    ],
+  },
+  {
+    sku: 'SKU-LICUADO-FRESA', nombre: 'Licuado de fresa',
+    componentes: [
+      { articulo: 'ING-FRESA', cantidad: 120, merma: 12 },
+      { articulo: 'ING-LECHE', cantidad: 250 },
+      { articulo: 'ING-AZUCAR', cantidad: 25 },
+      { articulo: 'ING-HIELO', cantidad: 120 },
     ],
   },
   {
@@ -317,6 +337,16 @@ export const saleRecipes: DemoSaleRecipe[] = [
     ],
   },
   {
+    sku: 'SKU-TRES-LECHES', nombre: 'Pastel de tres leches',
+    componentes: [
+      { articulo: 'PRE-BIZCOCHO-VAINILLA', cantidad: 120 },
+      { articulo: 'ING-LECHE-CONDENSADA', cantidad: 0.12 },
+      { articulo: 'ING-LECHE-EVAPORADA', cantidad: 0.12 },
+      { articulo: 'ING-CREMA', cantidad: 45 },
+      { articulo: 'ING-CANELA', cantidad: 1 },
+    ],
+  },
+  {
     sku: 'SKU-CHEESECAKE', nombre: 'Cheesecake',
     componentes: [
       { articulo: 'ING-QUESO-CREMA', cantidad: 120 },
@@ -350,6 +380,15 @@ export const saleRecipes: DemoSaleRecipe[] = [
       { articulo: 'PRE-MASA-HOJALDRE', cantidad: 85 },
       { articulo: 'PRE-CREMA-PASTELERA', cantidad: 40 },
       { articulo: 'ING-AZUCAR-GLAS', cantidad: 10 },
+    ],
+  },
+  {
+    sku: 'SKU-CHAMPURRADA', nombre: 'Champurrada',
+    componentes: [
+      { articulo: 'ING-HARINA', cantidad: 55 },
+      { articulo: 'ING-AZUCAR', cantidad: 22 },
+      { articulo: 'ING-MANTEQUILLA', cantidad: 12 },
+      { articulo: 'ING-HUEVO', cantidad: 0.2 },
     ],
   },
   {

@@ -28,10 +28,13 @@ export async function renderReceipt(content:ReceiptContent):Promise<Buffer>{
   y=16;
   const text=(s:string,opts:{size?:number;bold?:boolean;color?:string;
    align?:'left'|'center'|'right';gap?:number}={}):void=>{
-   doc.font(opts.bold?'Helvetica-Bold':'Helvetica').fontSize(opts.size??9).fillColor(opts.color??ink);
+   doc.font(opts.bold?'Helvetica-Bold':'Helvetica').fontSize(opts.size??9);
    const textOpts:{width:number;align:'left'|'center'|'right'}={width:INNER,align:opts.align??'left'};
    const h=doc.heightOfString(s,textOpts);
-   if(active)doc.text(s,M,y,textOpts);
+   // fillColor() writes a color-space operator to the content stream immediately (unlike
+   // font()/fontSize(), which are just state), so it needs an active page — only call it
+   // once we're actually drawing, never during the measure-only pass.
+   if(active)doc.fillColor(opts.color??ink).text(s,M,y,textOpts);
    y+=h+(opts.gap??2);
   };
   const divider=():void=>{

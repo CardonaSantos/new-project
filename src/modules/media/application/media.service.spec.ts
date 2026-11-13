@@ -78,7 +78,7 @@ describe('MediaService', () => {
     expect(await service.access(user, 'media-1')).toEqual({
       url: 'https://signed-url',
       publico: false,
-      expiresIn: 300,
+      expiresIn: 86400,
     });
   });
   it('no elimina imágenes vinculadas a perfiles o productos', async () => {

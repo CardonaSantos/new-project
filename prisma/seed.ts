@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import {randomBytes} from 'node:crypto';
 import {PrismaPg} from '@prisma/adapter-pg';
 import {PrismaClient} from '../src/generated/prisma/client.js';
 import {argon2id,hash} from 'argon2';
@@ -89,6 +90,34 @@ try{
    }});
    await tx.usuarioRol.create({data:{usuarioId:admin.id,rolId:rol.id,sucursalId:null}});
   }
+  // Self-service (QR/tablet) ordering: a least-privilege system account used to
+  // attribute Ordenes created by customers directly (Orden.usuarioId is NOT NULL).
+  // It never logs in — its password hash is a random, discarded value.
+  const selfServiceEmail='autoservicio@sistema.interno';
+  const selfServicePerms=['orders.create','orders.manage','catalog.read'] as const;
+  const selfServiceRol=await tx.rol.upsert({where:{codigo:'AUTOSERVICIO_SISTEMA'},
+   update:{alcance:'GLOBAL',activo:true},
+   create:{codigo:'AUTOSERVICIO_SISTEMA',nombre:'Autoservicio (sistema)',alcance:'GLOBAL'}});
+  for(const code of selfServicePerms){
+   const permiso=await tx.permiso.findUnique({where:{codigo:code}});
+   if(!permiso)throw Error(`Permiso ${code} no existe; revise la lista de permisos del seed`);
+   await tx.rolPermiso.upsert({where:{rolId_permisoId:{rolId:selfServiceRol.id,permisoId:permiso.id}},
+    update:{},create:{rolId:selfServiceRol.id,permisoId:permiso.id}});
+  }
+  let selfServiceUser=await tx.usuario.findUnique({where:{email:selfServiceEmail}});
+  if(!selfServiceUser){
+   selfServiceUser=await tx.usuario.create({data:{
+    email:selfServiceEmail,nombre:'Autoservicio',
+    hashContrasena:await hash(randomBytes(32).toString('hex'),{
+     type:argon2id,memoryCost:19456,timeCost:2,parallelism:1
+    }),debeCambiarContrasena:false,activo:true,perfil:{create:{}}
+   }});
+  }
+  const selfServiceHasRol=await tx.usuarioRol.findFirst({where:{
+   usuarioId:selfServiceUser.id,rolId:selfServiceRol.id,sucursalId:null
+  }});
+  if(!selfServiceHasRol)await tx.usuarioRol.create({
+   data:{usuarioId:selfServiceUser.id,rolId:selfServiceRol.id,sucursalId:null}});
  });
  process.stdout.write('Seed inicial completado; credenciales no impresas.\n');
 }finally{await db.$disconnect();}

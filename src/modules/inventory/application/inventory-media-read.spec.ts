@@ -33,7 +33,7 @@ describe('Inventory pictures in read models',()=>{
   expect(db.articuloInventarioMedia.findMany.mock.calls[0][0].where)
    .toEqual({articuloId:{in:['a1','a2']}});
   expect(storage.downloadUrl).toHaveBeenCalledTimes(1);
-  expect(storage.downloadUrl).toHaveBeenCalledWith('bucket','file.jpg','image/jpeg','café.jpg',300);
+  expect(storage.downloadUrl).toHaveBeenCalledWith('bucket','file.jpg','image/jpeg','café.jpg',86400);
   expect(urls.get('a1')).toContain('expires=300');
   expect(urls.get('a2')).toBeNull();
  });

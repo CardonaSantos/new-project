@@ -304,9 +304,14 @@ export class KitchenStore{
   const tz=branchRow?.orden?.sucursal?.zonaHoraria??'America/Guatemala';
   const fields:ReceiptField[]=[{label:'Orden',value:ticket.orden?.numero??'—',strong:true},
    {label:'Estación',value:ticket.estacion?.nombre??'—'}];
-  if(ticket.orden)fields.push({label:'Atención',value:modeLabel(ticket.orden.modalidad)});
-  if(ticket.orden?.ocupacionMesa?.mesa?.numero)
+  // A table number already says "this is a dine-in order", so printing "Atención: Para una
+  // mesa" too is redundant — only show Atención for the modes that have no table (para
+  // llevar / a domicilio / mostrador), where it's genuinely useful packing context.
+  if(ticket.orden?.ocupacionMesa?.mesa?.numero){
    fields.push({label:'Mesa',value:ticket.orden.ocupacionMesa.mesa.numero,strong:true});
+  }else if(ticket.orden){
+   fields.push({label:'Atención',value:modeLabel(ticket.orden.modalidad)});
+  }
   if(ticket.orden?.cliente)fields.push({label:'Cliente',value:ticket.orden.cliente.nombre,strong:true});
   fields.push({label:'Recibida',value:receiptInstant(ticket.enviadaEn,tz)});
   fields.push({label:'Estado',value:ticket.estado,strong:true});
@@ -315,11 +320,13 @@ export class KitchenStore{
    nombre:l.ordenLinea?.nombreSnapshot??l.ordenLinea?.variante?.producto?.nombre??'Producto',
    modificadores:receiptModifiers(l.ordenLinea?.ordenLineaModificadoresComoOrdenLinea??[]),
    nota:l.ordenLinea?.notasCocina||l.notasSnapshot||null}));
-  const buffer=await renderReceipt({brand:'GASTRO CORE',kind:'COMANDA DE PREPARACIÓN',
+  // Internal kitchen ticket: no restaurant brand (staff already know where they work) and
+  // no closing disclaimer (they already know it's not a receipt) — kept short to save paper.
+  const buffer=await renderReceipt({brand:'',kind:'COMANDA DE PREPARACIÓN',
    numero:ticket.numero,fields,
    note:ticket.orden?.observaciones?{title:'Nota de pedido',text:ticket.orden.observaciones}:null,
    lines,emptyText:'No hay líneas activas en esta comanda.',
-   footer:'Documento interno para cocina. No es comprobante de pago ni factura.'});
+   footer:''});
   return {buffer,filename:'comanda-'+ticket.numero+'.pdf'};
  }
  private async startLineTx(tx:Tx,u:Principal,lineId:string,count?:Prisma.Decimal){

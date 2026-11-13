@@ -28,7 +28,10 @@ export async function renderReceipt(content:ReceiptContent):Promise<Buffer>{
   y=16;
   const text=(s:string,opts:{size?:number;bold?:boolean;color?:string;
    align?:'left'|'center'|'right';gap?:number}={}):void=>{
-   doc.font(opts.bold?'Helvetica-Bold':'Helvetica').fontSize(opts.size??9);
+   // 'Courier'/'Courier-Bold' are pdfkit's built-in standard-14 fonts (no embedding needed)
+   // and match the monospace 'Courier New' the on-screen thermal-receipt view uses
+   // (.gc-thermal-paper in styles.scss), so the PDF looks like the same ticket.
+   doc.font(opts.bold?'Courier-Bold':'Courier').fontSize(opts.size??9);
    const textOpts:{width:number;align:'left'|'center'|'right'}={width:INNER,align:opts.align??'left'};
    const h=doc.heightOfString(s,textOpts);
    // fillColor() writes a color-space operator to the content stream immediately (unlike
@@ -41,7 +44,9 @@ export async function renderReceipt(content:ReceiptContent):Promise<Buffer>{
    if(active)doc.moveTo(M,y).lineTo(W-M,y).lineWidth(0.5).strokeColor(ruleColor).stroke();
    y+=8;
   };
-  text(content.brand,{bold:true,size:11,align:'center',gap:1});
+  // Brand is omitted on internal tickets (kitchen staff already know which restaurant
+  // they're standing in) to keep those receipts short and save paper.
+  if(content.brand)text(content.brand,{bold:true,size:11,align:'center',gap:1});
   text(content.kind,{bold:true,size:9,align:'center',gap:1});
   text(content.numero,{bold:true,size:9,align:'center',gap:6});
   divider();
@@ -62,8 +67,12 @@ export async function renderReceipt(content:ReceiptContent):Promise<Buffer>{
   }else{
    text(content.emptyText,{size:8,gap:2});
   }
-  divider();
-  text(content.footer,{size:7,color:muted,align:'center'});
+  // Internal tickets pass an empty footer (nothing worth stating to staff is worth the
+  // paper), so skip both the closing divider and the text rather than print a blank line.
+  if(content.footer){
+   divider();
+   text(content.footer,{size:7,color:muted,align:'center'});
+  }
   y+=10;
  };
  draw(false);

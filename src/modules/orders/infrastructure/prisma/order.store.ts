@@ -180,10 +180,12 @@ export class OrderStore{
    qty:qtyText(l.cantidad),nombre:l.nombreSnapshot,
    modificadores:receiptModifiers(l.ordenLineaModificadoresComoOrdenLinea),
    nota:l.notasCocina||null}));
-  const buffer=await renderReceipt({brand:'GASTRO CORE',kind:'COMANDA COMPLETA',numero:order.numero,
+  // Customer-facing document: a warm close and a plain non-fiscal disclaimer (so it's never
+  // mistaken for a factura), unlike the kitchen ticket's bare, paper-saving footer.
+  const buffer=await renderReceipt({brand:'GASTRO CORE',kind:'PEDIDO',numero:order.numero,
    fields,note:order.observaciones?{title:'Observaciones',text:order.observaciones}:null,
    lines,emptyText:'No hay productos activos en esta orden.',
-   footer:'Preparación y venta directa. Documento interno, no fiscal.'});
+   footer:'¡Gracias por tu visita! Esperamos verte pronto.\nDocumento no fiscal.'});
   return {buffer,filename:'pedido-'+order.numero+'.pdf'};
  }
  async list(u:Principal,q:OrderListDto){

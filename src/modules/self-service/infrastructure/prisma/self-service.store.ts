@@ -6,6 +6,7 @@ import {IdentityRepository} from '../../../auth/application/ports/identity.repos
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {OrderService} from '../../../orders/application/order.service.js';
 import {CatalogService} from '../../../catalog/application/catalog.service.js';
+import {RealtimePort} from '../../../realtime/application/ports/realtime.port.js';
 import {SelfServicePort} from '../../application/ports/self-service.repository.js';
 import type {SelfServiceAccess,SelfServiceCart,SelfServiceItemInput,SelfServiceSession,
  TableQrIssued,TableQrSummary} from '../../application/contracts/self-service.types.js';
@@ -22,10 +23,13 @@ const SERVICE_ACCOUNT_EMAIL='autoservicio@sistema.interno';
 /** Narrow shape read from CatalogService.branchMenu's output (declared Promise<unknown>
  * on CatalogRepositoryPort; see catalog-menu.store.ts#branchMenu + catalog-media.service.ts#enrich
  * for the full raw projection this is read from). Only the fields menu() below extracts. */
+/** A single gallery photo as left by CatalogMediaService.enrich(): url is either a
+ * permanent urlPublica or a short-lived (300s) signed URL — see that service for detail. */
+interface RawMediaPhoto{mediaId:string;principal:boolean;orden:number;url:string}
 interface RawBranchMenu{sucursalId:string;menus:Array<{id:string;nombre:string;descripcion:string|null;
  secciones:Array<{id:string;nombre:string;orden:number;items:Array<{id:string;precio:string;moneda:string;
-  variante:{id:string;nombre:string;imagenPrincipalUrl:string|null;
-   producto:{nombre:string;descripcion:string|null;imagenPrincipalUrl:string|null}};
+  variante:{id:string;nombre:string;imagenPrincipalUrl:string|null;imagenes?:RawMediaPhoto[];
+   producto:{nombre:string;descripcion:string|null;imagenPrincipalUrl:string|null;imagenes?:RawMediaPhoto[]}};
   gruposModificadores:Array<{grupoId:string;grupo:string;orden:number;minimo:number;maximo:number;
    opciones:Array<{id:string;nombre:string;recargo:string}>}>;
  }>}>}>}
@@ -41,6 +45,12 @@ interface RawOrden{id:string;numero:string;estado:'ABIERTA'|'CERRADA'|'CANCELADA
  ordenLineasComoOrden:Array<{id:string;nombreSnapshot:string;notasCocina:string|null;
   cantidad:{toFixed(n:number):string};precioUnitario:{toFixed(n:number):string};
   descuento:{toFixed(n:number):string};subtotal:{toFixed(n:number):string};
+  /** orderInclude (order-shared.ts) doesn't filter cancelled lines at the query level;
+   * shapeOrder() below filters them out of the customer-facing projection instead. */
+  canceladaEn:Date|null;
+  /** >0 once any part of this line has gone to the kitchen — editLine() then refuses
+   * quantity changes ("añada una nueva línea"), though cancelLine() may still apply. */
+  cantidadEnviada:{toFixed(n:number):string};
   ordenLineaModificadoresComoOrdenLinea:Array<{nombreSnapshot:string;cantidad:number;
    recargoUnitario:{toFixed(n:number):string}}>;
  }>;
@@ -50,7 +60,8 @@ interface RawOrden{id:string;numero:string;estado:'ABIERTA'|'CERRADA'|'CANCELADA
 export class SelfServiceStore extends SelfServicePort{
  private serviceActorId:string|null=null;
  constructor(private readonly db:PrismaService,private readonly identity:IdentityRepository,
-  private readonly orders:OrderService,private readonly catalog:CatalogService){super();}
+  private readonly orders:OrderService,private readonly catalog:CatalogService,
+  private readonly realtime:RealtimePort){super();}
 
  private async serviceActor():Promise<Principal>{
   if(!this.serviceActorId){
@@ -139,10 +150,19 @@ export class SelfServiceStore extends SelfServicePort{
    secciones:m.secciones.map(sec=>({id:sec.id,nombre:sec.nombre,orden:sec.orden,
     items:sec.items.map(item=>{
      const v=item.variante,p=v.producto;
+     const imagenUrl=v.imagenPrincipalUrl??p.imagenPrincipalUrl??null;
+     // Full gallery for the detail carousel: variant photos first (more specific),
+     // then product photos, ordered, de-duplicated by mediaId, as plain URLs.
+     const seen=new Set<string>();
+     const imagenes=[...(v.imagenes??[]),...(p.imagenes??[])]
+      .sort((a,b)=>a.orden-b.orden)
+      .filter(ph=>!seen.has(ph.mediaId)&&(seen.add(ph.mediaId),true))
+      .map(ph=>ph.url);
+     if(imagenUrl&&!imagenes.includes(imagenUrl))imagenes.unshift(imagenUrl);
      return {id:item.id,varianteId:v.id,
       nombre:v.nombre&&v.nombre!=='Única'?`${p.nombre} — ${v.nombre}`:p.nombre,
       descripcion:p.descripcion,precio:item.precio,moneda:item.moneda,
-      imagenUrl:v.imagenPrincipalUrl??p.imagenPrincipalUrl??null,
+      imagenUrl,imagenes,
       gruposModificadores:item.gruposModificadores.map(g=>({grupoId:g.grupoId,grupo:g.grupo,
        orden:g.orden,minimo:g.minimo,maximo:g.maximo,
        opciones:g.opciones.map(o=>({id:o.id,nombre:o.nombre,recargo:o.recargo}))}))};
@@ -152,9 +172,12 @@ export class SelfServiceStore extends SelfServicePort{
   return {ordenId,orden:{id:raw.id,numero:raw.numero,estado:raw.estado,
    subtotal:raw.subtotal.toFixed(2),descuentoTotal:raw.descuentoTotal.toFixed(2),
    total:raw.total.toFixed(2),
-   lineas:raw.ordenLineasComoOrden.map(l=>({id:l.id,nombre:l.nombreSnapshot,
+   // orderInclude (order-shared.ts) doesn't filter cancelled lines at the query level,
+   // so a customer-facing cart must drop them here explicitly.
+   lineas:raw.ordenLineasComoOrden.filter(l=>!l.canceladaEn).map(l=>({id:l.id,nombre:l.nombreSnapshot,
     cantidad:l.cantidad.toFixed(2),precioUnitario:l.precioUnitario.toFixed(2),
     descuento:l.descuento.toFixed(2),subtotal:l.subtotal.toFixed(2),notasCocina:l.notasCocina,
+    enviada:Number(l.cantidadEnviada.toFixed(3))>0,
     modificadores:l.ordenLineaModificadoresComoOrdenLinea.map(m=>({nombre:m.nombreSnapshot,
      cantidad:m.cantidad,recargoUnitario:m.recargoUnitario.toFixed(2)}))}))}};
  }
@@ -175,11 +198,30 @@ export class SelfServiceStore extends SelfServicePort{
    claveOperacion:randomUUID()}) as RawOrden;
   return this.shapeOrder(s.ordenId,updated);
  }
+ async updateLineQuantity(s:SelfServiceSession,lineaId:string,cantidad:string):Promise<SelfServiceCart>{
+  if(!s.ordenId)throw new BadRequestException('No hay un pedido activo');
+  const raw=await this.orders.editLine(await this.serviceActor(),s.ordenId,lineaId,
+   {cantidad,claveOperacion:randomUUID()}) as RawOrden;
+  return this.shapeOrder(s.ordenId,raw);
+ }
+ async removeLine(s:SelfServiceSession,lineaId:string):Promise<SelfServiceCart>{
+  if(!s.ordenId)throw new BadRequestException('No hay un pedido activo');
+  const raw=await this.orders.cancelLine(await this.serviceActor(),s.ordenId,lineaId,
+   {motivo:'Eliminado por el cliente desde autoservicio'}) as RawOrden;
+  return this.shapeOrder(s.ordenId,raw);
+ }
  async send(s:SelfServiceSession):Promise<SelfServiceCart>{
   if(!s.ordenId)throw new BadRequestException('No hay un pedido para enviar');
   const raw=await this.orders.send(await this.serviceActor(),s.ordenId,
    {claveOperacion:randomUUID()}) as RawOrden;
   return this.shapeOrder(s.ordenId,raw);
+ }
+ async callWaiter(s:SelfServiceSession):Promise<void>{
+  // Best-effort nudge: look up the table's display info for the toast, but never let a
+  // lookup miss turn into an error the customer sees — the button's job is just "ping staff".
+  const mesa=await this.db.mesa.findUnique({where:{id:s.mesaId},include:{sala:true}});
+  this.realtime.emit(s.sucursalId,'TABLE_HELP_REQUESTED',{
+   mesaId:s.mesaId,mesaNumero:mesa?.numero??null,sala:mesa?.sala.nombre??null});
  }
  async closeSession(s:SelfServiceSession):Promise<void>{
   await this.db.sesionAutoservicio.updateMany({where:{id:s.sesionId,estado:'ACTIVA'},

@@ -24,3 +24,6 @@ export class SelfServiceAddItemsDto{
 export class IssueTableQrDto{
  @IsOptional() @IsDateString() expiraEn?:string;
 }
+export class SelfServiceUpdateLineDto{
+ @IsString() @Matches(Q) cantidad!:string;
+}

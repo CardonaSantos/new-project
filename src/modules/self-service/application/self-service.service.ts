@@ -13,6 +13,11 @@ export class SelfServiceService{
  menu(s:SelfServiceSession){return this.port.menu(s);}
  cart(s:SelfServiceSession){return this.port.cart(s);}
  addItems(s:SelfServiceSession,items:SelfServiceItemInput[]){return this.port.addItems(s,items);}
+ updateLineQuantity(s:SelfServiceSession,lineaId:string,cantidad:string){
+  return this.port.updateLineQuantity(s,lineaId,cantidad);
+ }
+ removeLine(s:SelfServiceSession,lineaId:string){return this.port.removeLine(s,lineaId);}
  send(s:SelfServiceSession){return this.port.send(s);}
+ callWaiter(s:SelfServiceSession){return this.port.callWaiter(s);}
  closeSession(s:SelfServiceSession){return this.port.closeSession(s);}
 }

@@ -52,6 +52,9 @@ export interface SelfServiceMenuModifierGroup{
 export interface SelfServiceMenuItem{
  id:string;varianteId:string;nombre:string;descripcion:string|null;
  precio:string;moneda:string;imagenUrl:string|null;
+ /** Full gallery (variant photos first, then product photos), for a detail carousel.
+  * Already includes imagenUrl as its first element when non-empty. */
+ imagenes:string[];
  gruposModificadores:SelfServiceMenuModifierGroup[];
 }
 export interface SelfServiceMenuSection{id:string;nombre:string;orden:number;items:SelfServiceMenuItem[]}
@@ -67,6 +70,10 @@ export interface SelfServiceOrderLineModifier{nombre:string;cantidad:number;reca
 export interface SelfServiceOrderLine{
  id:string;nombre:string;cantidad:string;precioUnitario:string;descuento:string;
  subtotal:string;notasCocina:string|null;modificadores:SelfServiceOrderLineModifier[];
+ /** true once any part of this line has gone to the kitchen (OrdenLinea.cantidadEnviada>0):
+  * the backend refuses to edit its quantity past that point (añada una nueva línea),
+  * though it can still be cancelled while not yet in preparation. */
+ enviada:boolean;
 }
 export interface SelfServiceOrderSummary{
  id:string;numero:string;estado:'ABIERTA'|'CERRADA'|'CANCELADA';

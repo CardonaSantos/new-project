@@ -12,7 +12,12 @@ export abstract class SelfServicePort{
  abstract menu(s:SelfServiceSession):Promise<SelfServiceMenuResponse>;
  abstract cart(s:SelfServiceSession):Promise<SelfServiceCart>;
  abstract addItems(s:SelfServiceSession,items:SelfServiceItemInput[]):Promise<SelfServiceCart>;
+ abstract updateLineQuantity(s:SelfServiceSession,lineaId:string,cantidad:string):Promise<SelfServiceCart>;
+ abstract removeLine(s:SelfServiceSession,lineaId:string):Promise<SelfServiceCart>;
  abstract send(s:SelfServiceSession):Promise<SelfServiceCart>;
+ /** Fire-and-forget nudge to staff (RealtimePort "TABLE_HELP_REQUESTED") — not an order
+  * action, so it never touches the Orden/cart state and can't fail the customer's flow. */
+ abstract callWaiter(s:SelfServiceSession):Promise<void>;
  abstract closeSession(s:SelfServiceSession):Promise<void>;
  // Guard support.
  abstract resolveSession(hashSesion:string):Promise<SelfServiceSession|null>;

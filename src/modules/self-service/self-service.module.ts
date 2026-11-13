@@ -3,6 +3,7 @@ import {PrismaModule} from '../../infrastructure/database/prisma/prisma.module.j
 import {AuthModule} from '../auth/auth.module.js';
 import {OrdersModule} from '../orders/orders.module.js';
 import {CatalogModule} from '../catalog/catalog.module.js';
+import {RealtimeModule} from '../realtime/realtime.module.js';
 import {SelfServiceStore} from './infrastructure/prisma/self-service.store.js';
 import {SelfServicePort} from './application/ports/self-service.repository.js';
 import {SelfServiceService} from './application/self-service.service.js';
@@ -10,7 +11,7 @@ import {SelfServiceController,SelfServiceTablesController} from './presentation/
 import {SelfServiceSessionGuard} from './presentation/http/guards/self-service-session.guard.js';
 
 @Module({
- imports:[PrismaModule,AuthModule,OrdersModule,CatalogModule],
+ imports:[PrismaModule,AuthModule,OrdersModule,CatalogModule,RealtimeModule],
  controllers:[SelfServiceController,SelfServiceTablesController],
  providers:[SelfServiceStore,{provide:SelfServicePort,useExisting:SelfServiceStore},
   SelfServiceService,SelfServiceSessionGuard],

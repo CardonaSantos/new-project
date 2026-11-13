@@ -3,6 +3,7 @@ import type {Principal} from '../../../auth/application/auth.service.js';
 /** Order use-case contract: infrastructure-independent application port. */
 export abstract class OrderPort {
  abstract detail(actor:Principal,...args:any[]):Promise<any>;
+ abstract receiptPdf(actor:Principal,...args:any[]):Promise<any>;
  abstract list(actor:Principal,...args:any[]):Promise<any>;
  abstract worklist(actor:Principal,...args:any[]):Promise<any>;
  abstract quoteOrder(actor:Principal,...args:any[]):Promise<any>;

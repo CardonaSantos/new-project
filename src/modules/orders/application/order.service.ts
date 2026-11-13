@@ -6,6 +6,7 @@ import {OrderPort} from './ports/order.port.js';
 export class OrderService {
  constructor(private readonly port:OrderPort){}
  detail(actor:Principal,...args:any[]){return this.port.detail(actor,...args);}
+ receiptPdf(actor:Principal,...args:any[]){return this.port.receiptPdf(actor,...args);}
  list(actor:Principal,...args:any[]){return this.port.list(actor,...args);}
  worklist(actor:Principal,...args:any[]){return this.port.worklist(actor,...args);}
  quoteOrder(actor:Principal,...args:any[]){return this.port.quoteOrder(actor,...args);}

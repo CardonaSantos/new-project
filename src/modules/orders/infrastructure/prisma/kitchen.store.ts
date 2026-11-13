@@ -9,6 +9,8 @@ import {audit,outbox,runOnce,ticketInclude,type Tx} from './order-shared.js';
 import {ConsumptionStore} from './consumption.store.js';
 import {RealtimePort} from '../../../realtime/application/ports/realtime.port.js';
 import type {RouteDto,RouteUpdateDto,KitchenChangesDto,StartLineDto,StationDto,StationUpdateDto,TicketListDto,KitchenQueueDto} from '../../presentation/http/dto/orders.dto.js';
+import {renderReceipt,modeLabel,qtyText,receiptInstant,receiptModifiers,
+ type ReceiptField,type ReceiptLine} from '../../application/order-receipt-pdf.js';
 type Perm='orders.create'|'orders.manage';
 @Injectable()
 export class KitchenStore{
@@ -288,8 +290,60 @@ export class KitchenStore{
   return this.engine.tx(async tx=>{
    const row=await this.ticket(tx,id);
    await this.engine.allowed(tx,u.id,'kitchen.read',row.orden.sucursalId);
-   return tx.comanda.findUniqueOrThrow({where:{id},include:ticketInclude});
+   const ticket=await tx.comanda.findUniqueOrThrow({where:{id},include:ticketInclude});
+   // Direct-sale (INVENTARIABLE) lines never get a ComandaLinea — sendTx() deducts their
+   // stock immediately and routes nothing to a station (see sendTx() above) — so without this,
+   // whoever assembles/delivers the order from this ticket would have no way of knowing the
+   // order also includes something that needs grabbing, not cooking. Queried separately,
+   // rather than widening ticketInclude, so list()/queue() (the live board, many tickets at
+   // once) don't carry this extra payload on every row.
+   const extraRows=await tx.ordenLinea.findMany({where:{ordenId:ticket.ordenId,canceladaEn:null,
+    cantidadEnviada:{gt:0},variante:{producto:{tipo:'INVENTARIABLE'}}},
+    select:{id:true,nombreSnapshot:true,cantidadEnviada:true}});
+   const tambienEntregar=extraRows.map(r=>({id:r.id,nombreSnapshot:r.nombreSnapshot,
+    cantidad:r.cantidadEnviada}));
+   return {...ticket,tambienEntregar};
   });
+ }
+ /** Mirrors orders-kitchen-print-page.ts's HTML ticket, as an actual PDF file — see
+  * order.store.ts's receiptPdf() for why. detail() above already enforces kitchen.read. */
+ async receiptPdf(u:Principal,id:string):Promise<{buffer:Buffer;filename:string}>{
+  const ticket=await this.detail(u,id);
+  // ticketInclude (the shape detail() returns) deliberately omits orden.sucursalId, so the
+  // branch's time zone is looked up separately rather than widening that shared include.
+  const branchRow=await this.db.comanda.findUnique({where:{id},
+   select:{orden:{select:{sucursal:{select:{zonaHoraria:true}}}}}});
+  const tz=branchRow?.orden?.sucursal?.zonaHoraria??'America/Guatemala';
+  const fields:ReceiptField[]=[{label:'Orden',value:ticket.orden?.numero??'—',strong:true},
+   {label:'Estación',value:ticket.estacion?.nombre??'—'}];
+  // A table number already says "this is a dine-in order", so printing "Atención: Para una
+  // mesa" too is redundant — only show Atención for the modes that have no table (para
+  // llevar / a domicilio / mostrador), where it's genuinely useful packing context.
+  if(ticket.orden?.ocupacionMesa?.mesa?.numero){
+   fields.push({label:'Mesa',value:ticket.orden.ocupacionMesa.mesa.numero,strong:true});
+  }else if(ticket.orden){
+   fields.push({label:'Atención',value:modeLabel(ticket.orden.modalidad)});
+  }
+  if(ticket.orden?.cliente)fields.push({label:'Cliente',value:ticket.orden.cliente.nombre,strong:true});
+  const lines:ReceiptLine[]=ticket.comandaLineasComoComanda.filter(l=>!l.canceladaEn).map(l=>({
+   qty:qtyText(l.cantidad),
+   nombre:l.ordenLinea?.nombreSnapshot??l.ordenLinea?.variante?.producto?.nombre??'Producto',
+   modificadores:receiptModifiers(l.ordenLinea?.ordenLineaModificadoresComoOrdenLinea??[]),
+   nota:l.ordenLinea?.notasCocina||l.notasSnapshot||null}));
+  // Direct-sale items on the same order (water bottles, cans, etc.) never become a
+  // ComandaLinea — list them separately so whoever delivers this ticket's order knows to
+  // also grab them, without mixing them into the "needs preparation" list above.
+  const extraLines=ticket.tambienEntregar.map(e=>({qty:qtyText(e.cantidad),nombre:e.nombreSnapshot}));
+  // Internal kitchen ticket: no restaurant brand (staff already know where they work), no
+  // Estado (it's always PENDIENTE at print time — that's the point of printing it), no
+  // closing disclaimer — kept as short as possible to save paper. The date/time moves into
+  // the header as small print instead of its own field row.
+  const buffer=await renderReceipt({brand:'',kind:'COMANDA',
+   numero:ticket.numero,meta:receiptInstant(ticket.enviadaEn,tz),fields,
+   note:ticket.orden?.observaciones?{title:'Nota de pedido',text:ticket.orden.observaciones}:null,
+   lines,extraLines,emptyText:'No hay líneas activas en esta comanda.',
+   footer:''});
+  return {buffer,filename:'comanda-'+ticket.numero+'.pdf'};
  }
  private async startLineTx(tx:Tx,u:Principal,lineId:string,count?:Prisma.Decimal){
   const row=await tx.comandaLinea.findUnique({where:{id:lineId},include:{

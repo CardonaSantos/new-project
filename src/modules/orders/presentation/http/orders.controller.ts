@@ -1,4 +1,5 @@
-import {Body,Controller,Delete,Get,Param,Patch,Post,Query} from '@nestjs/common';
+import {Body,Controller,Delete,Get,Header,Param,Patch,Post,Query,Res} from '@nestjs/common';
+import type {Response} from 'express';
 import {CurrentUser} from '../../../auth/presentation/http/decorators/auth.decorators.js';
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {OrderService} from '../../application/order.service.js';
@@ -20,6 +21,14 @@ export class OrdersController{
  }
  @Get('worklist') worklist(@CurrentUser() u:Principal,@Query() q:OrderListDto){return this.orders.worklist(u,q);}
  @Get(':id') detail(@CurrentUser() u:Principal,@Param('id') id:string){return this.orders.detail(u,id);}
+ @Get(':id/receipt.pdf') @Header('Cache-Control','private, no-store, max-age=0')
+ async receiptPdf(@CurrentUser() u:Principal,@Param('id') id:string,@Res() res:Response){
+  const {buffer,filename}=await this.orders.receiptPdf(u,id);
+  res.setHeader('Content-Type','application/pdf');
+  res.setHeader('Content-Disposition','inline; filename="'+filename+'"');
+  res.setHeader('Content-Length',buffer.length);
+  return res.status(200).send(buffer);
+ }
  @Patch(':id') edit(@CurrentUser() u:Principal,@Param('id') id:string,
   @Body() d:EditOrderDto){return this.orders.edit(u,id,d);}
  @Post(':id/lines') add(@CurrentUser() u:Principal,@Param('id') id:string,
@@ -85,6 +94,14 @@ export class KitchenController{
   return this.kitchen.list(u,q);}
  @Get('tickets/:id') ticket(@CurrentUser() u:Principal,@Param('id') id:string){
   return this.kitchen.detail(u,id);}
+ @Get('tickets/:id/receipt.pdf') @Header('Cache-Control','private, no-store, max-age=0')
+ async ticketReceiptPdf(@CurrentUser() u:Principal,@Param('id') id:string,@Res() res:Response){
+  const {buffer,filename}=await this.kitchen.receiptPdf(u,id);
+  res.setHeader('Content-Type','application/pdf');
+  res.setHeader('Content-Disposition','inline; filename="'+filename+'"');
+  res.setHeader('Content-Length',buffer.length);
+  return res.status(200).send(buffer);
+ }
  @Post('tickets/:id/start') start(@CurrentUser() u:Principal,@Param('id') id:string){
   return this.kitchen.start(u,id);}
  @Post('tickets/:id/ready') ready(@CurrentUser() u:Principal,@Param('id') id:string){

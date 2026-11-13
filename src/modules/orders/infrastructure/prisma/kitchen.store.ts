@@ -313,17 +313,17 @@ export class KitchenStore{
    fields.push({label:'Atención',value:modeLabel(ticket.orden.modalidad)});
   }
   if(ticket.orden?.cliente)fields.push({label:'Cliente',value:ticket.orden.cliente.nombre,strong:true});
-  fields.push({label:'Recibida',value:receiptInstant(ticket.enviadaEn,tz)});
-  fields.push({label:'Estado',value:ticket.estado,strong:true});
   const lines:ReceiptLine[]=ticket.comandaLineasComoComanda.filter(l=>!l.canceladaEn).map(l=>({
    qty:qtyText(l.cantidad),
    nombre:l.ordenLinea?.nombreSnapshot??l.ordenLinea?.variante?.producto?.nombre??'Producto',
    modificadores:receiptModifiers(l.ordenLinea?.ordenLineaModificadoresComoOrdenLinea??[]),
    nota:l.ordenLinea?.notasCocina||l.notasSnapshot||null}));
-  // Internal kitchen ticket: no restaurant brand (staff already know where they work) and
-  // no closing disclaimer (they already know it's not a receipt) — kept short to save paper.
-  const buffer=await renderReceipt({brand:'',kind:'COMANDA DE PREPARACIÓN',
-   numero:ticket.numero,fields,
+  // Internal kitchen ticket: no restaurant brand (staff already know where they work), no
+  // Estado (it's always PENDIENTE at print time — that's the point of printing it), no
+  // closing disclaimer — kept as short as possible to save paper. The date/time moves into
+  // the header as small print instead of its own field row.
+  const buffer=await renderReceipt({brand:'',kind:'COMANDA',
+   numero:ticket.numero,meta:receiptInstant(ticket.enviadaEn,tz),fields,
    note:ticket.orden?.observaciones?{title:'Nota de pedido',text:ticket.orden.observaciones}:null,
    lines,emptyText:'No hay líneas activas en esta comanda.',
    footer:''});

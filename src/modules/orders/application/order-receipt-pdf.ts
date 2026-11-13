@@ -10,7 +10,7 @@ const ink='#141414',muted='#5a5a5a',ruleColor='#bbbbbb';
 export interface ReceiptField{label:string;value:string;strong?:boolean}
 export interface ReceiptLine{qty:string;nombre:string;modificadores:string[];nota:string|null}
 export interface ReceiptContent{
- brand:string;kind:string;numero:string;
+ brand:string;kind:string;numero:string;meta?:string;
  fields:ReceiptField[];
  note:{title:string;text:string}|null;
  lines:ReceiptLine[];
@@ -48,7 +48,10 @@ export async function renderReceipt(content:ReceiptContent):Promise<Buffer>{
   // they're standing in) to keep those receipts short and save paper.
   if(content.brand)text(content.brand,{bold:true,size:11,align:'center',gap:1});
   text(content.kind,{bold:true,size:9,align:'center',gap:1});
-  text(content.numero,{bold:true,size:9,align:'center',gap:6});
+  text(content.numero,{bold:true,size:9,align:'center',gap:content.meta?1:6});
+  // The date/time lives here, small, instead of its own field row below — same info,
+  // less vertical space on the slip.
+  if(content.meta)text(content.meta,{size:7,color:muted,align:'center',gap:6});
   divider();
   for(const f of content.fields)text(f.label+': '+f.value,{bold:!!f.strong,size:8,gap:3});
   divider();

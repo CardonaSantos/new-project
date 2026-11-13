@@ -16,7 +16,7 @@ import {DeliveryStore} from '../../../delivery/infrastructure/prisma/delivery.st
 import type {CollectDto} from '../../../payments/presentation/http/dto/payments.dto.js';
 import type {QuoteOrderDto,CreateOrderDto,QuickCheckoutDto,AddItemsDto,OrderItemDto,EditLineDto,EditOrderDto,OrderListDto,ReasonDto,CancelOrderDto,SendDto} from '../../presentation/http/dto/orders.dto.js';
 import {requiresCancellationAuthorization,requireCancellationClassification} from '../../domain/cancellation.policy.js';
-import {renderReceipt,modeLabel,qtyText,receiptInstant,receiptModifiers,
+import {renderReceipt,qtyText,receiptInstant,receiptModifiers,
  type ReceiptField,type ReceiptLine} from '../../application/order-receipt-pdf.js';
 export type IngredientModifierSnapshot={modificadorId:string;articuloId:string;
  unidadId:string;cantidad:string;efecto:'SUMAR'|'RESTAR'|'SUSTITUIR';
@@ -161,31 +161,32 @@ export class OrderStore{
   * and hands it to navigator.share(). detail() above already enforces visibility; reused as-is. */
  async receiptPdf(u:Principal,id:string):Promise<{buffer:Buffer;filename:string}>{
   const order=await this.detail(u,id);
-  const branch=await this.db.sucursal.findUnique({where:{id:order.sucursalId},
-   select:{zonaHoraria:true}});
+  const [branch,company]=await Promise.all([
+   this.db.sucursal.findUnique({where:{id:order.sucursalId},select:{zonaHoraria:true}}),
+   // Singleton business config (same source as invoices elsewhere in the app) — this is the
+   // real trade name, not a string literal, so it reflects whatever's set in Configuración.
+   this.db.empresaConfiguracion.findFirst({select:{nombreComercial:true}}),
+  ]);
   const tz=branch?.zonaHoraria??'America/Guatemala';
-  const fields:ReceiptField[]=[{label:'Atención',value:modeLabel(order.modalidad),strong:true}];
+  const fields:ReceiptField[]=[];
   if(order.ocupacionMesa?.mesa?.numero){
    fields.push({label:'Mesa',value:order.ocupacionMesa.mesa.numero,strong:true});
    if(order.ocupacionMesa.mesa.sala?.nombre)
     fields.push({label:'Sala',value:order.ocupacionMesa.mesa.sala.nombre});
   }
-  if(order.cliente){
-   fields.push({label:'Cliente',value:order.cliente.nombre,strong:true});
-   if(order.cliente.telefono)fields.push({label:'Teléfono',value:order.cliente.telefono});
-  }
-  fields.push({label:'Registrado',value:receiptInstant(order.abiertaEn,tz)});
-  fields.push({label:'Estado',value:order.estado,strong:true});
+  // No "CF"/placeholder when there's no customer on the order — just omit the row.
+  if(order.cliente)fields.push({label:'Cliente',value:order.cliente.nombre,strong:true});
   const lines:ReceiptLine[]=order.ordenLineasComoOrden.filter(l=>!l.canceladaEn).map(l=>({
    qty:qtyText(l.cantidad),nombre:l.nombreSnapshot,
    modificadores:receiptModifiers(l.ordenLineaModificadoresComoOrdenLinea),
    nota:l.notasCocina||null}));
-  // Customer-facing document: a warm close and a plain non-fiscal disclaimer (so it's never
-  // mistaken for a factura), unlike the kitchen ticket's bare, paper-saving footer.
-  const buffer=await renderReceipt({brand:'GASTRO CORE',kind:'PEDIDO',numero:order.numero,
+  // Customer-facing document: a warm close, no fiscal disclaimer (not needed here) — unlike
+  // the kitchen ticket's bare footer, this one is meant to be read.
+  const buffer=await renderReceipt({brand:company?.nombreComercial??'',kind:'PEDIDO',
+   numero:order.numero,meta:receiptInstant(order.abiertaEn,tz),
    fields,note:order.observaciones?{title:'Observaciones',text:order.observaciones}:null,
    lines,emptyText:'No hay productos activos en esta orden.',
-   footer:'¡Gracias por tu visita! Esperamos verte pronto.\nDocumento no fiscal.'});
+   footer:'¡Gracias por tu visita! Esperamos verte pronto.'});
   return {buffer,filename:'pedido-'+order.numero+'.pdf'};
  }
  async list(u:Principal,q:OrderListDto){

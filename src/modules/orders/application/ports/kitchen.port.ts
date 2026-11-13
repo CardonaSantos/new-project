@@ -13,6 +13,7 @@ export abstract class KitchenPort {
  abstract list(actor:Principal,...args:any[]):Promise<any>;
  abstract queue(actor:Principal,...args:any[]):Promise<any>;
  abstract detail(actor:Principal,...args:any[]):Promise<any>;
+ abstract receiptPdf(actor:Principal,...args:any[]):Promise<any>;
  abstract start(actor:Principal,...args:any[]):Promise<any>;
  abstract startLine(actor:Principal,...args:any[]):Promise<any>;
  abstract readyLine(actor:Principal,...args:any[]):Promise<any>;

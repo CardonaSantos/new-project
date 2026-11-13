@@ -16,6 +16,8 @@ import {DeliveryStore} from '../../../delivery/infrastructure/prisma/delivery.st
 import type {CollectDto} from '../../../payments/presentation/http/dto/payments.dto.js';
 import type {QuoteOrderDto,CreateOrderDto,QuickCheckoutDto,AddItemsDto,OrderItemDto,EditLineDto,EditOrderDto,OrderListDto,ReasonDto,CancelOrderDto,SendDto} from '../../presentation/http/dto/orders.dto.js';
 import {requiresCancellationAuthorization,requireCancellationClassification} from '../../domain/cancellation.policy.js';
+import {renderReceipt,modeLabel,qtyText,receiptInstant,receiptModifiers,
+ type ReceiptField,type ReceiptLine} from '../../application/order-receipt-pdf.js';
 export type IngredientModifierSnapshot={modificadorId:string;articuloId:string;
  unidadId:string;cantidad:string;efecto:'SUMAR'|'RESTAR'|'SUSTITUIR';
  sustituyeArticuloId:string|null};
@@ -153,6 +155,36 @@ export class OrderStore{
   if(!check)throw new NotFoundException('Orden inexistente');
   await this.visible(u,check.sucursalId);
   return this.db.orden.findUniqueOrThrow({where:{id},include:orderInclude});
+ }
+ /** Mirrors orders-order-print-page.ts's HTML receipt, as an actual PDF file (window.print()
+  * on that page never produces one) — the WhatsApp-share button on the frontend fetches this
+  * and hands it to navigator.share(). detail() above already enforces visibility; reused as-is. */
+ async receiptPdf(u:Principal,id:string):Promise<{buffer:Buffer;filename:string}>{
+  const order=await this.detail(u,id);
+  const branch=await this.db.sucursal.findUnique({where:{id:order.sucursalId},
+   select:{zonaHoraria:true}});
+  const tz=branch?.zonaHoraria??'America/Guatemala';
+  const fields:ReceiptField[]=[{label:'Atención',value:modeLabel(order.modalidad),strong:true}];
+  if(order.ocupacionMesa?.mesa?.numero){
+   fields.push({label:'Mesa',value:order.ocupacionMesa.mesa.numero,strong:true});
+   if(order.ocupacionMesa.mesa.sala?.nombre)
+    fields.push({label:'Sala',value:order.ocupacionMesa.mesa.sala.nombre});
+  }
+  if(order.cliente){
+   fields.push({label:'Cliente',value:order.cliente.nombre,strong:true});
+   if(order.cliente.telefono)fields.push({label:'Teléfono',value:order.cliente.telefono});
+  }
+  fields.push({label:'Registrado',value:receiptInstant(order.abiertaEn,tz)});
+  fields.push({label:'Estado',value:order.estado,strong:true});
+  const lines:ReceiptLine[]=order.ordenLineasComoOrden.filter(l=>!l.canceladaEn).map(l=>({
+   qty:qtyText(l.cantidad),nombre:l.nombreSnapshot,
+   modificadores:receiptModifiers(l.ordenLineaModificadoresComoOrdenLinea),
+   nota:l.notasCocina||null}));
+  const buffer=await renderReceipt({brand:'GASTRO CORE',kind:'COMANDA COMPLETA',numero:order.numero,
+   fields,note:order.observaciones?{title:'Observaciones',text:order.observaciones}:null,
+   lines,emptyText:'No hay productos activos en esta orden.',
+   footer:'Preparación y venta directa. Documento interno, no fiscal.'});
+  return {buffer,filename:'pedido-'+order.numero+'.pdf'};
  }
  async list(u:Principal,q:OrderListDto){
   return this.engine.tx(async tx=>{

@@ -9,6 +9,8 @@ import {audit,outbox,runOnce,ticketInclude,type Tx} from './order-shared.js';
 import {ConsumptionStore} from './consumption.store.js';
 import {RealtimePort} from '../../../realtime/application/ports/realtime.port.js';
 import type {RouteDto,RouteUpdateDto,KitchenChangesDto,StartLineDto,StationDto,StationUpdateDto,TicketListDto,KitchenQueueDto} from '../../presentation/http/dto/orders.dto.js';
+import {renderReceipt,modeLabel,qtyText,receiptInstant,receiptModifiers,
+ type ReceiptField,type ReceiptLine} from '../../application/order-receipt-pdf.js';
 type Perm='orders.create'|'orders.manage';
 @Injectable()
 export class KitchenStore{
@@ -290,6 +292,35 @@ export class KitchenStore{
    await this.engine.allowed(tx,u.id,'kitchen.read',row.orden.sucursalId);
    return tx.comanda.findUniqueOrThrow({where:{id},include:ticketInclude});
   });
+ }
+ /** Mirrors orders-kitchen-print-page.ts's HTML ticket, as an actual PDF file — see
+  * order.store.ts's receiptPdf() for why. detail() above already enforces kitchen.read. */
+ async receiptPdf(u:Principal,id:string):Promise<{buffer:Buffer;filename:string}>{
+  const ticket=await this.detail(u,id);
+  // ticketInclude (the shape detail() returns) deliberately omits orden.sucursalId, so the
+  // branch's time zone is looked up separately rather than widening that shared include.
+  const branchRow=await this.db.comanda.findUnique({where:{id},
+   select:{orden:{select:{sucursal:{select:{zonaHoraria:true}}}}}});
+  const tz=branchRow?.orden?.sucursal?.zonaHoraria??'America/Guatemala';
+  const fields:ReceiptField[]=[{label:'Orden',value:ticket.orden?.numero??'—',strong:true},
+   {label:'Estación',value:ticket.estacion?.nombre??'—'}];
+  if(ticket.orden)fields.push({label:'Atención',value:modeLabel(ticket.orden.modalidad)});
+  if(ticket.orden?.ocupacionMesa?.mesa?.numero)
+   fields.push({label:'Mesa',value:ticket.orden.ocupacionMesa.mesa.numero,strong:true});
+  if(ticket.orden?.cliente)fields.push({label:'Cliente',value:ticket.orden.cliente.nombre,strong:true});
+  fields.push({label:'Recibida',value:receiptInstant(ticket.enviadaEn,tz)});
+  fields.push({label:'Estado',value:ticket.estado,strong:true});
+  const lines:ReceiptLine[]=ticket.comandaLineasComoComanda.filter(l=>!l.canceladaEn).map(l=>({
+   qty:qtyText(l.cantidad),
+   nombre:l.ordenLinea?.nombreSnapshot??l.ordenLinea?.variante?.producto?.nombre??'Producto',
+   modificadores:receiptModifiers(l.ordenLinea?.ordenLineaModificadoresComoOrdenLinea??[]),
+   nota:l.ordenLinea?.notasCocina||l.notasSnapshot||null}));
+  const buffer=await renderReceipt({brand:'GASTRO CORE',kind:'COMANDA DE PREPARACIÓN',
+   numero:ticket.numero,fields,
+   note:ticket.orden?.observaciones?{title:'Nota de pedido',text:ticket.orden.observaciones}:null,
+   lines,emptyText:'No hay líneas activas en esta comanda.',
+   footer:'Documento interno para cocina. No es comprobante de pago ni factura.'});
+  return {buffer,filename:'comanda-'+ticket.numero+'.pdf'};
  }
  private async startLineTx(tx:Tx,u:Principal,lineId:string,count?:Prisma.Decimal){
   const row=await tx.comandaLinea.findUnique({where:{id:lineId},include:{

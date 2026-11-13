@@ -2,6 +2,11 @@ import {Injectable} from '@nestjs/common';
 import {Prisma} from '../../../generated/prisma/client.js';
 import {MediaRepositoryPort} from '../../media/application/ports/media-repository.port.js';
 import {FileStoragePort} from '../../media/application/ports/file-storage.port.js';
+/** Signed-URL lifetime for non-public media (see enrich() below). 300s (5min) was too short:
+ * a self-service table session lasts up to 3h, and a staff order/kitchen screen can stay open far
+ * longer than that — both ended up with broken photos partway through. 24h stays well inside the
+ * S3-compatible presigner's 7-day max for static credentials (see SpacesAdapter.downloadUrl). */
+const MEDIA_URL_TTL_SECONDS=86400;
 @Injectable()
 export class CatalogMediaService{
  constructor(private readonly media:MediaRepositoryPort,private readonly storage:FileStoragePort){}
@@ -20,7 +25,7 @@ export class CatalogMediaService{
      const relation=value as {media?:{id:string;nombreOriginal:string|null;urlPublica:string|null;confirmadaEn:Date|null;eliminadaEn:Date|null;publico:boolean;bucket:string;claveObjeto:string;mimeType:string},principal?:boolean,orden?:number};
      const m=relation.media;
      if(!m||!m.confirmadaEn||m.eliminadaEn)return null;
-     const url=m.urlPublica??await this.storage.downloadUrl(m.bucket,m.claveObjeto,m.mimeType,m.nombreOriginal??'foto',300);
+     const url=m.urlPublica??await this.storage.downloadUrl(m.bucket,m.claveObjeto,m.mimeType,m.nombreOriginal??'foto',MEDIA_URL_TTL_SECONDS);
      return {mediaId:m.id,principal:relation.principal??false,orden:relation.orden??0,url};
     }));
     const fotos=photos.filter(Boolean) as Array<{mediaId:string;principal:boolean;orden:number;url:string}>;

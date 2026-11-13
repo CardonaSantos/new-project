@@ -207,15 +207,24 @@ export class SelfServiceStore extends SelfServicePort{
  }
  async addItems(s:SelfServiceSession,items:SelfServiceItemInput[]):Promise<SelfServiceCart>{
   const actor=await this.serviceActor();
-  if(!s.ordenId){
+  // Once staff closes (pays) or cancels the table's order, that Orden is done — a customer
+  // ordering again (a second round, or the next diner at the same table within the QR's
+  // session window) must start a fresh order instead of failing against a non-ABIERTA Orden
+  // (OrderService.add() requires ABIERTA) or silently piling onto a finished visit.
+  let ordenId=s.ordenId;
+  if(ordenId){
+   const existing=await this.db.orden.findUnique({where:{id:ordenId},select:{estado:true}});
+   if(!existing||existing.estado!=='ABIERTA')ordenId=null;
+  }
+  if(!ordenId){
    const created=await this.orders.create(actor,{sucursalId:s.sucursalId,modalidad:'MESA',
     origen:'QR',mesaId:s.mesaId,lineas:items,enviarCocina:false,claveOperacion:randomUUID()}) as RawOrden;
    await this.db.sesionAutoservicio.update({where:{id:s.sesionId},data:{ordenId:created.id}});
    return this.shapeOrder(created.id,created);
   }
-  const updated=await this.orders.add(actor,s.ordenId,{lineas:items,enviarCocina:false,
+  const updated=await this.orders.add(actor,ordenId,{lineas:items,enviarCocina:false,
    claveOperacion:randomUUID()}) as RawOrden;
-  return this.shapeOrder(s.ordenId,updated);
+  return this.shapeOrder(ordenId,updated);
  }
  async updateLineQuantity(s:SelfServiceSession,lineaId:string,cantidad:string):Promise<SelfServiceCart>{
   if(!s.ordenId)throw new BadRequestException('No hay un pedido activo');

@@ -43,6 +43,8 @@ export interface PresignRequest {
   sucursalId: string | null;
   publico: boolean;
 }
+/** See catalog-media.service.ts's MEDIA_URL_TTL_SECONDS for why this isn't 300s anymore. */
+const MEDIA_URL_TTL_SECONDS = 86400;
 @Injectable()
 export class MediaService {
   constructor(
@@ -247,9 +249,9 @@ export class MediaService {
       item.claveObjeto,
       item.mimeType,
       item.nombreOriginal ?? 'archivo',
-      300,
+      MEDIA_URL_TTL_SECONDS,
     );
-    return { url, publico: false, expiresIn: 300 };
+    return { url, publico: false, expiresIn: MEDIA_URL_TTL_SECONDS };
   }
   async list(
     user: Principal,

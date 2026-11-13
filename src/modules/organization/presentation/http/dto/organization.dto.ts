@@ -51,6 +51,10 @@ export class UpdateCompanyDto {
   @ValidateIf((_, v) => v !== undefined)
   @IsIn(['PROMEDIO_PONDERADO', 'FIFO'])
   metodoValoracion?: 'PROMEDIO_PONDERADO' | 'FIFO';
+  @IsOptional()
+  @Matches(/^#[0-9A-Fa-f]{6}$/)
+  colorPrimario?: string | null;
+  @IsOptional() @IsString() logoMediaId?: string | null;
 }
 export class CreateBranchDto {
   @IsString() @Matches(/^[A-Za-z][A-Za-z0-9_-]{1,31}$/) codigo!: string;

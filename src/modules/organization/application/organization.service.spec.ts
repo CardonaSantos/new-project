@@ -24,6 +24,11 @@ function setup() {
     updateBranch: vi.fn().mockResolvedValue({ id: 'b1' }),
     createBranch: vi.fn().mockResolvedValue({ id: 'b2' }),
     company: vi.fn().mockResolvedValue({ id: 'org' }),
+    branding: vi.fn().mockResolvedValue({
+      nombreComercial: 'Gastro Core',
+      colorPrimario: null,
+      logoUrl: null,
+    }),
     updateCompany: vi.fn().mockResolvedValue({ id: 'org' }),
     createDevice: vi.fn().mockResolvedValue({ id: 'd1' }),
     device: vi.fn().mockResolvedValue({ id: 'd1', sucursalId: 'b1' }),
@@ -52,6 +57,17 @@ describe('OrganizationService', () => {
       ForbiddenException,
     );
     expect(repo.company).not.toHaveBeenCalled();
+  });
+  it('expone el branding sin exigir permiso alguno', async () => {
+    const { repo, service, identity } = setup();
+    const result = await service.branding();
+    expect(result).toEqual({
+      nombreComercial: 'Gastro Core',
+      colorPrimario: null,
+      logoUrl: null,
+    });
+    expect(identity.capabilities).not.toHaveBeenCalled();
+    expect(repo.branding).toHaveBeenCalledOnce();
   });
   it('impide editar dispositivos de otra sucursal', async () => {
     const { repo, service, identity } = setup();

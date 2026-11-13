@@ -24,6 +24,7 @@ export const contexts: MediaContexto[] = [
   'INVENTARIO',
   'CATEGORIA',
   'DOCUMENTO',
+  'MARCA',
 ];
 
 export function supportedMime(value: string): SupportedMime {

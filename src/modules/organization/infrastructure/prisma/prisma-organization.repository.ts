@@ -17,6 +17,7 @@ import type {
   BranchChanges,
   BranchConfig,
   BranchOverview,
+  Company,
   CompanyChanges,
   ConfigChanges,
   Device,
@@ -27,6 +28,35 @@ import type {
 } from '../../domain/organization.types.js';
 
 type Tx = Prisma.TransactionClient;
+function toCompany(row: {
+  id: string;
+  nombreComercial: string;
+  razonSocial: string | null;
+  nit: string | null;
+  moneda: string;
+  zonaHoraria: string;
+  metodoValoracion: Company['metodoValoracion'];
+  colorPrimario: string | null;
+  logoMediaId: string | null;
+  logoMedia: { urlPublica: string | null } | null;
+  creadoEn: Date;
+  actualizadoEn: Date;
+}): Company {
+  return {
+    id: row.id,
+    nombreComercial: row.nombreComercial,
+    razonSocial: row.razonSocial,
+    nit: row.nit,
+    moneda: row.moneda,
+    zonaHoraria: row.zonaHoraria,
+    metodoValoracion: row.metodoValoracion,
+    colorPrimario: row.colorPrimario,
+    logoMediaId: row.logoMediaId,
+    logoUrl: row.logoMedia?.urlPublica ?? null,
+    creadoEn: row.creadoEn,
+    actualizadoEn: row.actualizadoEn,
+  };
+}
 const serial = {
   isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
 };
@@ -219,9 +249,26 @@ export class PrismaOrganizationRepository extends OrganizationRepositoryPort {
     super();
   }
   async company() {
-    return this.db.empresaConfiguracion.findFirst({
+    const row = await this.db.empresaConfiguracion.findFirst({
       orderBy: { creadoEn: 'asc' },
+      include: { logoMedia: { select: { urlPublica: true } } },
     });
+    return row ? toCompany(row) : null;
+  }
+  async branding() {
+    const row = await this.db.empresaConfiguracion.findFirst({
+      orderBy: { creadoEn: 'asc' },
+      select: {
+        nombreComercial: true,
+        colorPrimario: true,
+        logoMedia: { select: { urlPublica: true } },
+      },
+    });
+    return {
+      nombreComercial: row?.nombreComercial ?? '',
+      colorPrimario: row?.colorPrimario ?? null,
+      logoUrl: row?.logoMedia?.urlPublica ?? null,
+    };
   }
   async updateCompany(actorId: string, changes: CompanyChanges) {
     return this.db.$transaction(async (tx) => {
@@ -262,9 +309,27 @@ export class PrismaOrganizationRepository extends OrganizationRepositoryPort {
             'No se puede modificar la zona horaria con cierres existentes',
           );
       }
+      if (changes.logoMediaId) {
+        const asset = await tx.media.findUnique({
+          where: { id: changes.logoMediaId },
+        });
+        if (
+          !asset ||
+          asset.tipo !== 'IMAGEN' ||
+          asset.contexto !== 'MARCA' ||
+          !asset.confirmadaEn ||
+          asset.eliminadaEn
+        )
+          throw new ConflictException('Logo no válido o pendiente');
+        if (asset.subidaPorId !== actorId)
+          throw new ForbiddenException(
+            'El logo debe haber sido subido por el administrador',
+          );
+      }
       const updated = await tx.empresaConfiguracion.update({
         where: { id: current.id },
         data: changes,
+        include: { logoMedia: { select: { urlPublica: true } } },
       });
       await audit(
         tx,
@@ -280,6 +345,8 @@ export class PrismaOrganizationRepository extends OrganizationRepositoryPort {
           moneda: current.moneda,
           zonaHoraria: current.zonaHoraria,
           metodoValoracion: current.metodoValoracion,
+          colorPrimario: current.colorPrimario,
+          logoMediaId: current.logoMediaId,
         },
         {
           nombreComercial: updated.nombreComercial,
@@ -288,9 +355,11 @@ export class PrismaOrganizationRepository extends OrganizationRepositoryPort {
           moneda: updated.moneda,
           zonaHoraria: updated.zonaHoraria,
           metodoValoracion: updated.metodoValoracion,
+          colorPrimario: updated.colorPrimario,
+          logoMediaId: updated.logoMediaId,
         },
       );
-      return updated;
+      return toCompany(updated);
     }, serial);
   }
   async branchScope(userId: string, code: string): Promise<AccessScope> {

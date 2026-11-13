@@ -15,6 +15,13 @@ export class OrganizationController {
   company(@CurrentUser() actor: Principal) {
     return this.service.company(actor);
   }
+  // No @RequirePermissions: every authenticated role needs this to render
+  // the app shell's branding (name, logo, brand color), unlike the full
+  // company record above, which also carries nit/razonSocial.
+  @Get('branding')
+  branding() {
+    return this.service.branding();
+  }
   @Patch()
   @RequirePermissions('organization.manage')
   update(@CurrentUser() actor: Principal, @Body() dto: UpdateCompanyDto) {

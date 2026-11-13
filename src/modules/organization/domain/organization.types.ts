@@ -9,8 +9,16 @@ export interface Company {
   moneda: string;
   zonaHoraria: string;
   metodoValoracion: ValuationMethod;
+  colorPrimario: string | null;
+  logoMediaId: string | null;
+  logoUrl: string | null;
   creadoEn: Date;
   actualizadoEn: Date;
+}
+export interface Branding {
+  nombreComercial: string;
+  colorPrimario: string | null;
+  logoUrl: string | null;
 }
 export interface BranchConfig {
   sucursalId: string;
@@ -87,6 +95,8 @@ export type CompanyChanges = Partial<
     | 'moneda'
     | 'zonaHoraria'
     | 'metodoValoracion'
+    | 'colorPrimario'
+    | 'logoMediaId'
   >
 >;
 export type BranchChanges = Partial<

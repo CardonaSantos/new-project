@@ -27,6 +27,7 @@ function setup() {
     branding: vi.fn().mockResolvedValue({
       nombreComercial: 'Gastro Core',
       colorPrimario: null,
+      tema: null,
       logoUrl: null,
     }),
     updateCompany: vi.fn().mockResolvedValue({ id: 'org' }),
@@ -64,6 +65,7 @@ describe('OrganizationService', () => {
     expect(result).toEqual({
       nombreComercial: 'Gastro Core',
       colorPrimario: null,
+      tema: null,
       logoUrl: null,
     });
     expect(identity.capabilities).not.toHaveBeenCalled();

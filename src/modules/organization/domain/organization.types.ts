@@ -1,3 +1,5 @@
+import type { ThemeDocument } from './theme.js';
+
 export type ValuationMethod = 'PROMEDIO_PONDERADO' | 'FIFO';
 export type DeviceType =
   'POS' | 'KDS' | 'QUIOSCO' | 'PANTALLA_TURNOS' | 'IMPRESORA' | 'OTRO';
@@ -10,6 +12,7 @@ export interface Company {
   zonaHoraria: string;
   metodoValoracion: ValuationMethod;
   colorPrimario: string | null;
+  tema: ThemeDocument | null;
   logoMediaId: string | null;
   logoUrl: string | null;
   creadoEn: Date;
@@ -18,6 +21,7 @@ export interface Company {
 export interface Branding {
   nombreComercial: string;
   colorPrimario: string | null;
+  tema: ThemeDocument | null;
   logoUrl: string | null;
 }
 export interface BranchConfig {
@@ -98,7 +102,10 @@ export type CompanyChanges = Partial<
     | 'colorPrimario'
     | 'logoMediaId'
   >
->;
+> & {
+  /** Unvalidated until the service runs parseTheme over it. */
+  tema?: unknown;
+};
 export type BranchChanges = Partial<
   Pick<Branch, 'nombre' | 'direccion' | 'telefono' | 'zonaHoraria'>
 >;

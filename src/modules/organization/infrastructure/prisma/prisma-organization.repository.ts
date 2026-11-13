@@ -11,6 +11,7 @@ import {
   type AccessScope,
 } from '../../application/ports/organization.repository.port.js';
 import { deviceStationPolicy } from '../../domain/organization.policy.js';
+import { parseTheme, type ThemeDocument } from '../../domain/theme.js';
 import type {
   Branch,
   BranchAccess,
@@ -28,6 +29,14 @@ import type {
 } from '../../domain/organization.types.js';
 
 type Tx = Prisma.TransactionClient;
+/** Reading never throws: a malformed row must not take the whole app down. */
+function readTheme(value: unknown): ThemeDocument | null {
+  try {
+    return parseTheme(value);
+  } catch {
+    return null;
+  }
+}
 function toCompany(row: {
   id: string;
   nombreComercial: string;
@@ -37,6 +46,7 @@ function toCompany(row: {
   zonaHoraria: string;
   metodoValoracion: Company['metodoValoracion'];
   colorPrimario: string | null;
+  tema: unknown;
   logoMediaId: string | null;
   logoMedia: { urlPublica: string | null } | null;
   creadoEn: Date;
@@ -51,6 +61,9 @@ function toCompany(row: {
     zonaHoraria: row.zonaHoraria,
     metodoValoracion: row.metodoValoracion,
     colorPrimario: row.colorPrimario,
+    // Stored themes were validated on the way in; a row written before this
+    // column existed, or by hand, simply reads as "no custom theme".
+    tema: readTheme(row.tema),
     logoMediaId: row.logoMediaId,
     logoUrl: row.logoMedia?.urlPublica ?? null,
     creadoEn: row.creadoEn,
@@ -261,12 +274,14 @@ export class PrismaOrganizationRepository extends OrganizationRepositoryPort {
       select: {
         nombreComercial: true,
         colorPrimario: true,
+        tema: true,
         logoMedia: { select: { urlPublica: true } },
       },
     });
     return {
       nombreComercial: row?.nombreComercial ?? '',
       colorPrimario: row?.colorPrimario ?? null,
+      tema: readTheme(row?.tema),
       logoUrl: row?.logoMedia?.urlPublica ?? null,
     };
   }
@@ -326,9 +341,18 @@ export class PrismaOrganizationRepository extends OrganizationRepositoryPort {
             'El logo debe haber sido subido por el administrador',
           );
       }
+      // A Json? column needs Prisma.DbNull to actually store SQL NULL; a plain
+      // null would be rejected, and undefined would mean "leave as is" — which
+      // is the difference between clearing the theme and not touching it.
+      const { tema, ...rest } = changes;
       const updated = await tx.empresaConfiguracion.update({
         where: { id: current.id },
-        data: changes,
+        data: {
+          ...rest,
+          ...(tema === undefined
+            ? {}
+            : { tema: tema === null ? Prisma.DbNull : (tema as Prisma.InputJsonValue) }),
+        },
         include: { logoMedia: { select: { urlPublica: true } } },
       });
       await audit(

@@ -24,6 +24,7 @@ import {
   requireChanges,
   timezone,
 } from '../domain/organization.policy.js';
+import { parseTheme } from '../domain/theme.js';
 import {
   OrganizationRepositoryPort,
   type AccessScope,
@@ -101,6 +102,8 @@ export class OrganizationService {
           : changes.colorPrimario === null
             ? null
             : hexColor(changes.colorPrimario),
+      // Rejects unknown tokens and non-hex values before they reach the column.
+      tema: changes.tema === undefined ? undefined : parseTheme(changes.tema),
     });
   }
   // Unlike company()/updateCompany(), this is deliberately NOT gated behind

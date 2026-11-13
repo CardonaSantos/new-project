@@ -3,6 +3,7 @@ import {
   IsBoolean,
   IsIn,
   IsInt,
+  IsObject,
   IsOptional,
   IsString,
   Matches,
@@ -54,6 +55,10 @@ export class UpdateCompanyDto {
   @IsOptional()
   @Matches(/^#[0-9A-Fa-f]{6}$/)
   colorPrimario?: string | null;
+  // Shape is checked in the domain (parseTheme), which owns the token
+  // allow-list; class-validator only confirms it is an object or an explicit
+  // null meaning "drop the custom theme".
+  @IsOptional() @IsObject() tema?: unknown;
   @IsOptional() @IsString() logoMediaId?: string | null;
 }
 export class CreateBranchDto {

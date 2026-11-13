@@ -275,6 +275,7 @@ model EmpresaConfiguracion {
   zonaHoraria      String           @default("America/Guatemala")
   metodoValoracion MetodoValoracion @default(PROMEDIO_PONDERADO)
   colorPrimario    String?          @db.VarChar(7)
+  tema             Json?
   logoMediaId      String?          @unique
   logoMedia        Media?           @relation("EmpresaConfiguracion_logoMedia_Media", fields: [logoMediaId], references: [id], onDelete: SetNull)
   creadoEn         DateTime         @default(now()) @db.Timestamptz(3)

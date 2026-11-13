@@ -210,8 +210,15 @@ export class CatalogMenuStore{
        opciones:link.grupo.modificadoresComoGrupo.map(mod=>({
         id:mod.id,nombre:mod.nombre,recargo:overrideMod.get(mod.id)??mod.incrementoPrecio.toFixed(2)
        }))}));
-     items.push({id:item.id,orden:item.orden,variante:v,gruposModificadores:grupos,precio:priceMap.get(v.id),
-      moneda:config?.moneda??'GTQ',stock:'NO_VERIFICADO_HASTA_INV_B'});
+     // v.medios only holds variant-level photos; some products are only photographed at the
+     // product level (ProductoMedia), so the variant exposed here falls back to those when it
+     // has none of its own — otherwise CatalogMediaService.enrich() resolves an empty gallery
+     // for that variant even though the product clearly has a confirmed photo (as the
+     // availability check above, which already pools v.medios+p.medios, correctly allows).
+     const seen=new Set<string>();
+     const medios=[...v.medios,...p.medios].filter(m=>!seen.has(m.mediaId)&&seen.add(m.mediaId));
+     items.push({id:item.id,orden:item.orden,variante:{...v,medios},gruposModificadores:grupos,
+      precio:priceMap.get(v.id),moneda:config?.moneda??'GTQ',stock:'NO_VERIFICADO_HASTA_INV_B'});
     }
     if(items.length)sections.push({id:section.id,nombre:section.nombre,orden:section.orden,items});
    }

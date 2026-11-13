@@ -56,6 +56,10 @@ interface RawOrden{id:string;numero:string;estado:'ABIERTA'|'CERRADA'|'CANCELADA
   ordenLineaModificadoresComoOrdenLinea:Array<{nombreSnapshot:string;cantidad:number;
    recargoUnitario:{toFixed(n:number):string}}>;
  }>;
+ /** Kitchen tickets opened for this order so far — used only by send() below to tell staff
+  * (via realtime) which ticket(s) this particular send() call just created, the same way
+  * orders-pos-page.ts diffs its own before/after ticket list for a manual order. */
+ comandasComoOrden:Array<{id:string;numero:string}>;
 }
 
 @Injectable()
@@ -240,8 +244,26 @@ export class SelfServiceStore extends SelfServicePort{
  }
  async send(s:SelfServiceSession):Promise<SelfServiceCart>{
   if(!s.ordenId)throw new BadRequestException('No hay un pedido para enviar');
+  // Captured before sending so we can tell, from the after list, which ticket(s) THIS call
+  // created — a customer may add more items and send again later, and only the new ticket(s)
+  // belong in this round's notice to staff (mirrors orders-pos-page.ts's own before/after diff
+  // for a manually-created order).
+  const before=new Set((await this.db.comanda.findMany(
+   {where:{ordenId:s.ordenId},select:{id:true}})).map(x=>x.id));
   const raw=await this.orders.send(await this.serviceActor(),s.ordenId,
    {claveOperacion:randomUUID()}) as RawOrden;
+  const newTickets=raw.comandasComoOrden.filter(t=>!before.has(t.id));
+  if(newTickets.length){
+   // Staff only sees a kitchen-side alert today (KITCHEN_TICKET_CREATED, kitchen.store.ts) —
+   // POS/Órdenes, where staff actually take and manage orders, never learns a QR order came in
+   // except by refreshing. This lets orders-pos-page.ts show the exact same "pedido registrado"
+   // panel it shows for a manually-entered order, so staff can act on it (cobrar, imprimir) from
+   // the same screen without hunting for it.
+   const mesa=await this.db.mesa.findUnique({where:{id:s.mesaId},include:{sala:true}});
+   this.realtime.emit(s.sucursalId,'SELF_SERVICE_ORDER_PLACED',{
+    ordenId:s.ordenId,numero:raw.numero,mesaId:s.mesaId,mesaNumero:mesa?.numero??null,
+    sala:mesa?.sala.nombre??null,tickets:newTickets});
+  }
   return this.shapeOrder(s.ordenId,raw);
  }
  async callWaiter(s:SelfServiceSession):Promise<void>{

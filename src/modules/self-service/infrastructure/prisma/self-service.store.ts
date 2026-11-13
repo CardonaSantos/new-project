@@ -29,10 +29,12 @@ interface RawMediaPhoto{mediaId:string;principal:boolean;orden:number;url:string
 interface RawBranchMenu{sucursalId:string;menus:Array<{id:string;nombre:string;descripcion:string|null;
  secciones:Array<{id:string;nombre:string;orden:number;items:Array<{id:string;precio:string;moneda:string;
   variante:{id:string;nombre:string;imagenPrincipalUrl:string|null;imagenes?:RawMediaPhoto[];
-   producto:{nombre:string;descripcion:string|null;imagenPrincipalUrl:string|null;imagenes?:RawMediaPhoto[]}};
+   producto:{nombre:string;descripcion:string|null;imagenPrincipalUrl:string|null;imagenes?:RawMediaPhoto[];
+    tipo:'PREPARADO'|'INVENTARIABLE'|'SERVICIO'}};
   gruposModificadores:Array<{grupoId:string;grupo:string;orden:number;minimo:number;maximo:number;
    opciones:Array<{id:string;nombre:string;recargo:string}>}>;
  }>}>}>}
+type RawMenuItem=RawBranchMenu['menus'][number]['secciones'][number]['items'][number];
 
 /** Narrow shape read from OrderService.detail()/create()/add()'s raw Orden row
  * (orderInclude in orders/infrastructure/prisma/order-shared.ts). Only the
@@ -145,10 +147,26 @@ export class SelfServiceStore extends SelfServicePort{
   // through to an unauthenticated customer. Reshape to only what's needed to
   // render and order: name, price, image, modifier choices.
   const raw=await this.catalog.branchMenu(await this.serviceActor(),s.sucursalId) as RawBranchMenu;
+  // branchMenu()'s own availability filter is commercial only (its `nota` field says so) — a
+  // PREPARADO variant with no active+published Receta still comes back from it, and order.store.ts
+  // (addItems()'s eventual call) rejects it with "Variante preparada sin receta publicada" the
+  // moment the customer tries to add it. That error means nothing to a customer and there's no way
+  // for them to act on it, so self-service must hide those items entirely rather than show
+  // something the customer can tap but never actually order.
+  const preparedIds=[...new Set(raw.menus.flatMap(m=>m.secciones.flatMap(sec=>sec.items
+   .filter(item=>item.variante.producto.tipo==='PREPARADO').map(item=>item.variante.id))))];
+  const recipes=preparedIds.length?await this.db.receta.findMany({where:{varianteId:{in:preparedIds},
+   tipo:'VENTA',activa:true},include:{recetaVersionesComoReceta:{
+    where:{activa:true,publicadaEn:{not:null}},take:1}}}):[];
+  const readyIds=new Set(recipes.filter(r=>r.recetaVersionesComoReceta.length)
+   .map(r=>r.varianteId).filter((id):id is string=>!!id));
+  const ordenable=(item:RawMenuItem):boolean=>
+   item.variante.producto.tipo!=='PREPARADO'||readyIds.has(item.variante.id);
+
   return {sucursalId:raw.sucursalId,menus:raw.menus.map(m=>({
    id:m.id,nombre:m.nombre,descripcion:m.descripcion,
    secciones:m.secciones.map(sec=>({id:sec.id,nombre:sec.nombre,orden:sec.orden,
-    items:sec.items.map(item=>{
+    items:sec.items.filter(ordenable).map(item=>{
      const v=item.variante,p=v.producto;
      const imagenUrl=v.imagenPrincipalUrl??p.imagenPrincipalUrl??null;
      // Full gallery for the detail carousel: variant photos first (more specific),
@@ -166,7 +184,8 @@ export class SelfServiceStore extends SelfServicePort{
       gruposModificadores:item.gruposModificadores.map(g=>({grupoId:g.grupoId,grupo:g.grupo,
        orden:g.orden,minimo:g.minimo,maximo:g.maximo,
        opciones:g.opciones.map(o=>({id:o.id,nombre:o.nombre,recargo:o.recargo}))}))};
-    })}))}))};
+    })})).filter(sec=>sec.items.length)
+   })).filter(menuCard=>menuCard.secciones.length)};
  }
  private shapeOrder(ordenId:string,raw:RawOrden):SelfServiceCart{
   return {ordenId,orden:{id:raw.id,numero:raw.numero,estado:raw.estado,
@@ -221,7 +240,10 @@ export class SelfServiceStore extends SelfServicePort{
   // lookup miss turn into an error the customer sees — the button's job is just "ping staff".
   const mesa=await this.db.mesa.findUnique({where:{id:s.mesaId},include:{sala:true}});
   this.realtime.emit(s.sucursalId,'TABLE_HELP_REQUESTED',{
-   mesaId:s.mesaId,mesaNumero:mesa?.numero??null,sala:mesa?.sala.nombre??null});
+   mesaId:s.mesaId,mesaNumero:mesa?.numero??null,sala:mesa?.sala.nombre??null,
+   // Lets the staff toast deep-link straight to this table's open order (if it has one
+   // yet) instead of a generic table-admin screen that has nothing to act on.
+   ordenId:s.ordenId});
  }
  async closeSession(s:SelfServiceSession):Promise<void>{
   await this.db.sesionAutoservicio.updateMany({where:{id:s.sesionId,estado:'ACTIVA'},

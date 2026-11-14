@@ -329,7 +329,7 @@ export function historyFailures(): string[] {
 
 async function runTicket(
   services: HistoryServices,
-  staff: { waiter: Principal; cashier: Principal; cook: Principal },
+  staff: { waiter: Principal; cashier: Principal; cook: Principal; manager: Principal },
   branchCode: string,
   branchId: string,
   shiftId: string,
@@ -384,7 +384,15 @@ async function runTicket(
     // los 114 tickets. Y devuelve {orderId}, no {id}, el mismo tropiezo que
     // {shiftId}: leer .id dejaba undefined el resto de la cadena.
     const effective = seated ? modality : modality === 'MESA' ? 'MOSTRADOR' : modality;
-    const created = (await services.orders.create(seated ? staff.waiter : staff.cashier, {
+    // Una orden a domicilio crea su entrega en la misma transacción, y eso
+    // exige delivery.manage, que el cajero no tiene: la toma el gerente, que
+    // es quien atiende el teléfono.
+    const opener = effective === 'DELIVERY' ? staff.manager : seated ? staff.waiter : staff.cashier;
+    // create() termina con `return this.detail(u, result.orderId)`, así que
+    // devuelve la orden completa y la clave es `id`. Mi corrección anterior a
+    // `.orderId` fue peor que el error: leí el return de createCoreTx y no el
+    // de create.
+    const created = (await services.orders.create(opener, {
       sucursalId: branchId,
       // Una mesa sin mesas configuradas se cobra en mostrador.
       modalidad: effective,
@@ -401,12 +409,18 @@ async function runTicket(
             telefonoContacto: `5${rng.int(1000000, 9999999)}`,
           }
         : {}),
-    })) as { orderId: string };
-    const orderId = created.orderId;
+    })) as { id: string };
+    const orderId = created.id;
 
     // The kitchen works the tickets the send created.
-    const tickets = await services.kitchen.queue(staff.cook, { sucursalId: branchId }).catch((e) => (note('cola de cocina', e), null));
-    for (const ticket of tickets?.filter?.((t: any) => t.ordenId === orderId) ?? []) {
+    // queue() lee q.page y q.limit sin valores por defecto, y devuelve
+    // {data, meta, totals}: sin la paginación fallaba con «Argument `skip` is
+    // missing», y filtrar sobre el objeto en vez de sobre .data no recorría
+    // nada aunque hubiera respondido.
+    const queued = (await services.kitchen
+      .queue(staff.cook, { sucursalId: branchId, page: 1, limit: 50 })
+      .catch((e) => (note('cola de cocina', e), null))) as { data?: { id: string; ordenId: string }[] } | null;
+    for (const ticket of (queued?.data ?? []).filter((t) => t.ordenId === orderId)) {
       await services.kitchen.start(staff.cook, ticket.id).catch((e) => note('cocina: iniciar', e));
       await services.kitchen.ready(staff.cook, ticket.id).catch((e) => note('cocina: listo', e));
     }
@@ -416,11 +430,25 @@ async function runTicket(
     const accounts = (await services.accounts.accounts(staff.cashier, orderId)) as { id: string }[];
     const accountId = accounts?.[0]?.id;
     if (!accountId) throw Error('La orden no abrió cuenta');
-    await services.accounts.collect(staff.cashier, accountId, {
+    const collected = (await services.accounts.collect(staff.cashier, accountId, {
       turnoId: shiftId,
       pagos: payments,
       claveOperacion: `${key}-COB`,
-    });
+    })) as { intentoIds?: string[] };
+
+    // Una transferencia entra como intento pendiente, y mientras lo esté la
+    // cuenta no se liquida, la orden no cierra y el cierre del día la encuentra
+    // abierta. El cajero la verifica, que es el paso que el sistema espera y
+    // que el demo debería mostrar.
+    for (const [i, attemptId] of (collected?.intentoIds ?? []).entries()) {
+      await services.accounts
+        .confirm(staff.cashier, attemptId, {
+          turnoId: shiftId,
+          motivo: 'Transferencia verificada en banca en línea',
+          claveOperacion: `${key}-VER${i}`,
+        })
+        .catch((e) => note('verificar transferencia', e));
+    }
     // Una transferencia queda en intento pendiente, de modo que la cuenta
     // puede no liquidarse todavía: eso es parte de lo que el demo muestra.
     await services.accounts.finalize(staff.cashier, orderId).catch((e) => note('liquidar cuenta', e));
@@ -474,6 +502,7 @@ export async function runHistory(
       cashier: asPrincipal(people.get('CAJERO')!, `cajero.${branch.codigo.toLowerCase()}@demo.local`),
       cook: asPrincipal(people.get('COCINA')!, `cocina.${branch.codigo.toLowerCase()}@demo.local`),
       keeper: asPrincipal(people.get('ALMACEN')!, `almacen.${branch.codigo.toLowerCase()}@demo.local`),
+      manager: asPrincipal(people.get('ADMIN_SUCURSAL')!, `gerente.${branch.codigo.toLowerCase()}@demo.local`),
     };
     const registerId = [...(ids.registers.get(branch.codigo)?.values() ?? [])][0];
 

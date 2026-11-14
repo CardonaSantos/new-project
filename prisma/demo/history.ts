@@ -368,13 +368,16 @@ export async function runHistory(
 
       if (rng.chance(0.3)) {
         await services.expenses
-          .create(admin, {
+          .createExpense(admin, {
             sucursalId: branchId,
+            // Paid out of the till, which is what ties the expense to the shift
+            // and makes it show up in the day's cash difference.
+            origen: 'CAJA',
+            turnoId: shift!.id,
             categoria: rng.pick(['SERVICIOS', 'MANTENIMIENTO', 'LIMPIEZA', 'TRANSPORTE']),
             descripcion: rng.pick(['Pago de energía', 'Mantenimiento de equipo', 'Insumos de limpieza', 'Flete de proveedor']),
             monto: money(rng.int(80, 900)),
-            metodo: 'EFECTIVO',
-            claveOperacion: `DEMO-GASTO-${branch.codigo}-${dayKey}`,
+            operationId: `FIN:${crypto.randomUUID()}`,
           })
           .catch(() => undefined);
       }
@@ -389,8 +392,10 @@ export async function runHistory(
         })
         .catch(() => undefined);
 
+      // FinanceClosingService exposes confirm(); the controller's close()
+      // route is just its HTTP name.
       await services.closing
-        .close(admin, {
+        .confirm(admin, {
           sucursalId: branchId,
           fechaOperativa: dayKey,
           operationId: `FIN:${crypto.randomUUID()}`,

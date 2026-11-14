@@ -30,7 +30,8 @@
     "prestart:dev": "npm run prisma:generate",
     "prestart": "npm run prisma:generate",
     "prisma:seed": "prisma db seed",
-    "seed:initial": "tsx prisma/seed.ts"
+    "seed:initial": "tsx prisma/seed.ts",
+    "seed:demo": "tsx prisma/demo/index.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.800.0",

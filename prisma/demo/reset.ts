@@ -37,19 +37,22 @@ function statements(branchIds: string[], articleIds: string[]): { label: string;
     { label: 'eventos de entrega', sql: `DELETE FROM "EntregaEvento" WHERE "entregaId" IN (SELECT e.id FROM "Entrega" e JOIN "Orden" o ON o.id=e."ordenId" WHERE o.${inBranch()})` },
 
     // --- money -------------------------------------------------------------
+    // Encabeza la sección: un movimiento de caja referencia el pago, el pago a
+    // proveedor y el gasto que lo originaron, los tres más abajo.
+    { label: 'movimientos de caja', sql: `DELETE FROM "MovimientoCaja" WHERE "turnoId" IN (SELECT t.id FROM "TurnoCaja" t JOIN "Caja" c ON c.id=t."cajaId" WHERE c.${inBranch()})` },
     { label: 'aplicaciones de pago a proveedor', sql: `DELETE FROM "AplicacionPagoProveedor" WHERE "pagoId" IN (SELECT id FROM "PagoProveedor" WHERE ${inBranch()})` },
     { label: 'pagos a proveedor', sql: `DELETE FROM "PagoProveedor" WHERE ${inBranch()}` },
     { label: 'líneas de factura de proveedor', sql: `DELETE FROM "FacturaProveedorLinea" WHERE "facturaId" IN (SELECT id FROM "FacturaProveedor" WHERE ${inBranch()})` },
     { label: 'facturas de proveedor', sql: `DELETE FROM "FacturaProveedor" WHERE ${inBranch()}` },
     { label: 'pagos', sql: `DELETE FROM "Pago" WHERE "cuentaId" IN (SELECT c.id FROM "Cuenta" c JOIN "Orden" o ON o.id=c."ordenId" WHERE o.${inBranch()})` },
     { label: 'intentos de pago', sql: `DELETE FROM "IntentoPago" WHERE "cuentaId" IN (SELECT c.id FROM "Cuenta" c JOIN "Orden" o ON o.id=c."ordenId" WHERE o.${inBranch()})` },
+    { label: 'líneas de venta', sql: `DELETE FROM "VentaLinea" WHERE "ventaId" IN (SELECT id FROM "Venta" WHERE ${inBranch()})` },
     { label: 'ventas', sql: `DELETE FROM "Venta" WHERE ${inBranch()}` },
     { label: 'líneas de cuenta', sql: `DELETE FROM "CuentaLinea" WHERE "cuentaId" IN (SELECT c.id FROM "Cuenta" c JOIN "Orden" o ON o.id=c."ordenId" WHERE o.${inBranch()})` },
     { label: 'cuentas', sql: `DELETE FROM "Cuenta" WHERE "ordenId" IN (SELECT id FROM "Orden" WHERE ${inBranch()})` },
     { label: 'gastos operativos', sql: `DELETE FROM "GastoOperativo" WHERE ${inBranch()}` },
     // Un movimiento financiero no conoce la sucursal: cuelga de la cuenta.
     { label: 'movimientos financieros', sql: `DELETE FROM "MovimientoFinanciero" WHERE "cuentaId" IN (SELECT id FROM "CuentaFinanciera" WHERE ${inBranch()})` },
-    { label: 'movimientos de caja', sql: `DELETE FROM "MovimientoCaja" WHERE "turnoId" IN (SELECT t.id FROM "TurnoCaja" t JOIN "Caja" c ON c.id=t."cajaId" WHERE c.${inBranch()})` },
     { label: 'turnos de caja', sql: `DELETE FROM "TurnoCaja" WHERE "cajaId" IN (SELECT id FROM "Caja" WHERE ${inBranch()})` },
     { label: 'cierres operativos', sql: `DELETE FROM "CierreOperativo" WHERE ${inBranch()}` },
 
@@ -72,8 +75,8 @@ function statements(branchIds: string[], articleIds: string[]): { label: string;
     // directa y más estrecha, del mismo prefijo que todo lo demás.
     { label: 'consumos de producción', sql: `DELETE FROM "ProduccionConsumo" WHERE "produccionId" IN (SELECT id FROM "ProduccionLote" WHERE "claveOperacion" LIKE '${DEMO_PREFIX}%')` },
     { label: 'lotes de producción', sql: `DELETE FROM "ProduccionLote" WHERE "claveOperacion" LIKE '${DEMO_PREFIX}%'` },
-    { label: 'movimientos de inventario', sql: `DELETE FROM "MovimientoInventario" WHERE "articuloId" IN (${articles})` },
     { label: 'capas de costo', sql: `DELETE FROM "CapaCostoInventario" WHERE "articuloId" IN (${articles})` },
+    { label: 'movimientos de inventario', sql: `DELETE FROM "MovimientoInventario" WHERE "articuloId" IN (${articles})` },
     { label: 'existencias', sql: `DELETE FROM "Existencia" WHERE "articuloId" IN (${articles})` },
     { label: 'líneas de recepción', sql: `DELETE FROM "RecepcionCompraLinea" WHERE "articuloId" IN (${articles})` },
     { label: 'recepciones', sql: `DELETE FROM "RecepcionCompra" WHERE "almacenId" IN (SELECT id FROM "Almacen" WHERE ${inBranch()})` },
@@ -94,6 +97,7 @@ function statements(branchIds: string[], articleIds: string[]): { label: string;
     { label: 'versiones de receta', sql: `DELETE FROM "RecetaVersion" WHERE "recetaId" IN (SELECT id FROM "Receta" WHERE "varianteId" IN (SELECT id FROM "VarianteProducto" WHERE sku LIKE '${DEMO_PREFIX}%') OR "articuloResultadoId" IN (${articles}))` },
     { label: 'recetas', sql: `DELETE FROM "Receta" WHERE "varianteId" IN (SELECT id FROM "VarianteProducto" WHERE sku LIKE '${DEMO_PREFIX}%') OR "articuloResultadoId" IN (${articles})` },
     { label: 'grupos por variante', sql: `DELETE FROM "VarianteGrupoModificador" WHERE "varianteId" IN (SELECT id FROM "VarianteProducto" WHERE sku LIKE '${DEMO_PREFIX}%')` },
+    { label: 'rutas de preparación', sql: `DELETE FROM "RutaPreparacion" WHERE "estacionId" IN (SELECT id FROM "EstacionPreparacion" WHERE ${inBranch()})` },
     { label: 'variantes', sql: `DELETE FROM "VarianteProducto" WHERE sku LIKE '${DEMO_PREFIX}%'` },
     { label: 'productos', sql: `DELETE FROM "Producto" WHERE codigo LIKE '${DEMO_PREFIX}%'` },
     { label: 'componentes de modificador', sql: `DELETE FROM "ModificadorComponente" WHERE "articuloId" IN (${articles})` },
@@ -104,7 +108,6 @@ function statements(branchIds: string[], articleIds: string[]): { label: string;
     { label: 'categorías', sql: `DELETE FROM "Categoria" WHERE nombre IN (${categories.map((c) => `'${c.nombre.replace(/'/g, "''")}'`).join(',')})` },
 
     // --- branch scaffolding ------------------------------------------------
-    { label: 'rutas de preparación', sql: `DELETE FROM "RutaPreparacion" WHERE "estacionId" IN (SELECT id FROM "EstacionPreparacion" WHERE ${inBranch()})` },
     { label: 'estaciones', sql: `DELETE FROM "EstacionPreparacion" WHERE ${inBranch()}` },
     { label: 'accesos QR de mesa', sql: `DELETE FROM "AccesoMesaQR" WHERE "mesaId" IN (SELECT m.id FROM "Mesa" m JOIN "Sala" s ON s.id=m."salaId" WHERE s.${inBranch()})` },
     { label: 'mesas', sql: `DELETE FROM "Mesa" WHERE "salaId" IN (SELECT id FROM "Sala" WHERE ${inBranch()})` },

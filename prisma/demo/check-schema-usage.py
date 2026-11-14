@@ -295,3 +295,46 @@ for label, sql in statements_sql:
             sql_fails.append(f'{label}: la columna {m.group(1)} no existe en {sorted(here)}')
 print(f'{len(statements_sql)} sentencias del reset revisadas')
 print('\n'.join(dict.fromkeys(sql_fails)) if sql_fails else 'Todas las columnas del reset existen en su tabla.')
+
+# --- orden de borrado -------------------------------------------------------
+# Casi toda llave foránea de este esquema es Restrict, así que el orden del
+# reset no es un detalle: un DELETE adelantado falla a mitad de camino y deja
+# la base ni sembrada ni limpia. Verificarlo a ojo sobre 73 sentencias no es
+# verificarlo. Esto construye el grafo de dependencias y exige que quien
+# apunta se borre antes que el apuntado.
+fks = []   # (hijo, padre, onDelete)
+for m in re.finditer(r'^model (\w+) \{(.*?)^\}', schema, re.S | re.M):
+    child, body = m.group(1), m.group(2)
+    for rel in re.finditer(r'^\s{2}\w+\s+(\w+)(\?)?\s+@relation\(([^)]*)\)', body, re.M):
+        parent, optional, args = rel.group(1), bool(rel.group(2)), rel.group(3)
+        if parent not in models or 'fields:' not in args: continue
+        od = re.search(r'onDelete:\s*(\w+)', args)
+        fks.append((child, parent, od.group(1) if od else ('SetNull' if optional else 'Restrict')))
+
+first, last = {}, {}
+for i, (label, sql) in enumerate(statements_sql):
+    t = re.search(r'DELETE FROM "(\w+)"', sql)
+    if not t: continue
+    first.setdefault(t.group(1), i)
+    last[t.group(1)] = i
+
+order_fails, never = [], set()
+for child, parent, od in fks:
+    if od in ('Cascade', 'SetNull', 'SetDefault'): continue
+    if parent not in first: continue                      # el padre no se borra
+    if child not in first:
+        never.add(f'  {child} apunta a {parent} con {od} y nunca se borra')
+        continue
+    if child == parent: continue
+    if last[child] > first[parent]:
+        order_fails.append(
+            f'  {child} debe borrarse antes de {parent} ({od}): '
+            f'{child} va en la sentencia {last[child] + 1}, {parent} en la {first[parent] + 1}')
+print(f'{len(fks)} llaves foráneas en el grafo')
+if order_fails:
+    print('Orden de borrado incorrecto:'); print('\n'.join(dict.fromkeys(order_fails)))
+else:
+    print('El orden de borrado respeta todas las llaves foráneas.')
+if never:
+    print('Tablas que referencian algo borrado y no se borran (revise si el demo las escribe):')
+    print('\n'.join(sorted(never)))

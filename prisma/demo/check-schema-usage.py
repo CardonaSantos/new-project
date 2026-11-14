@@ -338,3 +338,102 @@ else:
 if never:
     print('Tablas que referencian algo borrado y no se borran (revise si el demo las escribe):')
     print('\n'.join(sorted(never)))
+
+# --- identificadores y exportaciones ---------------------------------------
+# Esta semilla se escribe sin node_modules, así que no hay `tsc` a mano: una
+# función usada sin importar solo aparece cuando la corrida ya va por la mitad.
+# Dos comprobaciones precisas, sin adivinar: que todo lo que se llama como
+# función esté definido o importado, y que todo nombre importado de un módulo
+# hermano exista de verdad en él.
+def strip_noise(src):
+    """Quita comentarios y texto de cadenas, conservando lo de dentro de ${}."""
+    out, i, n = [], 0, len(src)
+    while i < n:
+        c = src[i]
+        if src[i:i+2] == '//':
+            i = src.find('\n', i); i = n if i < 0 else i
+        elif src[i:i+2] == '/*':
+            j = src.find('*/', i + 2); i = n if j < 0 else j + 2
+        elif c in '\'"':
+            i += 1
+            while i < n and src[i] != c:
+                i += 2 if src[i] == '\\' else 1
+            i += 1
+        elif c == '`':
+            i += 1
+            while i < n and src[i] != '`':
+                if src[i:i+2] == '${':
+                    depth, i = 1, i + 2
+                    while i < n and depth:
+                        if src[i] == '{': depth += 1
+                        elif src[i] == '}': depth -= 1
+                        if depth: out.append(src[i])
+                        i += 1
+                    out.append(' ')
+                else:
+                    i += 2 if src[i] == '\\' else 1
+            i += 1
+        else:
+            out.append(c); i += 1
+    return ''.join(out)
+
+KEYWORDS = {
+    'if','for','while','switch','catch','return','typeof','await','new','function',
+    'async','do','else','throw','delete','void','in','of','instanceof','case','yield',
+    'super','this','import','export','const','let','var','class','extends','set','get',
+    'constructor','readonly','private','public','protected','static','declare','satisfies',
+}
+GLOBALS = {
+    'console','Math','JSON','Object','Array','Map','Set','Number','String','Boolean',
+    'Date','Error','Promise','process','Buffer','Symbol','BigInt','RegExp','parseInt',
+    'parseFloat','isNaN','structuredClone','crypto','globalThis','require','TextEncoder',
+    'TextDecoder','URL','AbortController','setTimeout','clearTimeout','setInterval',
+}
+
+exports_of, sources = {}, {}
+for f in glob.glob('prisma/demo/*.ts') + ['prisma/seed-roles.ts', 'prisma/seed.ts']:
+    src = open(f, encoding='utf-8').read()
+    sources[f] = src
+    names = set(re.findall(r'^export\s+(?:async\s+)?(?:function|const|let|var|class|interface|type|enum)\s+(\w+)', src, re.M))
+    for group in re.findall(r'^export\s*\{([^}]*)\}', src, re.M):
+        names |= {part.strip().split(' as ')[-1].strip() for part in group.split(',') if part.strip()}
+    exports_of[os.path.basename(f)] = names
+
+id_fails = []
+for f, src in sources.items():
+    code = strip_noise(src)
+    declared = set(KEYWORDS) | set(GLOBALS)
+    # importados
+    for group, module in re.findall(r'import\s+(?:type\s+)?\{([^}]*)\}\s*from\s*[\'"]([^\'"]+)', src):
+        imported = {p.strip().replace('type ', '').split(' as ')[-1].strip() for p in group.split(',') if p.strip()}
+        declared |= imported
+        target = os.path.basename(module).replace('.js', '.ts')
+        if module.startswith('.') and target in exports_of:
+            for name in imported:
+                if name and name not in exports_of[target]:
+                    id_fails.append(f'{f}: importa {name} de {target}, que no lo exporta')
+    declared |= set(re.findall(r'import\s+(\w+)\s+from', src))
+    declared |= set(re.findall(r'import\s*\*\s*as\s+(\w+)', src))
+    # declarados y parámetros, en cualquier ámbito
+    declared |= set(re.findall(r'\b(?:function|class|interface|type|enum)\s+(\w+)', code))
+    declared |= set(re.findall(r'\b(?:const|let|var)\s+(\w+)', code))
+    for group in re.findall(r'\b(?:const|let|var)\s*\{([^}]*)\}', code):
+        declared |= {p.strip().split(':')[-1].split('=')[0].strip() for p in group.split(',')}
+    for params in re.findall(r'\(([^()]*)\)\s*(?:=>|\{|:)', code):
+        declared |= set(re.findall(r'\b([a-z_$]\w*)\s*(?::|,|=|\))', params + ')'))
+        declared |= set(re.findall(r'^\s*(\w+)', params))
+    declared |= set(re.findall(r'catch\s*\(\s*(\w+)', code))
+    # métodos de clase: se llaman como this.x() pero se declaran sin palabra clave
+    declared |= set(re.findall(
+        r'^\s*(?:private\s+|public\s+|protected\s+|static\s+|readonly\s+|async\s+|\*)*(\w+)\s*\([^;]*?\)\s*(?::[^{;]+)?\{',
+        code, re.M))
+    # firmas dentro de un type/interface: declaran, no llaman
+    declared |= set(re.findall(r'(\w+)\s*\([^;{)]*\)\s*:\s*[^;{]+[;}]', code))
+    declared |= set(re.findall(r'\bfor\s*\(\s*(?:const|let|var)?\s*\[?\s*(\w+)', code))
+    # llamadas
+    for m in re.finditer(r'(?<![.\w$])([A-Za-z_$][\w$]*)\s*\(', code):
+        name = m.group(1)
+        if name in declared or name in KEYWORDS: continue
+        id_fails.append(f'{f}: llama a {name}(), que no está declarado ni importado')
+print(f'{len(sources)} archivos revisados por identificadores')
+print('\n'.join(dict.fromkeys(id_fails)) if id_fails else 'Todo lo que se llama está declarado, y cada import existe.')

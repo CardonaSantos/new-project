@@ -21,6 +21,7 @@ import { branches, menus } from './branches.js';
 import { productionRecipes, saleRecipes } from './recipes.js';
 import { shiftSince } from './backdate.js';
 import {
+  batchChance,
   formatDay,
   operationalDays,
   progress,

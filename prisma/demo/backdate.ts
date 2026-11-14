@@ -96,6 +96,16 @@ export async function shiftSince(
 ): Promise<number> {
   if (days === 0 && seconds === 0) return 0;
   const columns = await dateColumns(db);
+  // Límite superior: el instante en que se corre el reajuste. Sin él la
+  // condición era solo `columna >= from`, que también alcanza a las fechas
+  // puestas a futuro — y un vencimiento de lote es una de ellas. Cada día de
+  // cada sucursal le restaba sus días, de modo que una semana por cuatro
+  // sucursales movía los vencimientos hasta ciento doce días hacia atrás:
+  // todos los perecederos quedaban vencidos y el motor de inventario los
+  // descartaba, lo que se veía como `disponible: 0` en cada producción. Lo
+  // que este reajuste debe mover es lo que la jornada acaba de sellar, no una
+  // fecha que el negocio puso adelante a propósito.
+  const until = new Date();
   let touched = 0;
   for (const { table, column, onlyDate } of columns) {
     const interval = onlyDate
@@ -103,8 +113,10 @@ export async function shiftSince(
       : `make_interval(days => ${days}, secs => ${seconds})`;
     // Identifiers are quoted from information_schema, never from user input.
     const affected = await db.$executeRawUnsafe(
-      `UPDATE "${table}" SET "${column}" = "${column}" - ${interval} WHERE "${column}" >= $1`,
+      `UPDATE "${table}" SET "${column}" = "${column}" - ${interval}` +
+        ` WHERE "${column}" >= $1 AND "${column}" <= $2`,
       from,
+      until,
     );
     touched += affected;
   }
@@ -127,9 +139,13 @@ export async function auditDates(
   const leftovers: { table: string; column: string; rows: number }[] = [];
   for (const { table, column } of columns) {
     if (allow.has(`${table}.${column}`)) continue;
+    // La misma ventana que usa el reajuste: una fecha a futuro no quedó
+    // atrás por error, se dejó adelante a propósito.
     const [{ count }] = await db.$queryRawUnsafe<{ count: bigint }[]>(
-      `SELECT count(*)::bigint AS count FROM "${table}" WHERE "${column}" >= $1`,
+      `SELECT count(*)::bigint AS count FROM "${table}"` +
+        ` WHERE "${column}" >= $1 AND "${column}" <= $2`,
       from,
+      new Date(),
     );
     if (count > 0n) leftovers.push({ table, column, rows: Number(count) });
   }

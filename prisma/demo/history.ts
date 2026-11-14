@@ -47,6 +47,18 @@ export interface HistoryServices {
   closing: Service;
 }
 
+/** Direcciones de entrega, para que una orden a domicilio se vea real. */
+const ADDRESSES = [
+  '4a calle 7-22 zona 1',
+  '12 avenida 3-45 zona 10',
+  'Calzada Roosevelt 15-30',
+  '6a avenida 9-18 zona 9',
+  'Boulevard Los Próceres 24-69',
+  '3a calle 2-14 zona 3',
+  'Avenida Reforma 8-60 zona 9',
+  '7a avenida 11-05 zona 4',
+] as const;
+
 const money = (value: number): string => value.toFixed(2);
 const qty = (value: number): string => value.toFixed(3).replace(/\.?0+$/, '') || '1';
 
@@ -363,36 +375,56 @@ async function runTicket(
     !payments.some((p) => p.metodo === 'TRANSFERENCIA');
 
   if (!quick) {
-    // El camino largo, y el único que usa una cuenta: abrir, pedir, cocinar,
-    // liquidar. Sirve para las cuatro modalidades.
-    const order = await services.orders.create(seated ? staff.waiter : staff.cashier, {
+    // El camino largo, y el único que usa una cuenta: abrir con sus líneas,
+    // cocinar, liquidar. Sirve para las cuatro modalidades.
+    //
+    // create() recibe las líneas y manda a cocina él mismo, así que el add()
+    // que venía después no solo era de más: create() itera d.lineas sin
+    // comprobarla, y al no mandarla fallaba con «d.lineas is not iterable» —
+    // los 114 tickets. Y devuelve {orderId}, no {id}, el mismo tropiezo que
+    // {shiftId}: leer .id dejaba undefined el resto de la cadena.
+    const effective = seated ? modality : modality === 'MESA' ? 'MOSTRADOR' : modality;
+    const created = (await services.orders.create(seated ? staff.waiter : staff.cashier, {
       sucursalId: branchId,
       // Una mesa sin mesas configuradas se cobra en mostrador.
-      modalidad: seated ? modality : modality === 'MESA' ? 'MOSTRADOR' : modality,
+      modalidad: effective,
       origen: origin,
-      // create() también pasa por runOnce, así que la clave no es opcional:
-      // sin ella el where de la operación idempotente queda sin `clave` y
-      // Prisma rechaza la consulta. Eran los 132 tickets.
-      claveOperacion: `${key}-ORD`,
-      ...(seated ? { mesaId: rng.pick(tables), personas: rng.int(1, 4) } : {}),
-    });
-    await services.orders.add(staff.waiter, order.id, {
       lineas: items,
       enviarCocina: true,
-      claveOperacion: `${key}-ADD`,
-    });
+      claveOperacion: `${key}-ORD`,
+      ...(seated ? { mesaId: rng.pick(tables), personas: rng.int(1, 4) } : {}),
+      // Una entrega sin dirección se rechaza, y los datos de entrega en
+      // cualquier otra modalidad también.
+      ...(effective === 'DELIVERY'
+        ? {
+            direccionTexto: `${rng.pick(ADDRESSES)}, ${branch.nombre.split(' ').at(-1) ?? 'Centro'}`,
+            telefonoContacto: `5${rng.int(1000000, 9999999)}`,
+          }
+        : {}),
+    })) as { orderId: string };
+    const orderId = created.orderId;
+
     // The kitchen works the tickets the send created.
     const tickets = await services.kitchen.queue(staff.cook, { sucursalId: branchId }).catch((e) => (note('cola de cocina', e), null));
-    for (const ticket of tickets?.filter?.((t: any) => t.ordenId === order.id) ?? []) {
+    for (const ticket of tickets?.filter?.((t: any) => t.ordenId === orderId) ?? []) {
       await services.kitchen.start(staff.cook, ticket.id).catch((e) => note('cocina: iniciar', e));
       await services.kitchen.ready(staff.cook, ticket.id).catch((e) => note('cocina: listo', e));
     }
-    await services.accounts.finalize(staff.cashier, order.id, {
+    // finalize() solo recibe la orden: liquida, no cobra. El cobro va contra
+    // la cuenta, que create() abre junto con la orden, así que primero hay que
+    // pedirla. Pasarle los pagos a finalize era inventar una firma.
+    const accounts = (await services.accounts.accounts(staff.cashier, orderId)) as { id: string }[];
+    const accountId = accounts?.[0]?.id;
+    if (!accountId) throw Error('La orden no abrió cuenta');
+    await services.accounts.collect(staff.cashier, accountId, {
       turnoId: shiftId,
       pagos: payments,
-      claveOperacion: `${key}-FIN`,
+      claveOperacion: `${key}-COB`,
     });
-    await services.orders.close(staff.cashier, order.id).catch((e) => note('cerrar orden', e));
+    // Una transferencia queda en intento pendiente, de modo que la cuenta
+    // puede no liquidarse todavía: eso es parte de lo que el demo muestra.
+    await services.accounts.finalize(staff.cashier, orderId).catch((e) => note('liquidar cuenta', e));
+    await services.orders.close(staff.cashier, orderId).catch((e) => note('cerrar orden', e));
     return true;
   }
 

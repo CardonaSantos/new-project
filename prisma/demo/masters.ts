@@ -637,7 +637,7 @@ export async function writeMasters(db: Db, options: DemoOptions, password: strin
   const articleIds = await writeArticles(db, units);
 
   progress('maestros', `${modifierGroups.length} grupos de modificadores`);
-  const { groups, options } = await writeModifiers(db, units, articleIds);
+  const { groups, options: modifierOptions } = await writeModifiers(db, units, articleIds);
 
   progress('maestros', `${products.length} productos`);
   const variantIds = await writeProducts(db, categoryIds, articleIds, groups);
@@ -665,7 +665,7 @@ export async function writeMasters(db: Db, options: DemoOptions, password: strin
     units,
     articles: articleIds,
     variants: variantIds,
-    modifierOptions: options,
+    modifierOptions,
     ...branchData,
     suppliers: supplierData.suppliers,
     presentations: supplierData.presentations,

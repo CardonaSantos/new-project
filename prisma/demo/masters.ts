@@ -489,14 +489,14 @@ async function writePackaging(
     const row = existing
       ? await db.reglaEmpaque.update({
           where: { id: existing.id },
-          data: { alcance: rule.alcance, modalidad: rule.modalidad, varianteId, sucursalId: branchId, activa: true },
+          data: { alcance: rule.alcance, modalidad: rule.modalidad, varianteId: variantId, sucursalId: branchId, activa: true },
         })
       : await db.reglaEmpaque.create({
           data: {
             nombre: rule.nombre,
             alcance: rule.alcance,
             modalidad: rule.modalidad,
-            varianteId,
+            varianteId: variantId,
             sucursalId: branchId,
           },
         });

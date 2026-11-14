@@ -87,7 +87,7 @@ async function main(): Promise<void> {
     // staff created by the masters phase do the daily work, so the audit trail
     // reads like a business rather than one account doing everything.
     const adminRow = await db.usuario.findFirst({
-      where: { usuarioRoles: { some: { rol: { codigo: 'SUPER_ADMIN' } } }, activo: true },
+      where: { usuarioRolesComoUsuario: { some: { rol: { codigo: 'SUPER_ADMIN' } } }, activo: true },
       orderBy: { creadoEn: 'asc' },
     });
     if (!adminRow)

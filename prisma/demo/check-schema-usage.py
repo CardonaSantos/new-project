@@ -128,3 +128,76 @@ for f in sorted(glob.glob('prisma/demo/*.ts')) + ['prisma/seed.ts', 'prisma/seed
         real = os.path.normpath(os.path.join(os.path.dirname(f), imp)).replace('.js', '.ts')
         if not os.path.isfile(real): rotas.append(f'{f} -> {imp}')
 print('\n'.join('ruta inexistente: ' + r for r in rotas) if rotas else 'Todas las rutas de importación resuelven.')
+
+# --- filtros where, en profundidad y también en las lecturas -----------------
+# El bloque de arriba solo miraba las escrituras, y solo el primer nivel del
+# where. Un findFirst sobre `usuarioRoles` —que en este esquema se llama
+# `usuarioRolesComoUsuario`, porque las relaciones inversas llevan el sufijo
+# del campo que las origina— pasaba sin que nadie dijera nada. Esto recorre
+# cada where entrando por las relaciones, con el modelo que corresponde a cada
+# salto. Limitación: toma el where de primer nivel de cada llamada, no los que
+# van dentro de una escritura anidada.
+relations = {}
+for m in re.finditer(r'^model (\w+) \{(.*?)^\}', schema, re.S | re.M):
+    relations[m.group(1)] = {
+        f: t for f, t in re.findall(r'^\s{2}(\w+)\s+(\w+)', m.group(2), re.M) if t in models
+    }
+
+OPS = {'AND', 'OR', 'NOT', 'some', 'every', 'none', 'is', 'isNot'}       # siguen en el modelo
+LEAF = {'equals', 'not', 'in', 'notIn', 'lt', 'lte', 'gt', 'gte', 'contains',
+        'startsWith', 'endsWith', 'mode', 'search', 'has', 'hasEvery', 'hasSome', 'isEmpty'}
+
+def top_entries(obj):
+    """[(clave, texto del valor)] del primer nivel."""
+    out, depth, start = [], 0, 0
+    segs = []
+    for i, c in enumerate(obj):
+        if c in '{[(': depth += 1
+        elif c in '}])': depth -= 1
+        elif c == ',' and depth == 0:
+            segs.append(obj[start:i]); start = i + 1
+    segs.append(obj[start:])
+    for seg in segs:
+        seg = re.sub(r'^(?:\s*//.*\n)+', '', seg).strip()
+        if not seg or seg.startswith('...'): continue
+        m = re.match(r'(\w+)\s*:\s*(.*)', seg, re.S)
+        if m: out.append((m.group(1), m.group(2).strip()))
+        elif re.fullmatch(r'\w+', seg): out.append((seg, ''))
+    return out
+
+def check_where(path, model, obj, trail):
+    for key, value in top_entries(obj):
+        inner = balanced(value, 0)[0] if value.startswith('{') else None
+        if key in LEAF: continue
+        if key in OPS:
+            if inner is not None: check_where(path, model, inner, trail)
+            continue
+        if key in uniques.get(model, ()) and '_' in key:        # clave compuesta
+            if inner is not None:
+                for part, _ in top_entries(inner):
+                    if part not in models[model]:
+                        fails2.append(f'{path}: {trail}.{key}.{part} no existe en {model}')
+            continue
+        if key not in models.get(model, ()):
+            near = [f for f in models.get(model, ()) if f.lower().startswith(key.lower()[:6])]
+            hint = f' ¿{near[0]}?' if near else ''
+            fails2.append(f'{path}: {trail}.{key} no existe en {model}.{hint}')
+            continue
+        target = relations.get(model, {}).get(key)
+        if target and inner is not None:
+            check_where(path, target, inner, f'{trail}.{key}')
+
+fails2, checked = [], 0
+READS = r'find(?:First|Unique|Many)|count|aggregate|groupBy|delete|deleteMany|update|updateMany|upsert'
+for path in sys.argv[1:]:
+    src = open(path, encoding='utf-8').read()
+    for m in re.finditer(r'\b(?:db|tx)\.(\w+)\.(?:' + READS + r')\(\s*\{', src):
+        model = pascal(m.group(1))
+        if model not in models: continue
+        obj, _ = balanced(src, m.end() - 1)
+        for key, value in top_entries(obj):
+            if key == 'where' and value.startswith('{'):
+                checked += 1
+                check_where(path, model, balanced(value, 0)[0], f'{model}.where')
+print(f'{checked} filtros where recorridos')
+print('\n'.join(sorted(set(fails2))) if fails2 else 'Todas las claves de los where existen en su modelo.')

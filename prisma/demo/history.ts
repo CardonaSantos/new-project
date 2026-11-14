@@ -202,7 +202,7 @@ async function runProduction(
     const recipe = productionRecipes.find((r) => r.resultado === articleCode)!;
     // Short-lived preparations are made most days; long-lived ones rarely.
     const shelfLife = recipe.vidaUtilDias ?? 30;
-    if (!rng.chance(shelfLife <= 3 ? 0.85 : shelfLife <= 7 ? 0.4 : 0.12)) continue;
+    if (!rng.chance(batchChance(shelfLife))) continue;
     const articleId = ids.articles.get(articleCode)!;
     const version = await db.recetaVersion.findFirst({
       where: { receta: { tipo: 'PRODUCCION', articuloResultadoId: articleId }, activa: true },
@@ -278,7 +278,19 @@ function describe(error: unknown): string {
   const text = [detail, typeof e?.message === 'string' ? e.message : undefined].find(
     (v) => typeof v === 'string' && v.trim().length > 0,
   );
-  return text ?? (error as object)?.constructor?.name ?? String(error);
+  // El mensaje no siempre es todo el cuerpo. La producción, por ejemplo,
+  // adjunta `insuficientes` con el artículo, lo requerido y lo disponible —
+  // que es exactamente lo que hace falta para saber por qué faltó— y leer
+  // solo `message` lo tiraba.
+  const rest =
+    body && typeof body === 'object' && !Array.isArray(body)
+      ? Object.entries(body as Record<string, unknown>)
+          .filter(([k]) => !['message', 'statusCode', 'error'].includes(k))
+          .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
+          .join(' ')
+      : '';
+  const base = text ?? (error as object)?.constructor?.name ?? String(error);
+  return rest ? `${base} ${rest}` : base;
 }
 
 function note(step: string, error: unknown): void {
@@ -291,7 +303,7 @@ function note(step: string, error: unknown): void {
   const lines = readable.split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
   const head = lines[0] ?? '(sin mensaje)';
   const reason = head.startsWith('Invalid `prisma') ? (lines.at(-1) ?? head) : head;
-  const key = `${step}: ${reason.slice(0, 140)}`;
+  const key = `${step}: ${reason.slice(0, 220)}`;
   failures.set(key, (failures.get(key) ?? 0) + 1);
 }
 
@@ -357,6 +369,10 @@ async function runTicket(
       // Una mesa sin mesas configuradas se cobra en mostrador.
       modalidad: seated ? modality : modality === 'MESA' ? 'MOSTRADOR' : modality,
       origen: origin,
+      // create() también pasa por runOnce, así que la clave no es opcional:
+      // sin ella el where de la operación idempotente queda sin `clave` y
+      // Prisma rechaza la consulta. Eran los 132 tickets.
+      claveOperacion: `${key}-ORD`,
       ...(seated ? { mesaId: rng.pick(tables), personas: rng.int(1, 4) } : {}),
     });
     await services.orders.add(staff.waiter, order.id, {
@@ -495,7 +511,10 @@ export async function runHistory(
               turnoId: shift!.shiftId,
               categoria: rng.pick(['SERVICIOS', 'MANTENIMIENTO', 'LIMPIEZA', 'TRANSPORTE']),
               descripcion: rng.pick(['Pago de energía', 'Mantenimiento de equipo', 'Insumos de limpieza', 'Flete de proveedor']),
-              monto: money(rng.int(80, 900)),
+                // Acotado a lo que cabe en la caja: el fondo inicial son Q500 y
+              // las ventas del día apenas suman, así que un gasto de Q900 se
+              // rechaza por efectivo insuficiente.
+              monto: money(rng.int(25, 150)),
               operationId: intent.operationId,
             })
             .catch((e) => note('gasto operativo', e));

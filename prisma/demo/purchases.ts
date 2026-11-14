@@ -19,7 +19,7 @@ import { branches, menus } from './branches.js';
 import { packagingRules, suppliers, type DemoPresentation } from './supply.js';
 import { productionRecipes, saleRecipes } from './recipes.js';
 import { modifierGroups } from './products.js';
-import { progress, Rng, type DemoOptions } from './runtime.js';
+import { batchChance, progress, Rng, type DemoOptions } from './runtime.js';
 import { code, type MasterIds } from './masters.js';
 
 type Db = PrismaClient;
@@ -92,12 +92,77 @@ export function articlesNeededBy(branchCode: string): Set<string> {
   return needed;
 }
 
+/**
+ * Base units of each purchasable article the branch will consume in the period.
+ *
+ * Opening stock used to be sized off stockMinimo, which is the floor the
+ * business reorders at, not an estimate of what gets used. One batch of puff
+ * pastry takes a kilo of flour and is made most days, so a week is six kilos
+ * from that recipe alone — and flour feeds several. Production ran dry on the
+ * second day and sixty-nine batches failed for want of ingredients.
+ *
+ * Production is computed exactly, since the data says what a batch consumes
+ * and how often it is made. Sales are an estimate: tickets in the period,
+ * spread over what the branch offers, at a couple of units each.
+ */
+function demandFor(branchCode: string, weeks: number, ticketsPerDay: number): Map<string, number> {
+  const days = weeks * 7;
+  const branch = branches.find((b) => b.codigo === branchCode)!;
+  const purchasable = articlesNeededBy(branchCode);
+  const demand = new Map<string, number>();
+  const add = (code: string, units: number): void => {
+    if (purchasable.has(code)) demand.set(code, (demand.get(code) ?? 0) + units);
+  };
+
+  // What the branch produces, at the frequency the history produces it.
+  const produced = new Set<string>();
+  const walk = (code: string): void => {
+    const recipe = productionRecipes.find((r) => r.resultado === code);
+    if (!recipe || produced.has(code)) return;
+    produced.add(code);
+    for (const component of recipe.componentes) walk(component.articulo);
+  };
+  const offered = new Set(
+    branch.menus.flatMap((c) => menus.find((m) => m.codigo === c)!.secciones.flatMap((sec) => sec.skus)),
+  );
+  for (const sku of offered) {
+    for (const component of saleRecipes.find((r) => r.sku === sku)?.componentes ?? []) walk(component.articulo);
+    const variant = products.flatMap((pr) => pr.variantes).find((v) => v.sku === sku);
+    if (variant?.articulo) walk(variant.articulo);
+  }
+  for (const code of produced) {
+    const recipe = productionRecipes.find((r) => r.resultado === code)!;
+    const batches = batchChance(recipe.vidaUtilDias) * days;
+    for (const component of recipe.componentes) {
+      add(component.articulo, batches * component.cantidad * (1 + (component.merma ?? 0) / 100));
+    }
+  }
+
+  // What gets sold straight off the shelf, and what the sale recipes consume.
+  const perSku = offered.size ? (ticketsPerDay * days * 2) / offered.size : 0;
+  for (const sku of offered) {
+    for (const component of saleRecipes.find((r) => r.sku === sku)?.componentes ?? []) {
+      add(component.articulo, perSku * component.cantidad * (1 + (component.merma ?? 0) / 100));
+    }
+    const variant = products.flatMap((pr) => pr.variantes).find((v) => v.sku === sku);
+    if (variant?.articulo) add(variant.articulo, perSku);
+  }
+  return demand;
+}
+
 /** Whole presentations to cover an opening stock, never a fraction of a sack. */
-function packsToBuy(articleCode: string, presentation: DemoPresentation, weeks: number, rng: Rng): number {
+function packsToBuy(
+  articleCode: string,
+  presentation: DemoPresentation,
+  weeks: number,
+  rng: Rng,
+  demand: Map<string, number>,
+): number {
   const article = articles.find((a) => a.codigo === articleCode)!;
-  // stockMinimo is the floor the business set; opening stock aims a few weeks
-  // above it so the first days of operation don't start on empty.
-  const target = (article.stockMinimo ?? 0) * (1 + weeks / 4) * rng.float(0.9, 1.2);
+  // The floor stays: an article nobody consumes still opens with something on
+  // the shelf. Above it, buy for the period's demand with room to spare.
+  const floor = (article.stockMinimo ?? 0) * (1 + weeks / 4);
+  const target = Math.max(floor, (demand.get(articleCode) ?? 0) * 1.45) * rng.float(0.95, 1.15);
   const perPack = presentation.cantidad * (presentation.unidadCompra === 'LB' ? 453.59237 : presentation.unidadCompra === 'L' ? 1000 : 1);
   return Math.max(1, Math.ceil(target / Math.max(perPack, 1)));
 }
@@ -169,6 +234,7 @@ export async function stockBranches(
     const warehouseId = ids.warehouses.get(branch.codigo)!;
     const locationId = ids.locations.get(branch.codigo)!;
     const needed = articlesNeededBy(branch.codigo);
+    const demand = demandFor(branch.codigo, options.semanas, options.tickets);
 
     for (const supplier of suppliers) {
       const lines = supplier.presentaciones.filter((p) => needed.has(p.articulo));
@@ -179,7 +245,7 @@ export async function stockBranches(
       const key = `DEMO-STOCK-${branch.codigo}-${supplier.codigo}`;
       const ref = docRef(branch.codigo, supplier.codigo);
       const orderLines = lines.map((presentation) => {
-        const packs = packsToBuy(presentation.articulo, presentation, options.semanas, rng);
+        const packs = packsToBuy(presentation.articulo, presentation, options.semanas, rng, demand);
         const unitsPerPack = presentation.cantidad;
         const unitPrice = presentation.precio / unitsPerPack;
         const factor = presentation.unidadCompra === 'LB' ? 453.59237 : presentation.unidadCompra === 'L' ? 1000 : 1;

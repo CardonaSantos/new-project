@@ -222,3 +222,15 @@ export function formatDay(day: Date): string {
 export function progress(phase: Phase, detail: string): void {
   process.stdout.write(`[${new Date().toISOString().slice(11, 19)}] ${phase.padEnd(9)} ${detail}\n`);
 }
+
+/**
+ * Con qué frecuencia se produce una preparación, según su vida útil.
+ *
+ * Vive aquí porque la usan dos fases: la historia para decidir si hoy se hace
+ * una tanda, y las compras para estimar cuánto insumo hace falta. Mientras
+ * cada una tenía su propia idea, las compras se dimensionaban con el stock
+ * mínimo —que es un umbral de reposición, no una demanda— y la producción se
+ * quedaba sin ingredientes a los dos días.
+ */
+export const batchChance = (shelfLifeDays = 30): number =>
+  shelfLifeDays <= 3 ? 0.85 : shelfLifeDays <= 7 ? 0.4 : 0.12;

@@ -16,6 +16,10 @@
  * standalone Nest context, so what the demo shows is what the system
  * computes. Masters go in directly; see masters.ts for why.
  */
+// Loaded first, and before the guard reads process.env: the variables that
+// authorise this run are most conveniently kept in .env, and on Windows the
+// alternative is remembering that cmd wants `set` where a shell wants `export`.
+import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../../src/app.module.js';
 import { PrismaService } from '../../src/shared/prisma/prisma.service.js';

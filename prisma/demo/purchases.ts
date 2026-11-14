@@ -103,6 +103,23 @@ function packsToBuy(articleCode: string, presentation: DemoPresentation, weeks: 
 }
 
 /**
+ * Short document references, built from both codes rather than cut out of the
+ * operation key.
+ *
+ * They were `key.slice(-14)` and friends, which is shorter but cuts from the
+ * wrong end: the branch code sits at the front of the key, so every branch
+ * produced the same reference for a given supplier. FacturaProveedor is unique
+ * on [proveedorId, numeroDocumento], so the second branch collided — and
+ * atomic() reports a unique violation with the same message as a serialisation
+ * failure, which sent us looking for a race that could not exist in a loop
+ * this sequential. The lot codes collided the same way and said nothing at
+ * all: lotFor reuses a lot it finds, so the second branch would have quietly
+ * drawn its stock from the first branch's lot.
+ */
+const docRef = (branch: string, supplier: string) =>
+  `${branch.slice(0, 3)}-${supplier.replace(/^PROV-/, '').slice(0, 4)}`;
+
+/**
  * Lots for the articles that track them.
  *
  * Expiry is set relative to now, not to the backdated day: the posting engine
@@ -160,6 +177,7 @@ export async function stockBranches(
       // Deterministic, so a re-run is recognised as the same operation rather
       // than stocking the branch twice: `once()` short-circuits on this key.
       const key = `DEMO-STOCK-${branch.codigo}-${supplier.codigo}`;
+      const ref = docRef(branch.codigo, supplier.codigo);
       const orderLines = lines.map((presentation) => {
         const packs = packsToBuy(presentation.articulo, presentation, options.semanas, rng);
         const unitsPerPack = presentation.cantidad;
@@ -200,7 +218,7 @@ export async function stockBranches(
           ordenCompraLineaId: line.id,
           articuloId: line.articuloId,
           ubicacionId: locationId,
-          loteId: (await lotFor(db, articleCode, line.articuloId, key.slice(-18), rng)) ?? undefined,
+          loteId: (await lotFor(db, articleCode, line.articuloId, ref, rng)) ?? undefined,
           cantidadCompra: qty(Number(line.cantidadCompra)),
           factorAUnidadBase: qty(Number(line.factorAUnidadBase)),
           precioUnitarioCompra: money(Number(line.precioUnitarioCompra)),
@@ -210,7 +228,7 @@ export async function stockBranches(
         ordenCompraId: order.id,
         proveedorId: ids.suppliers.get(supplier.codigo)!,
         almacenId: warehouseId,
-        referenciaProveedor: `REM-${key.slice(-12)}`,
+        referenciaProveedor: `REM-${ref}`,
         lineas: receiptLines,
       });
       // Confirming is what posts the stock and opens the cost layers.
@@ -222,7 +240,7 @@ export async function stockBranches(
       const invoice = await services.invoices.create(actor, {
         proveedorId: ids.suppliers.get(supplier.codigo)!,
         sucursalId: branchId,
-        numeroDocumento: `FAC-${key.slice(-14)}`,
+        numeroDocumento: `FAC-${ref}`,
         fechaEmision: today,
         fechaVencimiento: due.toISOString().slice(0, 10),
         precioIncluyeImpuesto: true,
@@ -245,7 +263,7 @@ export async function stockBranches(
         sucursalId: branchId,
         metodo: 'TRANSFERENCIA',
         monto: money(total),
-        referencia: `TRF-${key.slice(-10)}`,
+        referencia: `TRF-${ref}`,
         aplicaciones: [{ facturaId: invoice.id, monto: money(total) }],
       });
       await services.payments.confirm(actor, payment.id, { claveOperacion: key + '-PCF' });

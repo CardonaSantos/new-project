@@ -171,5 +171,16 @@ main().catch((error: unknown) => {
   // The stack matters here: this runs unattended for the better part of an
   // hour and the message alone rarely says which phase gave up.
   if (error instanceof Error && error.stack) process.stderr.write(error.stack + '\n');
+  // And the cause matters more than the message: a service reports a unique
+  // violation and a serialisation failure with the same words, so without the
+  // Prisma error underneath there is no way to tell a real race from a
+  // duplicate that will never succeed however many times it is retried.
+  for (let cause = (error as Error)?.cause; cause; cause = (cause as Error)?.cause) {
+    const e = cause as Error & { code?: string; meta?: unknown };
+    process.stderr.write(
+      `\nCausa: ${e.code ? e.code + ' ' : ''}${e.message}` +
+        (e.meta ? `\n  ${JSON.stringify(e.meta)}\n` : '\n'),
+    );
+  }
   process.exit(1);
 });

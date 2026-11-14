@@ -45,7 +45,11 @@ export async function atomic<T>(db:PrismaService,fn:(tx:Tx)=>Promise<T>):Promise
   catch(e){
    if(e instanceof Prisma.PrismaClientKnownRequestError&&['P2034','P2002'].includes(e.code)){
     if(i<2)continue;
-    throw new ConflictException('Conflicto concurrente: revise el documento y reintente');
+    // La causa viaja con la excepción: el mensaje es el mismo para un choque
+    // de serialización y para un duplicado, y sin el error de Prisma debajo no
+    // hay manera de distinguir una carrera real de un documento repetido que
+    // no va a pasar por mas que se reintente.
+    throw new ConflictException('Conflicto concurrente: revise el documento y reintente',{cause:e});
    }
    throw e;
   }

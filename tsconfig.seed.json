@@ -1,0 +1,16 @@
+{
+  // La semilla de demostración conduce los servicios reales de Nest, y Nest
+  // resuelve el constructor por el tipo que `emitDecoratorMetadata` deja en
+  // `design:paramtypes`. Esa metadata la emite `tsc`; esbuild —y por tanto
+  // `tsx`— no la emite, de modo que bajo `tsx` cada dependencia llega
+  // `undefined`. La semilla se compila con `tsc`, igual que el servidor.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "./dist-seed",
+    "declaration": false,
+    "tsBuildInfoFile": "./dist-seed/.tsbuildinfo"
+  },
+  "include": ["src", "prisma/demo"],
+  "exclude": ["node_modules", "test", "dist", "dist-seed", "**/*spec.ts"]
+}

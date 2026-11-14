@@ -16,9 +16,13 @@
  * standalone Nest context, so what the demo shows is what the system
  * computes. Masters go in directly; see masters.ts for why.
  */
-// Loaded first, and before the guard reads process.env: the variables that
-// authorise this run are most conveniently kept in .env, and on Windows the
-// alternative is remembering that cmd wants `set` where a shell wants `export`.
+// Nest reads the constructor metadata this installs, so it comes before any
+// module is imported. Compilation is tsc's, not tsx's, for the same reason:
+// see run.mjs.
+import 'reflect-metadata';
+// Loaded before the guard reads process.env: the variables that authorise this
+// run are most conveniently kept in .env, and on Windows the alternative is
+// remembering that cmd wants `set` where a shell wants `export`.
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../../src/app.module.js';

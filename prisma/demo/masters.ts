@@ -31,6 +31,8 @@ export interface MasterIds {
   units: Map<string, string>;
   articles: Map<string, string>;
   variants: Map<string, string>;
+  /** Modifier option code -> id, needed to put modifiers on order lines. */
+  modifierOptions: Map<string, string>;
   branches: Map<string, string>;
   warehouses: Map<string, string>;
   locations: Map<string, string>;
@@ -635,7 +637,7 @@ export async function writeMasters(db: Db, options: DemoOptions, password: strin
   const articleIds = await writeArticles(db, units);
 
   progress('maestros', `${modifierGroups.length} grupos de modificadores`);
-  const { groups } = await writeModifiers(db, units, articleIds);
+  const { groups, options } = await writeModifiers(db, units, articleIds);
 
   progress('maestros', `${products.length} productos`);
   const variantIds = await writeProducts(db, categoryIds, articleIds, groups);
@@ -663,6 +665,7 @@ export async function writeMasters(db: Db, options: DemoOptions, password: strin
     units,
     articles: articleIds,
     variants: variantIds,
+    modifierOptions: options,
     ...branchData,
     suppliers: supplierData.suppliers,
     presentations: supplierData.presentations,

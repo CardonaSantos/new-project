@@ -144,6 +144,18 @@ export function paymentsFor(total: number, modality: string, rng: Rng) {
     const given = Math.ceil(total / 10) * 10;
     return [{ metodo: method, monto: money(total), efectivoRecibido: money(Math.max(given, total)) }];
   }
+  if (method === 'TARJETA') {
+    // Una tarjeta que se cobra en el momento exige el código de autorización
+    // del datáfono; sin él el store la rechaza.
+    return [{
+      metodo: method,
+      monto: money(total),
+      referencia: `REF-${rng.int(100000, 999999)}`,
+      codigoAutorizacion: `AUT${rng.int(100000, 999999)}`,
+    }];
+  }
+  // La transferencia queda pendiente de verificación, que es justamente lo que
+  // el demo debe mostrar en la bandeja de cobros por confirmar.
   return [{ metodo: method, monto: money(total), referencia: `REF-${rng.int(100000, 999999)}` }];
 }
 
@@ -214,7 +226,7 @@ async function runProduction(
     } catch (error) {
       // Not enough of an ingredient is a real outcome of a busy week, not a
       // reason to abandon the day — but it gets counted.
-      note('producción', error);
+      note(`producción de ${articleCode}`, error);
     }
   }
   return batches;
@@ -231,6 +243,14 @@ async function runProduction(
  * word about why. Forgiving an error and hiding it are different things.
  */
 const failures = new Map<string, number>();
+
+/**
+ * Códigos por id, para que un fallo diga `HARINA-FUERTE` y no
+ * `cmwgs40m60022ucv4hqp758qq`. Un mensaje con un cuid no se puede diagnosticar
+ * sin ir a consultar la base, que es exactamente lo que estas corridas
+ * intentan evitar.
+ */
+let names = new Map<string, string>();
 
 /**
  * El texto útil de un error de Nest.
@@ -263,7 +283,15 @@ function describe(error: unknown): string {
 
 function note(step: string, error: unknown): void {
   const message = describe(error);
-  const key = `${step}: ${message.split('\n')[0].trim().slice(0, 140)}`;
+  // Un error de Prisma empieza con un salto de línea, así que la primera
+  // línea está vacía: por eso ciento treinta fallos se agruparon bajo un
+  // mensaje en blanco, dos corridas seguidas. Y cuando la cabecera es la
+  // genérica de Prisma, la razón de verdad va al final del texto.
+  const readable = message.replace(/\bc[a-z0-9]{20,}\b/g, (id) => names.get(id) ?? id);
+  const lines = readable.split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
+  const head = lines[0] ?? '(sin mensaje)';
+  const reason = head.startsWith('Invalid `prisma') ? (lines.at(-1) ?? head) : head;
+  const key = `${step}: ${reason.slice(0, 140)}`;
   failures.set(key, (failures.get(key) ?? 0) + 1);
 }
 
@@ -375,6 +403,10 @@ export async function runHistory(
   const days = operationalDays(options.semanas);
   const today = new Date();
   let totalSold = 0;
+  names = new Map([
+    ...[...ids.articles].map(([code, id]) => [id, code] as const),
+    ...[...ids.variants].map(([sku, id]) => [id, sku] as const),
+  ]);
 
   for (const branch of branches) {
     const branchId = ids.branches.get(branch.codigo);
@@ -447,14 +479,15 @@ export async function runHistory(
         // El operationId no se inventa: lo emite el servicio financiero y queda
         // atado al actor, la sucursal y la acción. Un `FIN:<uuid>` propio no
         // corresponde a ninguna intención registrada y se rechaza.
+        // Lo registra el cajero, no el administrador: el turno es suyo.
         const intent = (await services.finance
-          .issueIntent(admin, { sucursalId: branchId, accion: 'FIN_EXPENSE_CREATE' })
+          .issueIntent(staff.cashier, { sucursalId: branchId, accion: 'FIN_EXPENSE_CREATE' })
           .catch((e: unknown) => (note('intención de gasto', e), null))) as
           | { operationId: string }
           | null;
         if (intent) {
           await services.finance
-            .createExpense(admin, {
+            .createExpense(staff.cashier, {
               sucursalId: branchId,
               // Paid out of the till, which is what ties the expense to the
               // shift and makes it show up in the day's cash difference.

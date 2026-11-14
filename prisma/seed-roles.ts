@@ -52,6 +52,11 @@ export const operationalRoles = [
       'tables.read', 'tables.manage',
       'cash.read', 'cash.open', 'cash.close',
       'payments.read', 'payments.collect', 'payments.verify', 'payments.split', 'sales.read',
+      // Un gasto pagado de la caja solo lo puede registrar el dueño del turno
+      // (cash.store exige shift.cajeroId === actor), y el permiso lo tenía
+      // únicamente el administrador de sucursal, que no es dueño de ese turno:
+      // con los roles así, un gasto de caja no lo podía registrar nadie.
+      'finance.read', 'finance.expenses.read', 'finance.expenses.create',
       'customers.read', 'customers.create',
       'kitchen.read',
       'reservations.read',

@@ -115,6 +115,16 @@ function statements(branchIds: string[], articleIds: string[]): { label: string;
     { label: 'usuarios demo', sql: `DELETE FROM "Usuario" WHERE email LIKE '%@demo.local'` },
     { label: 'proveedores demo', sql: `DELETE FROM "Proveedor" WHERE nit IN ('3456789-1','4567890-2','5678901-3','6789012-4','7890123-5','8901234-6','9012345-7')` },
     { label: 'sucursales', sql: `DELETE FROM "Sucursal" WHERE codigo LIKE '${DEMO_PREFIX}%'` },
+
+    // --- idempotency -------------------------------------------------------
+    // Without this the reset is worse than useless. `once()` hashes the
+    // payload, and most payloads carry the id of a document from the same run,
+    // so after a reset the keys survive with hashes of rows that no longer
+    // exist: a re-seed either refuses ("clave reutilizada con otros
+    // parámetros") or, where the payload happens to match, returns the stored
+    // result without doing the work and reports a success that wrote nothing.
+    // No foreign keys point here, so it goes last.
+    { label: 'claves de idempotencia', sql: `DELETE FROM "OperacionIdempotente" WHERE clave LIKE '${DEMO_PREFIX}%'` },
   ];
 }
 

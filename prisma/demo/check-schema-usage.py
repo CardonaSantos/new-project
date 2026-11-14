@@ -9,7 +9,8 @@ Prisma contra schema.prisma: que el modelo exista, que el `where` use una
 clave realmente unique, que todo campo enviado exista, y que ningun `create`
 omita un campo obligatorio sin default.
 
-Uso:  python3 prisma/demo/check-schema-usage.py prisma/demo/masters.ts prisma/seed.ts
+Uso:  python3 prisma/demo/check-schema-usage.py prisma/demo/*.ts prisma/seed.ts
+      (el SQL del reset se revisa siempre, no hace falta pasarlo)
 """
 import re, sys
 schema = open('prisma/schema.prisma').read()
@@ -201,3 +202,96 @@ for path in sys.argv[1:]:
                 check_where(path, model, balanced(value, 0)[0], f'{model}.where')
 print(f'{checked} filtros where recorridos')
 print('\n'.join(sorted(set(fails2))) if fails2 else 'Todas las claves de los where existen en su modelo.')
+
+# --- SQL crudo del reset ----------------------------------------------------
+# reset.ts no pasa por el cliente de Prisma: son 74 DELETE escritos a mano,
+# y hasta ahora nadie los contrastaba con nada. Un `sucursalId` en una tabla
+# que se ancla por `cuentaId` solo aparecia al ejecutar el reset, que es
+# justo cuando ya no se puede volver atras. Esto expande las plantillas,
+# resuelve los alias y exige que cada columna exista en la tabla que le
+# corresponde.
+reset_src = open('prisma/demo/reset.ts', encoding='utf-8').read()
+def sql_template(src, i):
+    """Cuerpo de la plantilla que abre en src[i] == '`', con ${} anidados.
+
+    Las sentencias que arman listas de nombres contienen plantillas dentro de
+    la interpolación, y un regex hasta el siguiente backtick las parte por la
+    mitad: aparecían como "interpolación no expandida", que era el verificador
+    rindiéndose, no un error del SQL.
+    """
+    depth, j = 0, i + 1
+    while j < len(src):
+        if src[j] == '\\': j += 2; continue
+        if src[j:j+2] == '${': depth += 1; j += 2; continue
+        if src[j] == '}' and depth: depth -= 1
+        elif src[j] == '`' and not depth: return src[i+1:j], j
+        j += 1
+    raise ValueError('plantilla sin cerrar')
+
+statements_sql = []
+for m in re.finditer(r"\{\s*label:\s*'([^']+)',\s*sql:\s*", reset_src):
+    body, _ = sql_template(reset_src, m.end())
+    body = body.replace("${inBranch()}", '"sucursalId" IN (\'x\')')
+    body = re.sub(r"\$\{inBranch\('(\w+)'\)\}", lambda g: f'"{g.group(1)}" IN (\'x\')', body)
+    # Las listas de nombres que el reset arma desde los datos del demo valen
+    # como un literal: lo que se verifica son las tablas y las columnas.
+    body = re.sub(r'\$\{(?:[^{}]|\{[^{}]*\})*\}', "'x'", body)
+    statements_sql.append((m.group(1), body))
+
+def scope_at(sql):
+    """Para cada posición del SQL, el ámbito al que pertenece.
+
+    Un `(SELECT` abre uno y su paréntesis lo cierra. Partir el texto por
+    `(SELECT` sin cerrar nada dejaba todo lo que viniera después dentro de la
+    subconsulta: por eso `articuloResultadoId`, que es columna de Receta y
+    está detrás de una subconsulta, se reportaba como inexistente.
+    """
+    scopes, stack, owner, opens = [set()], [0], [0] * len(sql), []
+    for i, c in enumerate(sql):
+        if c == '(':
+            if sql[i + 1:i + 8].upper() == 'SELECT ':
+                scopes.append(set()); stack.append(len(scopes) - 1); opens.append(True)
+            else: opens.append(False)
+        elif c == ')' and opens:
+            if opens.pop() and len(stack) > 1: stack.pop()
+        owner[i] = stack[-1]
+    return scopes, owner
+
+sql_fails = []
+for label, sql in statements_sql:
+    if '${' in sql:
+        sql_fails.append(f'{label}: interpolación no expandida, revise el verificador'); continue
+    target = re.search(r'DELETE FROM "(\w+)"', sql)
+    tables = set(re.findall(r'(?:FROM|JOIN)\s+"(\w+)"', sql)) | ({target.group(1)} if target else set())
+    for t in sorted(tables):
+        if t not in models: sql_fails.append(f'{label}: la tabla {t} no es un modelo')
+    scopes, owner = scope_at(sql)
+    parents = {}
+    if target: scopes[0].add(target.group(1))
+    aliases = {}
+    for m in re.finditer(r'(?:FROM|JOIN)\s+"(\w+)"(?:\s+(?:AS\s+)?(\w+))?', sql):
+        scopes[owner[m.start()]].add(m.group(1))
+        if m.group(2) and m.group(2).upper() not in ('ON', 'WHERE'): aliases[m.group(2)] = m.group(1)
+
+    def visible(pos):
+        """Las tablas del ámbito y las de los que lo contienen."""
+        seen, k = set(), owner[pos]
+        seen |= scopes[k]
+        return seen | scopes[0]
+
+    for m in re.finditer(r'\b(\w+)\."(\w+)"', sql):
+        t = aliases.get(m.group(1))
+        if t and m.group(2) not in models.get(t, ()):
+            sql_fails.append(f'{label}: {t}.{m.group(2)} no existe (alias {m.group(1)})')
+    for m in re.finditer(r'(?<![.\w])"(\w+)"', sql):
+        col = m.group(1)
+        if col in tables: continue
+        here = visible(m.start())
+        if not any(col in models.get(t, ()) for t in here):
+            sql_fails.append(f'{label}: la columna {col} no existe en {sorted(here)}')
+    for m in re.finditer(r'(?:WHERE|AND)\s+(\w+)\s+(?:LIKE|IN|=)', sql):
+        here = visible(m.start())
+        if not any(m.group(1) in models.get(t, ()) for t in here):
+            sql_fails.append(f'{label}: la columna {m.group(1)} no existe en {sorted(here)}')
+print(f'{len(statements_sql)} sentencias del reset revisadas')
+print('\n'.join(dict.fromkeys(sql_fails)) if sql_fails else 'Todas las columnas del reset existen en su tabla.')

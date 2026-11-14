@@ -47,7 +47,8 @@ function statements(branchIds: string[], articleIds: string[]): { label: string;
     { label: 'líneas de cuenta', sql: `DELETE FROM "CuentaLinea" WHERE "cuentaId" IN (SELECT c.id FROM "Cuenta" c JOIN "Orden" o ON o.id=c."ordenId" WHERE o.${inBranch()})` },
     { label: 'cuentas', sql: `DELETE FROM "Cuenta" WHERE "ordenId" IN (SELECT id FROM "Orden" WHERE ${inBranch()})` },
     { label: 'gastos operativos', sql: `DELETE FROM "GastoOperativo" WHERE ${inBranch()}` },
-    { label: 'movimientos financieros', sql: `DELETE FROM "MovimientoFinanciero" WHERE ${inBranch()}` },
+    // Un movimiento financiero no conoce la sucursal: cuelga de la cuenta.
+    { label: 'movimientos financieros', sql: `DELETE FROM "MovimientoFinanciero" WHERE "cuentaId" IN (SELECT id FROM "CuentaFinanciera" WHERE ${inBranch()})` },
     { label: 'movimientos de caja', sql: `DELETE FROM "MovimientoCaja" WHERE "turnoId" IN (SELECT t.id FROM "TurnoCaja" t JOIN "Caja" c ON c.id=t."cajaId" WHERE c.${inBranch()})` },
     { label: 'turnos de caja', sql: `DELETE FROM "TurnoCaja" WHERE "cajaId" IN (SELECT id FROM "Caja" WHERE ${inBranch()})` },
     { label: 'cierres operativos', sql: `DELETE FROM "CierreOperativo" WHERE ${inBranch()}` },
@@ -66,8 +67,11 @@ function statements(branchIds: string[], articleIds: string[]): { label: string;
     { label: 'reservas', sql: `DELETE FROM "Reserva" WHERE ${inBranch()}` },
 
     // --- stock -------------------------------------------------------------
-    { label: 'consumos de producción', sql: `DELETE FROM "ProduccionConsumo" WHERE "produccionId" IN (SELECT id FROM "ProduccionLote" WHERE ${inBranch()})` },
-    { label: 'lotes de producción', sql: `DELETE FROM "ProduccionLote" WHERE ${inBranch()}` },
+    // Un lote de producción tampoco: llega a la sucursal por la ubicación de
+    // destino, pero la clave de operación que el demo le pone es un ancla más
+    // directa y más estrecha, del mismo prefijo que todo lo demás.
+    { label: 'consumos de producción', sql: `DELETE FROM "ProduccionConsumo" WHERE "produccionId" IN (SELECT id FROM "ProduccionLote" WHERE "claveOperacion" LIKE '${DEMO_PREFIX}%')` },
+    { label: 'lotes de producción', sql: `DELETE FROM "ProduccionLote" WHERE "claveOperacion" LIKE '${DEMO_PREFIX}%'` },
     { label: 'movimientos de inventario', sql: `DELETE FROM "MovimientoInventario" WHERE "articuloId" IN (${articles})` },
     { label: 'capas de costo', sql: `DELETE FROM "CapaCostoInventario" WHERE "articuloId" IN (${articles})` },
     { label: 'existencias', sql: `DELETE FROM "Existencia" WHERE "articuloId" IN (${articles})` },

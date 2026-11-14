@@ -132,7 +132,7 @@ async function main(): Promise<void> {
           cash: app.get(CashService) as never,
           recipes: app.get(RecipeService) as never,
           inventory: payments,
-          expenses: app.get(FinanceService) as never,
+          finance: app.get(FinanceService) as never,
           closing: app.get(FinanceClosingService) as never,
         },
         ids,

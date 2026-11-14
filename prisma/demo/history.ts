@@ -41,7 +41,8 @@ export interface HistoryServices {
   cash: Service;
   recipes: Service;
   inventory: Service;
-  expenses: Service;
+  /** FinanceService: emite intenciones y registra gastos. */
+  finance: Service;
   closing: Service;
 }
 
@@ -231,8 +232,37 @@ async function runProduction(
  */
 const failures = new Map<string, number>();
 
+/**
+ * El texto útil de un error de Nest.
+ *
+ * Once fallos de ticket y cuatro de cierre se reportaron con el mensaje
+ * vacío: una excepción de validación lleva el detalle en el cuerpo de la
+ * respuesta —y como arreglo, en un arreglo— mientras que `.message` queda en
+ * blanco. Un fallo sin texto no se puede diagnosticar.
+ */
+function describe(error: unknown): string {
+  const e = error as {
+    message?: unknown;
+    response?: unknown;
+    getResponse?: () => unknown;
+  };
+  const body = typeof e?.getResponse === 'function' ? e.getResponse() : e?.response;
+  const detail =
+    typeof body === 'string'
+      ? body
+      : ((): string | undefined => {
+          const m = (body as { message?: unknown } | undefined)?.message;
+          if (Array.isArray(m)) return m.join('; ');
+          return typeof m === 'string' ? m : undefined;
+        })();
+  const text = [detail, typeof e?.message === 'string' ? e.message : undefined].find(
+    (v) => typeof v === 'string' && v.trim().length > 0,
+  );
+  return text ?? (error as object)?.constructor?.name ?? String(error);
+}
+
 function note(step: string, error: unknown): void {
-  const message = (error as Error)?.message ?? String(error);
+  const message = describe(error);
   const key = `${step}: ${message.split('\n')[0].trim().slice(0, 140)}`;
   failures.set(key, (failures.get(key) ?? 0) + 1);
 }
@@ -279,15 +309,27 @@ async function runTicket(
   const total =
     lines.reduce((sum, l) => sum + l.sellable.price * l.units, 0) + (needsFee && fee ? fee.price : 0);
 
-  if (modality === 'MESA' && tables.length) {
-    // Table service is the long path, and the only one that uses an account:
-    // open, order, cook, then settle.
-    const order = await services.orders.create(staff.waiter, {
+  const payments = paymentsFor(total, modality, rng);
+  const seated = modality === 'MESA' && tables.length > 0;
+  // quickCheckout no es un atajo universal: el store lo rechaza fuera de
+  // mostrador y para llevar, con cualquier producto PREPARADO, y con una
+  // transferencia, que queda pendiente de verificación y necesita el cobro
+  // normal. Mandar todo por ahí costó quince tickets. Lo que no entra en esas
+  // tres condiciones va por el camino largo, que es el que el sistema espera.
+  const quick =
+    (modality === 'MOSTRADOR' || modality === 'PARA_LLEVAR') &&
+    !lines.some((l) => l.sellable.prepared) &&
+    !payments.some((p) => p.metodo === 'TRANSFERENCIA');
+
+  if (!quick) {
+    // El camino largo, y el único que usa una cuenta: abrir, pedir, cocinar,
+    // liquidar. Sirve para las cuatro modalidades.
+    const order = await services.orders.create(seated ? staff.waiter : staff.cashier, {
       sucursalId: branchId,
-      modalidad: modality,
+      // Una mesa sin mesas configuradas se cobra en mostrador.
+      modalidad: seated ? modality : modality === 'MESA' ? 'MOSTRADOR' : modality,
       origen: origin,
-      mesaId: rng.pick(tables),
-      personas: rng.int(1, 4),
+      ...(seated ? { mesaId: rng.pick(tables), personas: rng.int(1, 4) } : {}),
     });
     await services.orders.add(staff.waiter, order.id, {
       lineas: items,
@@ -302,22 +344,22 @@ async function runTicket(
     }
     await services.accounts.finalize(staff.cashier, order.id, {
       turnoId: shiftId,
-      pagos: paymentsFor(total, modality, rng),
+      pagos: payments,
       claveOperacion: `${key}-FIN`,
     });
     await services.orders.close(staff.cashier, order.id).catch((e) => note('cerrar orden', e));
     return true;
   }
 
-  // Counter, takeaway and delivery settle in one step, which is what a queue
-  // at a till actually does.
+  // Mostrador y para llevar sin preparados se cobran de un golpe, que es lo
+  // que de verdad hace una fila en la caja.
   await services.orders.quickCheckout(staff.cashier, {
     sucursalId: branchId,
     modalidad: modality,
     origen: origin,
     turnoId: shiftId,
     lineas: items,
-    pagos: paymentsFor(total, modality, rng),
+    pagos: payments,
     claveOperacion: `${key}-QCK`,
   });
   return true;
@@ -367,13 +409,19 @@ export async function runHistory(
       const rng = new Rng(0xc0ffee + index * 977 + branch.codigo.length * 31);
       const target = ticketsForDay(options.tickets, day.getUTCDay(), rng);
 
-      let shift: { id: string } | null = null;
+      // open() devuelve {shiftId}, no {id}. Leerlo como .id dejaba turnoId en
+      // undefined en todo lo que viene después: los cobros, el gasto de caja y
+      // el cierre del turno. El cierre fallaba, el turno quedaba abierto, y los
+      // seis días siguientes no podían abrir uno. Los servicios se exponen con
+      // firmas any, así que TypeScript no tenía nada que objetar.
+      let shift: { shiftId: string } | null = null;
       try {
-        shift = await services.cash.open(staff.cashier, {
+        shift = (await services.cash.open(staff.cashier, {
           cajaId: registerId,
           fondoInicial: '500.00',
           claveOperacion: `DEMO-TURNO-${branch.codigo}-${dayKey}`,
-        });
+        })) as { shiftId: string };
+        if (!shift?.shiftId) throw Error('cash.open no devolvió shiftId');
       } catch (error) {
         note('apertura de turno', error);
         progress('historia', `${branch.codigo} ${dayKey}: no abrió turno, se omite el día`);
@@ -386,7 +434,7 @@ export async function runHistory(
       for (let n = 0; n < target; n++) {
         const key = `DEMO-${branch.codigo}-${dayKey}-${n}`;
         try {
-          if (await runTicket(services, staff, branch.codigo, branchId, shift!.id, sellables, tables, ids, key, rng))
+          if (await runTicket(services, staff, branch.codigo, branchId, shift!.shiftId, sellables, tables, ids, key, rng))
             sold++;
         } catch (error) {
           // A ticket that cannot be served — an ingredient ran out mid-service —
@@ -396,23 +444,33 @@ export async function runHistory(
       }
 
       if (rng.chance(0.3)) {
-        await services.expenses
-          .createExpense(admin, {
-            sucursalId: branchId,
-            // Paid out of the till, which is what ties the expense to the shift
-            // and makes it show up in the day's cash difference.
-            origen: 'CAJA',
-            turnoId: shift!.id,
-            categoria: rng.pick(['SERVICIOS', 'MANTENIMIENTO', 'LIMPIEZA', 'TRANSPORTE']),
-            descripcion: rng.pick(['Pago de energía', 'Mantenimiento de equipo', 'Insumos de limpieza', 'Flete de proveedor']),
-            monto: money(rng.int(80, 900)),
-            operationId: `FIN:${crypto.randomUUID()}`,
-          })
-          .catch((e) => note('gasto operativo', e));
+        // El operationId no se inventa: lo emite el servicio financiero y queda
+        // atado al actor, la sucursal y la acción. Un `FIN:<uuid>` propio no
+        // corresponde a ninguna intención registrada y se rechaza.
+        const intent = (await services.finance
+          .issueIntent(admin, { sucursalId: branchId, accion: 'FIN_EXPENSE_CREATE' })
+          .catch((e: unknown) => (note('intención de gasto', e), null))) as
+          | { operationId: string }
+          | null;
+        if (intent) {
+          await services.finance
+            .createExpense(admin, {
+              sucursalId: branchId,
+              // Paid out of the till, which is what ties the expense to the
+              // shift and makes it show up in the day's cash difference.
+              origen: 'CAJA',
+              turnoId: shift!.shiftId,
+              categoria: rng.pick(['SERVICIOS', 'MANTENIMIENTO', 'LIMPIEZA', 'TRANSPORTE']),
+              descripcion: rng.pick(['Pago de energía', 'Mantenimiento de equipo', 'Insumos de limpieza', 'Flete de proveedor']),
+              monto: money(rng.int(80, 900)),
+              operationId: intent.operationId,
+            })
+            .catch((e) => note('gasto operativo', e));
+        }
       }
 
       await services.cash
-        .close(staff.cashier, shift!.id, {
+        .close(staff.cashier, shift!.shiftId, {
           // Counted cash drifts from expected by a few quetzales, which is what
           // a cash-difference report exists to show.
           efectivoContado: money(500 + sold * rng.float(10, 26) + rng.float(-12, 8)),
@@ -425,13 +483,20 @@ export async function runHistory(
 
       // FinanceClosingService exposes confirm(); the controller's close()
       // route is just its HTTP name.
-      await services.closing
-        .confirm(admin, {
-          sucursalId: branchId,
-          fechaOperativa: dayKey,
-          operationId: `FIN:${crypto.randomUUID()}`,
-        })
-        .catch((e) => note('cierre operativo', e));
+      const closeIntent = (await services.finance
+        .issueIntent(admin, { sucursalId: branchId, accion: 'FIN_DAY_CLOSE' })
+        .catch((e: unknown) => (note('intención de cierre', e), null))) as
+        | { operationId: string }
+        | null;
+      if (closeIntent) {
+        await services.closing
+          .confirm(admin, {
+            sucursalId: branchId,
+            fechaOperativa: dayKey,
+            operationId: closeIntent.operationId,
+          })
+          .catch((e) => note('cierre operativo', e));
+      }
 
       // Move the whole day back as a unit, preserving the order within it.
       const back = Math.round((today.getTime() - day.getTime()) / 86400000);

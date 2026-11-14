@@ -210,12 +210,38 @@ async function runProduction(
         fechaVencimiento: expiry.toISOString().slice(0, 10),
       });
       batches++;
-    } catch {
+    } catch (error) {
       // Not enough of an ingredient is a real outcome of a busy week, not a
-      // reason to abandon the day.
+      // reason to abandon the day — but it gets counted.
+      note('producción', error);
     }
   }
   return batches;
+}
+
+/**
+ * Swallowed failures, grouped by step and message.
+ *
+ * A ticket that cannot be served is a real outcome of a busy week, and that
+ * is why these steps forgive an error instead of abandoning the day. But a
+ * bare `catch {}` makes a day where nothing worked look exactly like a day
+ * where everything did: the first run of this phase reported success having
+ * sold nothing at all, across four branches and seven days, and said not one
+ * word about why. Forgiving an error and hiding it are different things.
+ */
+const failures = new Map<string, number>();
+
+function note(step: string, error: unknown): void {
+  const message = (error as Error)?.message ?? String(error);
+  const key = `${step}: ${message.split('\n')[0].trim().slice(0, 140)}`;
+  failures.set(key, (failures.get(key) ?? 0) + 1);
+}
+
+/** Grouped, most frequent first, because the same cause repeats by the dozen. */
+export function historyFailures(): string[] {
+  return [...failures.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([key, count]) => `  ${count}×  ${key}`);
 }
 
 async function runTicket(
@@ -269,17 +295,17 @@ async function runTicket(
       claveOperacion: `${key}-ADD`,
     });
     // The kitchen works the tickets the send created.
-    const tickets = await services.kitchen.queue(staff.cook, { sucursalId: branchId }).catch(() => null);
+    const tickets = await services.kitchen.queue(staff.cook, { sucursalId: branchId }).catch((e) => (note('cola de cocina', e), null));
     for (const ticket of tickets?.filter?.((t: any) => t.ordenId === order.id) ?? []) {
-      await services.kitchen.start(staff.cook, ticket.id).catch(() => undefined);
-      await services.kitchen.ready(staff.cook, ticket.id).catch(() => undefined);
+      await services.kitchen.start(staff.cook, ticket.id).catch((e) => note('cocina: iniciar', e));
+      await services.kitchen.ready(staff.cook, ticket.id).catch((e) => note('cocina: listo', e));
     }
     await services.accounts.finalize(staff.cashier, order.id, {
       turnoId: shiftId,
       pagos: paymentsFor(total, modality, rng),
       claveOperacion: `${key}-FIN`,
     });
-    await services.orders.close(staff.cashier, order.id).catch(() => undefined);
+    await services.orders.close(staff.cashier, order.id).catch((e) => note('cerrar orden', e));
     return true;
   }
 
@@ -306,6 +332,7 @@ export async function runHistory(
 ): Promise<void> {
   const days = operationalDays(options.semanas);
   const today = new Date();
+  let totalSold = 0;
 
   for (const branch of branches) {
     const branchId = ids.branches.get(branch.codigo);
@@ -347,7 +374,8 @@ export async function runHistory(
           fondoInicial: '500.00',
           claveOperacion: `DEMO-TURNO-${branch.codigo}-${dayKey}`,
         });
-      } catch {
+      } catch (error) {
+        note('apertura de turno', error);
         progress('historia', `${branch.codigo} ${dayKey}: no abrió turno, se omite el día`);
         continue;
       }
@@ -360,9 +388,10 @@ export async function runHistory(
         try {
           if (await runTicket(services, staff, branch.codigo, branchId, shift!.id, sellables, tables, ids, key, rng))
             sold++;
-        } catch {
+        } catch (error) {
           // A ticket that cannot be served — an ingredient ran out mid-service —
           // is part of what the demo should show, not a failure of the run.
+          note('ticket', error);
         }
       }
 
@@ -379,7 +408,7 @@ export async function runHistory(
             monto: money(rng.int(80, 900)),
             operationId: `FIN:${crypto.randomUUID()}`,
           })
-          .catch(() => undefined);
+          .catch((e) => note('gasto operativo', e));
       }
 
       await services.cash
@@ -390,7 +419,9 @@ export async function runHistory(
           notaCierre: 'Cierre de turno',
           claveOperacion: `DEMO-CIERRE-${branch.codigo}-${dayKey}`,
         })
-        .catch(() => undefined);
+        // Hiding this one cost the whole week: with the shift left open, every
+        // later day failed to open one and was skipped.
+        .catch((e) => note('cierre de turno', e));
 
       // FinanceClosingService exposes confirm(); the controller's close()
       // route is just its HTTP name.
@@ -400,12 +431,30 @@ export async function runHistory(
           fechaOperativa: dayKey,
           operationId: `FIN:${crypto.randomUUID()}`,
         })
-        .catch(() => undefined);
+        .catch((e) => note('cierre operativo', e));
 
       // Move the whole day back as a unit, preserving the order within it.
       const back = Math.round((today.getTime() - day.getTime()) / 86400000);
       await shiftSince(db, mark, back, -rng.int(0, 3600 * 6));
+      totalSold += sold;
       progress('historia', `${branch.codigo} ${dayKey}: ${sold}/${target} tickets, ${batches} lotes`);
     }
+  }
+
+  const reported = historyFailures();
+  if (reported.length) {
+    process.stderr.write(
+      `\nFallos tolerados durante la historia (${totalSold} tickets vendidos):\n` +
+        reported.join('\n') +
+        '\n',
+    );
+  }
+  // A demonstration with no sales is not a demonstration, and until now it
+  // finished quietly and said "listo". The phase is only done if it sold.
+  if (!totalSold) {
+    throw Error(
+      'La historia no vendió un solo ticket. Las causas están arriba, agrupadas: ' +
+        'el demo no sirve sin operación, así que esto se trata como un fallo.',
+    );
   }
 }

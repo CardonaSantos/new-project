@@ -114,3 +114,17 @@ for path in sys.argv[1:]:
             if field not in provided and field.replace('Id','') not in provided:
                 missing.append(f'{path}: {model}.create no envía "{field}" (obligatorio sin default)')
 print('\n'.join(sorted(set(missing))) if missing else 'Ningún create omite un campo obligatorio.')
+
+# --- rutas de importación ---------------------------------------------------
+# Las rutas al código de la app se escribieron sin poder resolverlas: este
+# chequeo las contrasta con el arbol real. Las de src/generated se omiten
+# porque las crea `prisma generate` y no existen hasta entonces.
+import os, glob
+rotas = []
+for f in sorted(glob.glob('prisma/demo/*.ts')) + ['prisma/seed.ts', 'prisma/seed-roles.ts']:
+    if not os.path.isfile(f): continue
+    for imp in re.findall(r"from '(\.[^']+)'", open(f, encoding='utf-8').read()):
+        if 'src/generated/' in imp: continue
+        real = os.path.normpath(os.path.join(os.path.dirname(f), imp)).replace('.js', '.ts')
+        if not os.path.isfile(real): rotas.append(f'{f} -> {imp}')
+print('\n'.join('ruta inexistente: ' + r for r in rotas) if rotas else 'Todas las rutas de importación resuelven.')

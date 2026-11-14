@@ -22,7 +22,7 @@
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../../src/app.module.js';
-import { PrismaService } from '../../src/shared/prisma/prisma.service.js';
+import { PrismaService } from '../../src/infrastructure/database/prisma/prisma.service.js';
 import { OrderService } from '../../src/modules/orders/application/order.service.js';
 import { KitchenService } from '../../src/modules/orders/application/kitchen.service.js';
 import { CashService } from '../../src/modules/payments/application/cash.service.js';

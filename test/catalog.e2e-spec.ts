@@ -6,6 +6,7 @@ import type {App} from 'supertest/types';
 import type {NextFunction,Request,Response} from 'express';
 import type {Principal} from '../src/modules/auth/application/auth.service.js';
 import {CatalogService} from '../src/modules/catalog/application/catalog.service.js';
+import {CatalogSetupService} from '../src/modules/catalog/application/catalog-setup.service.js';
 import {CatalogCategoriesController,CatalogProductsController,CatalogVariantsController} from '../src/modules/catalog/presentation/http/catalog-products.controller.js';
 import {CatalogGroupsController,CatalogModifiersController,CatalogVariantGroupsController,CatalogPricesController} from '../src/modules/catalog/presentation/http/catalog-pricing.controller.js';
 import {CatalogMenusController,CatalogMenuProjectionController} from '../src/modules/catalog/presentation/http/catalog-menus.controller.js';
@@ -14,6 +15,11 @@ const user:Principal={id:'u1',email:'admin@coffee.gt',nombre:'Admin',sessionId:'
  versionAutorizacion:1,debeCambiarContrasena:false};
 describe('CAT-A HTTP contracts',()=>{
  let app:INestApplication<App>;
+ const setup={
+  createProductSetup:vi.fn().mockResolvedValue({id:'p2',codigo:'FLAN-1',preciosConfigurados:[]}),
+  batchVariantPrices:vi.fn().mockResolvedValue({guardados:1,precios:[]}),
+  commitMenu:vi.fn().mockResolvedValue({id:'m1',version:3,publicadoEn:'2026-11-05T00:00:00Z'})
+ };
  const service={
   categories:vi.fn().mockResolvedValue({data:[],meta:{page:1,limit:20,total:0,totalPages:0}}),
   categoryTree:vi.fn().mockResolvedValue({data:[],total:0}),
@@ -36,14 +42,47 @@ describe('CAT-A HTTP contracts',()=>{
    CatalogGroupsController,CatalogModifiersController,CatalogVariantGroupsController,
    CatalogPricesController,CatalogMenusController,CatalogMenuProjectionController,
    CatalogReportsController
-  ],providers:[{provide:CatalogService,useValue:service}]}).compile();
+  ],providers:[{provide:CatalogService,useValue:service},
+   {provide:CatalogSetupService,useValue:setup}]}).compile();
   app=mod.createNestApplication<App>();app.setGlobalPrefix('api');
   app.use((req:Request&{auth?:Principal},_res:Response,next:NextFunction)=>{req.auth=user;next();});
   app.useGlobalPipes(new ValidationPipe({transform:true,whitelist:true,forbidNonWhitelisted:true,
    transformOptions:{enableImplicitConversion:false}}));
   await app.init();
  });
- afterEach(async()=>app.close());
+ afterEach(async()=>app?.close());
+ it('sets up flan and variant price with inline physical article in one validated request',async()=>{
+  await request(app.getHttpServer()).post('/api/catalog/products/setup').send({
+   codigo:'FLAN-1',nombre:'Flan',tipo:'INVENTARIABLE',sucursalId:'b1',
+   variantes:[{nombre:'Única',precio:'20.00',nuevoArticulo:{
+    codigo:'FLAN-ART-1',nombre:'Flan terminado',requiereLote:false
+   }}]
+  }).expect(201);
+  expect(setup.createProductSetup).toHaveBeenCalledWith('u1',expect.objectContaining({
+   codigo:'FLAN-1',variantes:[expect.objectContaining({precio:'20.00'})]
+  }));
+  await request(app.getHttpServer()).post('/api/catalog/products/setup').send({
+   codigo:'FLAN-2',nombre:'Flan',tipo:'INVENTARIABLE',variantes:[],
+  }).expect(400);
+ });
+ it('validates atomic batch prices and menu optimistic versions',async()=>{
+  await request(app.getHttpServer()).post('/api/catalog/prices/variants/batch').send({
+   precios:[{entityId:'v1',sucursalId:'b1',importe:'26.00',
+    vigenteDesde:'2026-11-05T20:00:00Z'}]
+  }).expect(201);
+  await request(app.getHttpServer()).post('/api/catalog/prices/variants/batch').send({
+   precios:[{entityId:'v1',sucursalId:'b1',importe:'26.000',
+    vigenteDesde:'2026-11-05T20:00:00Z'}]
+  }).expect(400);
+  await request(app.getHttpServer()).post('/api/catalog/menus/m1/commit').send({
+   expectedVersion:2,sucursalIds:['b1'],secciones:[{
+    nombre:'Postres',orden:0,items:[{varianteId:'v1',orden:0}]
+   }],horarios:[]
+  }).expect(201);
+  await request(app.getHttpServer()).post('/api/catalog/menus/m1/commit').send({
+   expectedVersion:0,sucursalIds:[],secciones:[],horarios:[]
+  }).expect(400);
+ });
  it('registers category tree before dynamic route',async()=>{
   await request(app.getHttpServer()).get('/api/catalog/categories/tree').expect(200);
   expect(service.categoryTree).toHaveBeenCalledWith(user);

@@ -117,9 +117,37 @@ export class CatalogMenuStore{
    warnings.push('SIN_FOTOGRAFIA_CONFIRMADA');
   if(v.producto.tipo==='INVENTARIABLE'&&(!v.articuloInventario||!v.articuloInventario.activo))
    warnings.push('ARTICULO_FISICO_INVALIDO');
+  if(v.producto.tipo==='INVENTARIABLE'&&v.articuloInventario?.activo){
+   const unit=await tx.articuloInventario.findUnique({where:{id:v.articuloInventario.id},
+    include:{unidadBase:true}});
+   if(unit?.unidadBase.dimension!=='UNIDAD')warnings.push('ARTICULO_UNIDAD_INCOMPATIBLE');
+  }
+  let recipeState='NO_APLICA',kitchenState='NO_APLICA';
+  if(v.producto.tipo==='PREPARADO'){
+   const published=await tx.receta.findFirst({where:{tipo:'VENTA',varianteId:v.id,activa:true,
+    recetaVersionesComoReceta:{some:{activa:true,publicadaEn:{not:null},
+     recetaComponentesComoRecetaVersion:{some:{}}}}},select:{id:true}});
+   recipeState=published?'PUBLICADA':'SIN_RECETA_PUBLICADA';
+   if(!published)warnings.push('SIN_RECETA_PUBLICADA');
+   const routes=await tx.rutaPreparacion.findMany({where:{
+    estacion:{sucursalId,activa:true},
+    OR:[{varianteId:v.id},...(v.producto.categoriaId?[{categoriaId:v.producto.categoriaId}]:[])]
+   },include:{estacion:true}});
+   const stations=await tx.estacionPreparacion.findMany({where:{sucursalId,activa:true}});
+   const matching=routes.sort((a,b)=>Number(b.varianteId!==null)-Number(a.varianteId!==null)||
+    b.prioridad-a.prioridad||a.id.localeCompare(b.id));
+   const selected=matching.length?matching[0].estacion:stations.length===1?stations[0]:null;
+   const location=selected?.ubicacionConsumoId?
+    await tx.ubicacionAlmacen.findUnique({where:{id:selected.ubicacionConsumoId},
+     include:{almacen:true}}):null;
+   const configured=!!location?.activa&&location.almacen.activo&&
+    location.almacen.sucursalId===sucursalId;
+   kitchenState=configured?'CONFIGURADA':'SIN_RUTA_O_UBICACION';
+   if(!configured)warnings.push('SIN_RUTA_O_UBICACION_COCINA');
+  }
   return {varianteId:variantId,sucursalId,lista:warnings.length===0,advertencias:warnings,
    precio:price?.importe.toFixed(2)??null,
-   receta:'NO_VERIFICADA_HASTA_REC_A',stock:'NO_VERIFICADO_HASTA_INV_B'};
+   receta:recipeState,cocina:kitchenState,stock:'NO_VERIFICADO_HASTA_INV_B'};
  }
  async productReadiness(id:string,sucursalId:string,at:Date){
   const product=await this.db.producto.findUnique({where:{id},include:{varianteProductosComoProducto:true}});

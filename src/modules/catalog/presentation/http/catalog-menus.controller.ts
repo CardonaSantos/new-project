@@ -2,10 +2,14 @@ import {Body,Controller,Get,Param,Patch,Post,Put,Query} from '@nestjs/common';
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {CurrentUser} from '../../../auth/presentation/http/decorators/auth.decorators.js';
 import {CatalogService} from '../../application/catalog.service.js';
+import {CatalogSetupService} from '../../application/catalog-setup.service.js';
 import {BranchQueryDto,MenuCreateDto,MenuLayoutDto,MenuListDto,MenuPatchDto,PublishDto,PriceQueryDto} from './dto/catalog.dto.js';
 @Controller('catalog/menus')
 export class CatalogMenusController{
- constructor(private readonly service:CatalogService){}
+ constructor(private readonly service:CatalogService,private readonly setup:CatalogSetupService){}
+ @Post(':id/commit') commit(@CurrentUser() a:Principal,@Param('id') id:string,@Body() v:MenuLayoutDto){
+  return this.setup.commitMenu(a.id,id,v);
+ }
  @Get() list(@CurrentUser() a:Principal,@Query() q:MenuListDto){
   return this.service.menus(a,q,q.sucursalId);
  }

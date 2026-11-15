@@ -44,7 +44,7 @@ import { validateDemoData } from './validate.js';
 import { writeMasters } from './masters.js';
 import { stockBranches } from './purchases.js';
 import { asPrincipal, runHistory } from './history.js';
-import { auditDates, marker } from './backdate.js';
+import { auditDates, marker, shiftSince } from './backdate.js';
 import { resetDemo } from './reset.js';
 
 async function main(): Promise<void> {
@@ -108,6 +108,14 @@ async function main(): Promise<void> {
     }
 
     if (options.fases.includes('compras')) {
+      // El abastecimiento inicial se fecha antes de que el período empiece.
+      // Sin esto las órdenes de compra, las recepciones, las facturas y los
+      // pagos a proveedor quedaban con la fecha de hoy mientras las ventas se
+      // extendían ocho semanas hacia atrás: el demo mostraba un negocio que
+      // compró hoy lo que llevaba dos meses vendiendo. El reajuste está
+      // acotado al instante en que corre, de modo que los vencimientos de lote
+      // —que apuntan al futuro a propósito— no se mueven.
+      const beforeStock = marker();
       await stockBranches(
         db,
         {
@@ -120,6 +128,8 @@ async function main(): Promise<void> {
         ids,
         options,
       );
+      const moved = await shiftSince(db, beforeStock, options.semanas * 7 + 2);
+      progress('compras', `abastecimiento fechado ${options.semanas * 7 + 2} días atrás (${moved} columnas)`);
     }
 
     if (options.fases.includes('historia')) {

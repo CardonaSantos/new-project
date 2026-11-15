@@ -438,6 +438,15 @@ async function runTicket(
         ? {
             direccionTexto: `${rng.pick(ADDRESSES)}, ${branch.nombre.split(' ').at(-1) ?? 'Centro'}`,
             telefonoContacto: `5${rng.int(1000000, 9999999)}`,
+            // Una orden que entra por plataforma tiene que decir por cuál: la
+            // entrega encadenada la rechaza sin canalExternoId, y lo rechaza
+            // también en cualquier otro origen.
+            ...(origin === 'PLATAFORMA'
+              ? {
+                  canalExternoId: rng.pick([...ids.channels.values()]),
+                  referenciaExterna: `EXT-${rng.int(100000, 999999)}`,
+                }
+              : {}),
           }
         : {}),
     })) as { id: string };

@@ -85,22 +85,21 @@ Fallos de esa corrida:
 | 6 | `Stock utilizable insuficiente para BEB-JUGO-500` | realista, dejar |
 | 1 | `PT-PASTEL-FRESA` sin stock | realista, dejar |
 
-**Hay dos arreglos commiteados después de esa corrida y NO verificados por
-ninguna ejecución** (commit `8a9614d`):
-
-1. `kitchen.deliver(...)` — faltaba por completo. Sin ese paso la comanda
-   queda `LISTA` y nunca `ENTREGADA`, y la cuenta no liquida. **Esta es casi
-   con seguridad la causa de los 115 + 115 + 49.**
-2. Los tres pasos de cocina (`start`, `ready`, `deliver`) ahora propagan su
-   fallo en vez de anotarlo y seguir, de modo que la orden se cancela
-   (`orders.cancel`, clasificación `MERMA_OPERATIVA`) en lugar de quedar
-   abierta.
-3. La producción ahora lee `Existencia` de la ubicación y hornea el faltante,
-   en vez de aplicar un margen adivinado.
-
-**Lo primero que debería hacer el siguiente:** correr
-`npm run seed:demo -- --reset --semanas=1 --tickets=5` (≈3 min) y mirar si
-`comandas pendientes` cae a cero. Esa es la única pregunta pendiente.
+**Revisión del 2026-11-15 (Fable 5):** el arreglo sin verificar de `8a9614d`
+estaba mal — `kitchen.deliver(u, id)` recibe el id de una **línea** de
+comanda (hace `comandaLinea.findUnique`), se le pasaba la comanda, y lo
+llamaba el mesero sin `kitchen.manage`: habría cancelado todos los tickets
+del camino largo. Reemplazado por un solo
+`kitchen.readyDeliver(cocinero, comandaId, {claveOperacion})`, la operación
+del store para la comanda completa (prepara, lista y entrega en una
+transacción idempotente). El plan de producción se reescribió: demanda del
+mostrador con los pesos reales de la mezcla de ventas (tablas compartidas
+con `composeTicket`), venta directa por variante y modificadores incluidos;
+mapas separados para demanda y decisión (el mapa único producía hijos cuyo
+stock alcanzaba); y el horneo adelantado solo con menos de dos días de
+cobertura (sin eso se acumulaban 40 L de caldo en dos semanas). Verificado
+por simulación sobre los datos reales, 14 días × 4 sucursales: **cero
+faltantes, remanentes a nivel de cocina**. Falta la verificación en vivo.
 
 ---
 
@@ -181,7 +180,9 @@ ejecución.
 | `cash.open` | `{ shiftId }`, **no** `{ id }` |
 | `orders.create` | la orden completa → la clave es `id`; exige `lineas` y `claveOperacion` |
 | `kitchen.queue` | `{ data, meta, totals }`; exige `page` y `limit` sin valores por defecto |
-| `kitchen.start/ready/deliver` | `(u, id)` sin DTO |
+| `kitchen.start/ready` | `(u, comandaId)` sin DTO |
+| `kitchen.deliver` | `(u, lineaId)` — **recibe la LÍNEA, no la comanda**; exige `kitchen.manage` |
+| `kitchen.readyDeliver` | `(u, comandaId, {claveOperacion})` — la entrega completa, idempotente |
 | `payments.finalize` | `(u, orderId)` — **liquida, no cobra** |
 | `payments.collect` | `(u, cuentaId, dto)` — el cobro va contra la **cuenta**, no la orden |
 | `finance.issueIntent` | el `operationId` lo emite el servicio, atado a actor+sucursal+acción |
@@ -280,8 +281,9 @@ Cuatro archivos de `src/` tocados, todos pendientes de revisión del usuario:
 
 ## 9. Pendientes
 
-1. **Verificar los dos arreglos sin ejecutar** (sección 2). Una corrida de
-   `--semanas=1 --tickets=5` responde.
+1. **Verificar en vivo la revisión de la sección 2** — una corrida de
+   `--semanas=1 --tickets=5` (≈3 min) debe dejar «comandas pendientes» en
+   cero; luego la de 8 semanas.
 2. **Diagnosticar el síntoma del usuario** con las consultas de la sección 1.
 3. **Cuentas financieras**: la semilla no crea `CuentaFinanciera` ni
    `RutaFinanciera`, así que no hay movimientos de tesorería ni conciliación

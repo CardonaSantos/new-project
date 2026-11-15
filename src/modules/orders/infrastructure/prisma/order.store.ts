@@ -296,7 +296,8 @@ export class OrderStore{
     {id:order.id,sucursalId:order.sucursalId,clienteId:order.clienteId,
      modalidad:order.modalidad,estado:order.estado,origen:order.origen},
     {direccionTexto:d.direccionTexto,referenciaDireccion:d.referenciaDireccion,
-     telefonoContacto:d.telefonoContacto,repartidorId:d.repartidorId});
+     telefonoContacto:d.telefonoContacto,repartidorId:d.repartidorId,
+     canalExternoId:d.canalExternoId,referenciaExterna:d.referenciaExterna});
    const config=await tx.configuracionSucursal.findUnique({where:{sucursalId:d.sucursalId}});
    if((d.enviarCocina??true)&&!config?.exigeCobroAntesPreparar)
     await this.kitchen.sendTx(tx,u,order.id,'orders.create');

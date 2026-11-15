@@ -216,6 +216,16 @@ async function runProduction(
     const variant = products.flatMap((p) => p.variantes).find((v) => v.sku === sku);
     if (variant?.articulo) want(variant.articulo);
   }
+  // Y lo que consumen los modificadores. El jarabe de vainilla no está en
+  // ninguna receta de venta: entra por la opción «Jarabe de vainilla» de un
+  // grupo de modificadores, y como este recorrido no los miraba, el jarabe no
+  // se producía nunca. La cafetería vendía lattes pidiendo un jarabe que no
+  // existía, con disponible 0 desde el primer día.
+  for (const group of modifierGroups) {
+    for (const option of group.opciones) {
+      if (option.componente) want(option.componente.articulo);
+    }
+  }
 
   let batches = 0;
   // Deepest first: a cake needs its sponge to exist before it can be built.
@@ -474,7 +484,11 @@ async function runTicket(
       if (deliveryId) {
         await services.delivery
           .assign(staff.manager, deliveryId, {
-            repartidorId: staff.waiter.id,
+            // El repartidor necesita delivery.courier o delivery.manage en la
+            // sucursal, y el mesero no tiene ningún permiso de entregas: el
+            // gerente sale a repartir. Si prefiere que el mesero reparta, el
+            // cambio va en los permisos del rol, no aquí.
+            repartidorId: staff.manager.id,
             claveOperacion: `${key}-ASG`,
           })
           .catch((e) => note('asignar repartidor', e));

@@ -14,11 +14,10 @@
 import type { PrismaClient } from '../../src/generated/prisma/client.js';
 import type { Principal } from '../../src/modules/auth/application/auth.service.js';
 import { articles } from './articles.js';
-import { products } from './products.js';
+import { modifierGroups, products } from './products.js';
 import { branches, menus } from './branches.js';
 import { packagingRules, suppliers, type DemoPresentation } from './supply.js';
 import { productionRecipes, saleRecipes } from './recipes.js';
-import { modifierGroups } from './products.js';
 import { batchChance, progress, Rng, type DemoOptions } from './runtime.js';
 import { code, type MasterIds } from './masters.js';
 
@@ -129,6 +128,13 @@ function demandFor(branchCode: string, weeks: number, ticketsPerDay: number): Ma
     for (const component of saleRecipes.find((r) => r.sku === sku)?.componentes ?? []) walk(component.articulo);
     const variant = products.flatMap((pr) => pr.variantes).find((v) => v.sku === sku);
     if (variant?.articulo) walk(variant.articulo);
+  }
+  // Los modificadores también consumen: el jarabe que una opción agrega al
+  // café se produce, y lo que ese jarabe lleva se compra.
+  for (const group of modifierGroups) {
+    for (const option of group.opciones) {
+      if (option.componente) walk(option.componente.articulo);
+    }
   }
   for (const code of produced) {
     const recipe = productionRecipes.find((r) => r.resultado === code)!;

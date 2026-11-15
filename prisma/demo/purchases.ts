@@ -168,7 +168,10 @@ function packsToBuy(
   // The floor stays: an article nobody consumes still opens with something on
   // the shelf. Above it, buy for the period's demand with room to spare.
   const floor = (article.stockMinimo ?? 0) * (1 + weeks / 4);
-  const target = Math.max(floor, (demand.get(articleCode) ?? 0) * 1.45) * rng.float(0.95, 1.15);
+  // El margen cubre dos cosas que esta cuenta no modela: que una producción
+  // arrastra a la de sus componentes cuando el padre corre y el hijo no le
+  // tocaba, y la holgura con que la historia produce sobre lo planeado.
+  const target = Math.max(floor, (demand.get(articleCode) ?? 0) * 1.9) * rng.float(0.95, 1.15);
   const perPack = presentation.cantidad * (presentation.unidadCompra === 'LB' ? 453.59237 : presentation.unidadCompra === 'L' ? 1000 : 1);
   return Math.max(1, Math.ceil(target / Math.max(perPack, 1)));
 }

@@ -236,17 +236,45 @@ async function runProduction(
     };
     return depth(a) - depth(b);
   });
-  for (const articleCode of ordered) {
+  // Qué se hace hoy, y cuánto.
+  //
+  // El primer día se hacen todas, sin sorteo: un jarabe de vainilla dura
+  // semanas, así que su probabilidad diaria es del doce por ciento, y una
+  // cafetería que vende lattes desde el primer día se quedaba pidiendo un
+  // jarabe que no se había hecho nunca. Una preparación tiene que existir
+  // antes de poder venderse.
+  //
+  // Y la cantidad no puede ser una tanda fija. Un bizcocho rinde 1900 g y un
+  // pastel pide 1260, lo cual alcanza — pero el bizcocho se produce con el
+  // cuarenta por cien que le da su vida útil de cuatro días, y el pastel con
+  // el ochenta y cinco de la suya, de tres. El padre corría más seguido que el
+  // hijo. Así que primero se decide qué se produce, después se baja la cuenta
+  // de lo que cada padre necesita, y recién entonces se produce: tanto
+  // bizcocho como pidan los pasteles de hoy, que es como trabaja una
+  // pastelería.
+  const plan = new Map<string, number>();
+  for (const articleCode of [...ordered].reverse()) {
     const recipe = productionRecipes.find((r) => r.resultado === articleCode)!;
-    // Short-lived preparations are made most days; long-lived ones rarely.
-    //
-    // El primer día se hacen todas, sin sorteo. Un jarabe de vainilla dura
-    // semanas, así que su probabilidad diaria es del doce por ciento, y una
-    // cafetería que vende lattes desde el primer día se quedaba pidiendo un
-    // jarabe que no se había hecho nunca: la comanda fallaba con disponible 0.
-    // Una preparación tiene que existir antes de poder venderse.
     const shelfLife = recipe.vidaUtilDias ?? 30;
-    if (!first && !rng.chance(batchChance(shelfLife))) continue;
+    const own =
+      first || rng.chance(batchChance(shelfLife)) ? recipe.rendimiento * rng.float(0.8, 1.3) : 0;
+    const total = Math.max(own, plan.get(articleCode) ?? 0);
+    if (total <= 0) continue;
+    plan.set(articleCode, total);
+    // Lo que esta producción va a consumir, para quien lo produce.
+    const batchesOf = total / recipe.rendimiento;
+    for (const component of recipe.componentes) {
+      if (!productionRecipes.some((r) => r.resultado === component.articulo)) continue;
+      const needs = batchesOf * component.cantidad * (1 + (component.merma ?? 0) / 100);
+      plan.set(component.articulo, (plan.get(component.articulo) ?? 0) + needs);
+    }
+  }
+
+  for (const articleCode of ordered) {
+    const planned = plan.get(articleCode);
+    if (!planned) continue;
+    const recipe = productionRecipes.find((r) => r.resultado === articleCode)!;
+    const shelfLife = recipe.vidaUtilDias ?? 30;
     const articleId = ids.articles.get(articleCode)!;
     const version = await db.recetaVersion.findFirst({
       where: { receta: { tipo: 'PRODUCCION', articuloResultadoId: articleId }, activa: true },
@@ -260,7 +288,9 @@ async function runProduction(
         recetaVersionId: version.id,
         ubicacionDestinoId: locationId,
         ubicacionConsumoId: locationId,
-        cantidadProducida: qty(recipe.rendimiento * rng.float(0.8, 1.3)),
+        // Un veinte por cien de holgura sobre lo planeado: las ventas del día
+        // también consumen bizcocho, rebanada por rebanada.
+        cantidadProducida: qty(planned * 1.2),
         claveOperacion: `DEMO-PRO-${branchCode}-${articleCode}-${dayKey}`.slice(0, 120),
         // Relative to now on purpose: the posting engine refuses to consume a
         // lot already expired today, and the clock is corrected afterwards.

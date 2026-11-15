@@ -241,7 +241,11 @@ export class DeliveryStore extends DeliveryPort{
   * so this only re-asserts permission and delegates to the same validations as create(). */
  async createForNewOrder(tx:Tx,u:Principal,
   order:{id:string;sucursalId:string;clienteId:string|null;modalidad:string;estado:string;origen:string},
-  d:{direccionTexto?:string;referenciaDireccion?:string;telefonoContacto?:string;repartidorId?:string}):Promise<void>{
+  // createCore ya aceptaba el canal externo; esta firma, que es por donde pasa
+  // la orden recien creada, no lo declaraba. Una orden con origen PLATAFORMA
+  // no tenia entonces forma de nombrar su canal, y createCore la rechazaba.
+  d:{direccionTexto?:string;referenciaDireccion?:string;telefonoContacto?:string;
+   repartidorId?:string;canalExternoId?:string;referenciaExterna?:string}):Promise<void>{
   await this.requireManage(tx,u.id,order.sucursalId);
   await this.createCore(tx,u,order,d);
  }

@@ -164,6 +164,7 @@ function statements(branchIds: string[], articleIds: string[]): { label: string;
     { label: 'sesiones de usuario demo', sql: `DELETE FROM "SesionUsuario" WHERE "usuarioId" IN (SELECT id FROM "Usuario" WHERE email LIKE '%@demo.local')` },
     { label: 'usuarios demo', sql: `DELETE FROM "Usuario" WHERE email LIKE '%@demo.local'` },
     { label: 'proveedores demo', sql: `DELETE FROM "Proveedor" WHERE nit IN ('3456789-1','4567890-2','5678901-3','6789012-4','7890123-5','8901234-6','9012345-7')` },
+    { label: 'canales externos', sql: `DELETE FROM "CanalExterno" WHERE codigo LIKE '${DEMO_PREFIX}%'` },
     { label: 'sucursales', sql: `DELETE FROM "Sucursal" WHERE codigo LIKE '${DEMO_PREFIX}%'` },
 
     // --- idempotency -------------------------------------------------------

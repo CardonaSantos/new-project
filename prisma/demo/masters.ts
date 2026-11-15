@@ -42,6 +42,34 @@ export interface MasterIds {
   suppliers: Map<string, string>;
   presentations: Map<string, string>;
   staff: Map<string, Map<string, string>>;
+  /** Canal externo code -> id, for the orders that arrive from a platform. */
+  channels: Map<string, string>;
+}
+
+/**
+ * Delivery platforms, which an order with origen PLATAFORMA must name.
+ *
+ * The store rejects that origin without a canalExternoId, and these are also
+ * what the external-channel settlements hang off, so the demo could not show
+ * either without them.
+ */
+const CHANNELS = [
+  { codigo: 'PEDIDOSYA', nombre: 'PedidosYa' },
+  { codigo: 'UBEREATS', nombre: 'Uber Eats' },
+  { codigo: 'HUGO', nombre: 'Hugo App' },
+] as const;
+
+async function writeChannels(db: Db): Promise<Map<string, string>> {
+  const ids = new Map<string, string>();
+  for (const channel of CHANNELS) {
+    const row = await db.canalExterno.upsert({
+      where: { codigo: code(channel.codigo) },
+      update: { nombre: channel.nombre, activo: true },
+      create: { codigo: code(channel.codigo), nombre: channel.nombre, activo: true },
+    });
+    ids.set(channel.codigo, row.id);
+  }
+  return ids;
 }
 
 /** Units come from the initial seed; the demo refuses to invent them. */
@@ -660,6 +688,7 @@ export async function writeMasters(db: Db, options: DemoOptions, password: strin
 
   progress('maestros', `usuarios por rol (${STAFF.length} por sucursal)`);
   const staff = await writeStaff(db, branchData.branches, password);
+  const channels = await writeChannels(db);
 
   return {
     units,
@@ -670,5 +699,6 @@ export async function writeMasters(db: Db, options: DemoOptions, password: strin
     suppliers: supplierData.suppliers,
     presentations: supplierData.presentations,
     staff,
+    channels,
   };
 }

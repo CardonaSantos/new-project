@@ -44,6 +44,8 @@ export interface HistoryServices {
   inventory: Service;
   /** FinanceService: emite intenciones y registra gastos. */
   finance: Service;
+  /** DeliveryService: el ciclo de una entrega a domicilio. */
+  delivery: Service;
   closing: Service;
 }
 
@@ -146,12 +148,24 @@ export function composeTicket(sellables: Sellable[], rng: Rng, modality: string)
   return { lines: chosen, needsFee: modality === 'DELIVERY' };
 }
 
-export function paymentsFor(total: number, modality: string, rng: Rng) {
-  const method = rng.weighted(
+/**
+ * El método se elige antes de conocer el importe, porque decide el camino: el
+ * cobro rápido no acepta transferencia. El importe llega después, y en el
+ * camino largo sale de la cuenta, no de mi suma de líneas.
+ */
+export function paymentMethod(modality: string, rng: Rng): string {
+  return rng.weighted(
     modality === 'DELIVERY'
       ? ([['TARJETA', 55], ['EFECTIVO', 35], ['TRANSFERENCIA', 10]] as const)
       : ([['EFECTIVO', 52], ['TARJETA', 38], ['TRANSFERENCIA', 10]] as const),
   );
+}
+
+export function paymentsFor(total: number, modality: string, rng: Rng) {
+  return paymentParts(paymentMethod(modality, rng), total, rng);
+}
+
+export function paymentParts(method: string, total: number, rng: Rng) {
   if (method === 'EFECTIVO') {
     // Cash comes in rounded up, which is what makes change worth computing.
     const given = Math.ceil(total / 10) * 10;
@@ -181,6 +195,7 @@ async function runProduction(
   ids: MasterIds,
   dayKey: string,
   rng: Rng,
+  first: boolean,
 ): Promise<number> {
   const locationId = ids.locations.get(branchCode)!;
   const needed = new Set<string>();
@@ -214,8 +229,14 @@ async function runProduction(
   for (const articleCode of ordered) {
     const recipe = productionRecipes.find((r) => r.resultado === articleCode)!;
     // Short-lived preparations are made most days; long-lived ones rarely.
+    //
+    // El primer día se hacen todas, sin sorteo. Un jarabe de vainilla dura
+    // semanas, así que su probabilidad diaria es del doce por ciento, y una
+    // cafetería que vende lattes desde el primer día se quedaba pidiendo un
+    // jarabe que no se había hecho nunca: la comanda fallaba con disponible 0.
+    // Una preparación tiene que existir antes de poder venderse.
     const shelfLife = recipe.vidaUtilDias ?? 30;
-    if (!rng.chance(batchChance(shelfLife))) continue;
+    if (!first && !rng.chance(batchChance(shelfLife))) continue;
     const articleId = ids.articles.get(articleCode)!;
     const version = await db.recetaVersion.findFirst({
       where: { receta: { tipo: 'PRODUCCION', articuloResultadoId: articleId }, activa: true },
@@ -427,14 +448,44 @@ async function runTicket(
     // finalize() solo recibe la orden: liquida, no cobra. El cobro va contra
     // la cuenta, que create() abre junto con la orden, así que primero hay que
     // pedirla. Pasarle los pagos a finalize era inventar una firma.
-    const accounts = (await services.accounts.accounts(staff.cashier, orderId)) as { id: string }[];
-    const accountId = accounts?.[0]?.id;
-    if (!accountId) throw Error('La orden no abrió cuenta');
-    const collected = (await services.accounts.collect(staff.cashier, accountId, {
+    const accounts = (await services.accounts.accounts(staff.cashier, orderId)) as
+      | { id: string; total: unknown; pagado: unknown }[]
+      | null;
+    const account = accounts?.[0];
+    if (!account) throw Error('La orden no abrió cuenta');
+    // Se cobra lo que dice la cuenta, no lo que sumaron mis líneas: el total
+    // del servidor incluye los modificadores, el empaque y el servicio, así
+    // que mi suma quedaba corta y la cuenta nunca estaba «exactamente pagada».
+    const due = Number(account.total) - Number(account.pagado);
+    const collected = (await services.accounts.collect(staff.cashier, account.id, {
       turnoId: shiftId,
-      pagos: payments,
+      pagos: paymentParts(payments[0].metodo, due, rng),
       claveOperacion: `${key}-COB`,
     })) as { intentoIds?: string[] };
+
+    // Una entrega tiene su propio ciclo, y la orden no cierra hasta que esté
+    // ENTREGADA: asignar repartidor, despachar, completar. Eran los ocho «La
+    // entrega debe estar ENTREGADA antes de cerrar la orden».
+    if (effective === 'DELIVERY') {
+      const deliveries = (await services.delivery
+        .list(staff.manager, { sucursalId: branchId, page: 1, limit: 10, ordenId: orderId })
+        .catch((e) => (note('listar entregas', e), null))) as { data?: { id: string }[] } | null;
+      const deliveryId = deliveries?.data?.[0]?.id;
+      if (deliveryId) {
+        await services.delivery
+          .assign(staff.manager, deliveryId, {
+            repartidorId: staff.waiter.id,
+            claveOperacion: `${key}-ASG`,
+          })
+          .catch((e) => note('asignar repartidor', e));
+        await services.delivery
+          .dispatch(staff.manager, deliveryId, { claveOperacion: `${key}-DSP` })
+          .catch((e) => note('despachar entrega', e));
+        await services.delivery
+          .complete(staff.manager, deliveryId, { claveOperacion: `${key}-ENT` })
+          .catch((e) => note('completar entrega', e));
+      }
+    }
 
     // Una transferencia entra como intento pendiente, y mientras lo esté la
     // cuenta no se liquida, la orden no cierra y el cierre del día la encuentra
@@ -538,7 +589,7 @@ export async function runHistory(
         continue;
       }
 
-      const batches = await runProduction(db, services, staff.keeper, branch.codigo, ids, dayKey, rng);
+      const batches = await runProduction(db, services, staff.keeper, branch.codigo, ids, dayKey, rng, index === 0);
 
       let sold = 0;
       for (let n = 0; n < target; n++) {

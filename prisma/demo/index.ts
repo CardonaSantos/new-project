@@ -33,6 +33,7 @@ import { CashService } from '../../src/modules/payments/application/cash.service
 import { PaymentsService } from '../../src/modules/payments/application/payments.service.js';
 import { RecipeService } from '../../src/modules/recipes/application/recipe.service.js';
 import { FinanceService } from '../../src/modules/finance/application/finance.service.js';
+import { DeliveryService } from '../../src/modules/delivery/application/delivery.service.js';
 import { FinanceClosingService } from '../../src/modules/finance/application/finance-closing.service.js';
 import { PurchaseOrdersService } from '../../src/modules/purchases/application/purchase-orders.service.js';
 import { PurchaseReceiptsService } from '../../src/modules/purchases/application/purchase-receipts.service.js';
@@ -133,6 +134,7 @@ async function main(): Promise<void> {
           recipes: app.get(RecipeService) as never,
           inventory: payments,
           finance: app.get(FinanceService) as never,
+          delivery: app.get(DeliveryService) as never,
           closing: app.get(FinanceClosingService) as never,
         },
         ids,

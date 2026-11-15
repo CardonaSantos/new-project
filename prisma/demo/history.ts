@@ -268,17 +268,38 @@ async function runProduction(
     return units * 1.3;
   };
 
+  // Lo que ya hay en la ubicación, que es lo que una producción de verdad
+  // mira antes de encender el horno.
+  const stock = await db.existencia.findMany({
+    where: { ubicacionId: locationId },
+    select: { articuloId: true, cantidad: true },
+  });
+  const onHand = new Map<string, number>();
+  for (const row of stock) {
+    onHand.set(row.articuloId, (onHand.get(row.articuloId) ?? 0) + Number(row.cantidad));
+  }
+
   const plan = new Map<string, number>();
   for (const articleCode of [...ordered].reverse()) {
     const recipe = productionRecipes.find((r) => r.resultado === articleCode)!;
     const shelfLife = recipe.vidaUtilDias ?? 30;
-    const own =
+    const have = onHand.get(ids.articles.get(articleCode)!) ?? 0;
+    // Lo que hoy va a hacer falta: lo que consumen las producciones de arriba
+    // más lo que el mostrador va a vender de esto mismo.
+    const demand = (plan.get(articleCode) ?? 0) + sold(articleCode);
+    const batch =
       first || rng.chance(batchChance(shelfLife)) ? recipe.rendimiento * rng.float(0.8, 1.3) : 0;
-    const total = Math.max(own, plan.get(articleCode) ?? 0);
-    if (total <= 0) continue;
-    plan.set(articleCode, total);
-    // Lo que esta producción va a consumir, para quien lo produce.
-    const batchesOf = total / recipe.rendimiento;
+    // Se hornea el faltante, y si el dado dijo que hoy toca, al menos una
+    // tanda. Lo que sobra de ayer cuenta: así un jarabe que dura semanas no se
+    // vuelve a hacer hasta que se acaba, y el bizcocho se hace todos los días.
+    const make = Math.max(batch, demand - have);
+    if (make <= 0) continue;
+    plan.set(articleCode, make);
+    // Lo que esta producción va a consumir, para quien lo produce. Va la
+    // cantidad que de verdad se va a hornear, no la que se planeó antes de
+    // sumarle el mostrador: ahí estaba el desfase que dejaba al pastel
+    // pidiendo más bizcocho del que se había pedido para él.
+    const batchesOf = make / recipe.rendimiento;
     for (const component of recipe.componentes) {
       if (!productionRecipes.some((r) => r.resultado === component.articulo)) continue;
       const needs = batchesOf * component.cantidad * (1 + (component.merma ?? 0) / 100);
@@ -304,11 +325,7 @@ async function runProduction(
         recetaVersionId: version.id,
         ubicacionDestinoId: locationId,
         ubicacionConsumoId: locationId,
-        // Lo planeado por las producciones de hoy, más lo que el mostrador va
-        // a vender de esta misma preparación. Un veinte por cien fijo no
-        // alcanzaba: un sábado de treinta tickets se come el bizcocho
-        // rebanada por rebanada y la comanda de media tarde se queda sin él.
-        cantidadProducida: qty(planned + sold(articleCode) + 1),
+        cantidadProducida: qty(planned),
         claveOperacion: `DEMO-PRO-${branchCode}-${articleCode}-${dayKey}`.slice(0, 120),
         // Relative to now on purpose: the posting engine refuses to consume a
         // lot already expired today, and the clock is corrected afterwards.
@@ -518,8 +535,29 @@ async function runTicket(
       .queue(staff.cook, { sucursalId: branchId, page: 1, limit: 50 })
       .catch((e) => (note('cola de cocina', e), null))) as { data?: { id: string; ordenId: string }[] } | null;
     for (const ticket of (queued?.data ?? []).filter((t) => t.ordenId === orderId)) {
-      await services.kitchen.start(staff.cook, ticket.id).catch((e) => note('cocina: iniciar', e));
-      await services.kitchen.ready(staff.cook, ticket.id).catch((e) => note('cocina: listo', e));
+      // Tres pasos, y los tres tienen que subir su fallo.
+      //
+      // ready() deja la comanda LISTA, no entregada, y mientras una línea
+      // siga sin entregar la cuenta no liquida, la orden no cierra y el día
+      // tampoco. El paso de entrega faltaba — lo dije arreglado dos rondas
+      // atrás y la edición nunca entró al commit.
+      //
+      // Y estos fallos se anotaban y seguían, así que un plato que la cocina
+      // no podía preparar dejaba su comanda pendiente mientras el ticket se
+      // contaba como vendido. Ciento quince órdenes abiertas para siempre.
+      // Ahora el fallo sube y la orden se cancela, que es lo que hace una
+      // cocina cuando no puede servir un plato.
+      const step = async (label: string, run: Promise<unknown>): Promise<void> => {
+        try {
+          await run;
+        } catch (error) {
+          note(label, error);
+          throw error;
+        }
+      };
+      await step('cocina: iniciar', services.kitchen.start(staff.cook, ticket.id));
+      await step('cocina: listo', services.kitchen.ready(staff.cook, ticket.id));
+      await step('cocina: entregar', services.kitchen.deliver(staff.waiter, ticket.id));
     }
     // finalize() solo recibe la orden: liquida, no cobra. El cobro va contra
     // la cuenta, que create() abre junto con la orden, así que primero hay que

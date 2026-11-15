@@ -122,8 +122,33 @@ async function sellablesFor(db: Db, branchCode: string, ids: MasterIds): Promise
 }
 
 /** Picks the lines of one ticket, with the modifiers a customer would ask for. */
+/**
+ * La forma de un ticket, en tablas compartidas.
+ *
+ * Las usa composeTicket para armar cada ticket, y la producción para estimar
+ * cuánto va a consumir el mostrador en el día. Compartidas a propósito: si la
+ * forma del ticket cambia aquí, la estimación la sigue sola, en lugar de
+ * quedar como dos copias de los mismos números que divergen en silencio.
+ */
+const LINE_COUNT_WEIGHTS = [[1, 32], [2, 34], [3, 20], [4, 9], [5, 5]] as const;
+const LINE_UNIT_WEIGHTS = [[1, 78], [2, 16], [3, 6]] as const;
+const OPTIONAL_MODIFIER_CHANCE = 0.22;
+
+const mean = (pairs: readonly (readonly [number, number])[]): number => {
+  let value = 0;
+  let weight = 0;
+  for (const [v, w] of pairs) {
+    value += v * w;
+    weight += w;
+  }
+  return value / weight;
+};
+/** Líneas que trae un ticket promedio, y unidades que trae una línea. */
+const MEAN_LINES = mean(LINE_COUNT_WEIGHTS);
+const MEAN_UNITS = mean(LINE_UNIT_WEIGHTS);
+
 export function composeTicket(sellables: Sellable[], rng: Rng, modality: string) {
-  const lineCount = rng.weighted([[1, 32], [2, 34], [3, 20], [4, 9], [5, 5]] as const);
+  const lineCount = rng.weighted(LINE_COUNT_WEIGHTS);
   const chosen: { sellable: Sellable; units: number; mods: string[] }[] = [];
   for (let i = 0; i < lineCount; i++) {
     const sellable = rng.weighted(sellables.map((s) => [s, s.weight] as const));
@@ -134,11 +159,11 @@ export function composeTicket(sellables: Sellable[], rng: Rng, modality: string)
       // A required group always resolves; optional ones are the exception a
       // customer asks for, not the rule.
       if (group.minimo > 0) mods.push(rng.pick(group.opciones).codigo);
-      else if (rng.chance(0.22)) mods.push(rng.pick(group.opciones).codigo);
+      else if (rng.chance(OPTIONAL_MODIFIER_CHANCE)) mods.push(rng.pick(group.opciones).codigo);
     }
     chosen.push({
       sellable,
-      units: rng.weighted([[1, 78], [2, 16], [3, 6]] as const),
+      units: rng.weighted(LINE_UNIT_WEIGHTS),
       mods,
     });
   }
@@ -197,6 +222,7 @@ async function runProduction(
   rng: Rng,
   first: boolean,
   tickets: number,
+  sellables: Sellable[],
 ): Promise<number> {
   const locationId = ids.locations.get(branchCode)!;
   const needed = new Set<string>();
@@ -237,36 +263,52 @@ async function runProduction(
     };
     return depth(a) - depth(b);
   });
-  // Qué se hace hoy, y cuánto.
+  // Qué se hace hoy, y cuánto: demanda primero, decisión después, y el horno
+  // al final.
   //
-  // El primer día se hacen todas, sin sorteo: un jarabe de vainilla dura
-  // semanas, así que su probabilidad diaria es del doce por ciento, y una
-  // cafetería que vende lattes desde el primer día se quedaba pidiendo un
-  // jarabe que no se había hecho nunca. Una preparación tiene que existir
-  // antes de poder venderse.
-  //
-  // Y la cantidad no puede ser una tanda fija. Un bizcocho rinde 1900 g y un
-  // pastel pide 1260, lo cual alcanza — pero el bizcocho se produce con el
-  // cuarenta por cien que le da su vida útil de cuatro días, y el pastel con
-  // el ochenta y cinco de la suya, de tres. El padre corría más seguido que el
-  // hijo. Así que primero se decide qué se produce, después se baja la cuenta
-  // de lo que cada padre necesita, y recién entonces se produce: tanto
-  // bizcocho como pidan los pasteles de hoy, que es como trabaja una
-  // pastelería.
-  /** Lo que el mostrador consume hoy de una preparación, rebanada por rebanada. */
-  const offeredSkus = new Set(
-    branch.menus.flatMap((c) => menus.find((m) => m.codigo === c)!.secciones.flatMap((sec) => sec.skus)),
-  );
-  const sold = (articleCode: string): number => {
-    let units = 0;
-    for (const sku of offeredSkus) {
-      for (const component of saleRecipes.find((r) => r.sku === sku)?.componentes ?? []) {
-        if (component.articulo !== articleCode) continue;
-        units += (tickets * 2 * component.cantidad * (1 + (component.merma ?? 0) / 100)) / offeredSkus.size;
+  // El primer día se hace todo, sin sorteo: una preparación tiene que existir
+  // antes de poder venderse. Después, cada día se hornea el faltante contra
+  // las existencias reales de la ubicación, con la frecuencia que la vida
+  // útil le da a cada receta. Lo que sobra de ayer cuenta: un jarabe que dura
+  // semanas no se repite hasta que se acaba, y el bizcocho se hace a diario.
+
+  // Lo que el mostrador va a consumir hoy, por artículo. Sale de la misma
+  // mezcla con que se arman los tickets: los pesos reales de venta de cada
+  // SKU (la versión anterior repartía uniforme entre todos los SKUs, y una
+  // rebanada popular consumía el triple de lo estimado), las recetas de
+  // venta, la venta directa por variante —un pastel entero no pasa por
+  // receta de venta— y los modificadores, que es por donde entran los
+  // jarabes.
+  const counter = new Map<string, number>();
+  {
+    const add = (code: string, amount: number): void => {
+      counter.set(code, (counter.get(code) ?? 0) + amount);
+    };
+    const totalWeight = sellables.reduce((sum, item) => sum + item.weight, 0) || 1;
+    for (const item of sellables) {
+      const lines = tickets * MEAN_LINES * (item.weight / totalWeight);
+      const units = lines * MEAN_UNITS;
+      for (const component of saleRecipes.find((r) => r.sku === item.sku)?.componentes ?? []) {
+        add(component.articulo, units * component.cantidad * (1 + (component.merma ?? 0) / 100));
+      }
+      const variant = products.flatMap((p) => p.variantes).find((v) => v.sku === item.sku);
+      if (variant?.articulo) add(variant.articulo, units);
+      for (const groupCode of item.modifierGroups) {
+        const group = modifierGroups.find((g) => g.codigo === groupCode)!;
+        const groupChance = group.minimo > 0 ? 1 : OPTIONAL_MODIFIER_CHANCE;
+        for (const option of group.opciones) {
+          if (!option.componente) continue;
+          add(
+            option.componente.articulo,
+            lines * (groupChance / group.opciones.length) * option.componente.cantidad,
+          );
+        }
       }
     }
-    return units * 1.3;
-  };
+    // Un cuarto de margen: la mezcla de un día concreto se desvía de su
+    // media, y quedarse corto cancela órdenes.
+    for (const [code, amount] of counter) counter.set(code, amount * 1.25);
+  }
 
   // Lo que ya hay en la ubicación, que es lo que una producción de verdad
   // mira antes de encender el horno.
@@ -279,36 +321,48 @@ async function runProduction(
     onHand.set(row.articuloId, (onHand.get(row.articuloId) ?? 0) + Number(row.cantidad));
   }
 
-  const plan = new Map<string, number>();
+  // Dos mapas a propósito. `need` acumula lo que las producciones de hoy van
+  // a consumir de sus componentes; `produce` es lo que de verdad se hornea.
+  // La versión anterior usaba uno solo para las dos cosas, y un hijo cuyo
+  // stock alcanzaba (make <= 0) conservaba en el mapa la demanda que sus
+  // padres le habían anotado: el bucle del horno lo producía igual, por esa
+  // cantidad, aunque la decisión había sido no hornear.
+  const need = new Map<string, number>();
+  const produce = new Map<string, number>();
   for (const articleCode of [...ordered].reverse()) {
     const recipe = productionRecipes.find((r) => r.resultado === articleCode)!;
     const shelfLife = recipe.vidaUtilDias ?? 30;
     const have = onHand.get(ids.articles.get(articleCode)!) ?? 0;
-    // Lo que hoy va a hacer falta: lo que consumen las producciones de arriba
-    // más lo que el mostrador va a vender de esto mismo.
-    const demand = (plan.get(articleCode) ?? 0) + sold(articleCode);
+    const demand = (need.get(articleCode) ?? 0) + (counter.get(articleCode) ?? 0);
+    // El dado hornea por adelantado, pero solo cuando queda menos de dos días
+    // de cobertura. Sin esa condición, una preparación de vida corta se hacía
+    // casi a diario aunque el estante estuviera lleno —max(tanda, faltante)
+    // ignoraba lo que había— y la simulación acumulaba cuarenta litros de
+    // caldo en dos semanas: el inventario del demo se veía de fábrica, no de
+    // restaurante.
+    const wellStocked = have >= demand * 2;
     const batch =
-      first || rng.chance(batchChance(shelfLife)) ? recipe.rendimiento * rng.float(0.8, 1.3) : 0;
-    // Se hornea el faltante, y si el dado dijo que hoy toca, al menos una
-    // tanda. Lo que sobra de ayer cuenta: así un jarabe que dura semanas no se
-    // vuelve a hacer hasta que se acaba, y el bizcocho se hace todos los días.
-    const make = Math.max(batch, demand - have);
+      !wellStocked && (first || rng.chance(batchChance(shelfLife)))
+        ? recipe.rendimiento * rng.float(0.8, 1.3)
+        : 0;
+    let make = Math.max(batch, demand - have);
     if (make <= 0) continue;
-    plan.set(articleCode, make);
-    // Lo que esta producción va a consumir, para quien lo produce. Va la
-    // cantidad que de verdad se va a hornear, no la que se planeó antes de
-    // sumarle el mostrador: ahí estaba el desfase que dejaba al pastel
-    // pidiendo más bizcocho del que se había pedido para él.
+    // Nadie enciende el horno por treinta mililitros: si se produce, al menos
+    // media tanda.
+    make = Math.max(make, recipe.rendimiento * 0.5);
+    produce.set(articleCode, make);
+    // Lo que esta hornada va a consumir, anotado a quien lo produce — con la
+    // cantidad que de verdad se hornea, no la planeada antes de los pisos.
     const batchesOf = make / recipe.rendimiento;
     for (const component of recipe.componentes) {
       if (!productionRecipes.some((r) => r.resultado === component.articulo)) continue;
       const needs = batchesOf * component.cantidad * (1 + (component.merma ?? 0) / 100);
-      plan.set(component.articulo, (plan.get(component.articulo) ?? 0) + needs);
+      need.set(component.articulo, (need.get(component.articulo) ?? 0) + needs);
     }
   }
 
   for (const articleCode of ordered) {
-    const planned = plan.get(articleCode);
+    const planned = produce.get(articleCode);
     if (!planned) continue;
     const recipe = productionRecipes.find((r) => r.resultado === articleCode)!;
     const shelfLife = recipe.vidaUtilDias ?? 30;
@@ -535,29 +589,29 @@ async function runTicket(
       .queue(staff.cook, { sucursalId: branchId, page: 1, limit: 50 })
       .catch((e) => (note('cola de cocina', e), null))) as { data?: { id: string; ordenId: string }[] } | null;
     for (const ticket of (queued?.data ?? []).filter((t) => t.ordenId === orderId)) {
-      // Tres pasos, y los tres tienen que subir su fallo.
+      // Una sola llamada: readyDeliver(cocinero, comandaId, clave) prepara,
+      // marca listo y entrega todas las líneas en una transacción serializable
+      // e idempotente. Es la operación de entrega que el store ofrece para la
+      // comanda completa.
       //
-      // ready() deja la comanda LISTA, no entregada, y mientras una línea
-      // siga sin entregar la cuenta no liquida, la orden no cierra y el día
-      // tampoco. El paso de entrega faltaba — lo dije arreglado dos rondas
-      // atrás y la edición nunca entró al commit.
+      // El intento anterior usaba tres pasos y el tercero estaba doblemente
+      // mal, verificado contra kitchen.store: deliver(u, id) recibe el id de
+      // una LÍNEA de comanda —hace comandaLinea.findUnique con él— y aquí se
+      // le pasaba la comanda, así que respondía «Línea inexistente»; y lo
+      // llamaba el mesero, que no tiene kitchen.manage. Cada ticket del
+      // camino largo habría muerto en ese paso y cancelado su orden.
       //
-      // Y estos fallos se anotaban y seguían, así que un plato que la cocina
-      // no podía preparar dejaba su comanda pendiente mientras el ticket se
-      // contaba como vendido. Ciento quince órdenes abiertas para siempre.
-      // Ahora el fallo sube y la orden se cancela, que es lo que hace una
-      // cocina cuando no puede servir un plato.
-      const step = async (label: string, run: Promise<unknown>): Promise<void> => {
-        try {
-          await run;
-        } catch (error) {
-          note(label, error);
-          throw error;
-        }
-      };
-      await step('cocina: iniciar', services.kitchen.start(staff.cook, ticket.id));
-      await step('cocina: listo', services.kitchen.ready(staff.cook, ticket.id));
-      await step('cocina: entregar', services.kitchen.deliver(staff.waiter, ticket.id));
+      // El fallo sube en vez de anotarse y seguir: una comanda que la cocina
+      // no puede preparar cancela la orden más abajo, no la deja abierta
+      // bloqueando el cierre del día. Ciento quince órdenes quedaron así.
+      try {
+        await services.kitchen.readyDeliver(staff.cook, ticket.id, {
+          claveOperacion: `${key}-COC-${ticket.id}`.slice(0, 120),
+        });
+      } catch (error) {
+        note('cocina: preparar y entregar', error);
+        throw error;
+      }
     }
     // finalize() solo recibe la orden: liquida, no cobra. El cobro va contra
     // la cuenta, que create() abre junto con la orden, así que primero hay que
@@ -722,7 +776,7 @@ export async function runHistory(
         continue;
       }
 
-      const batches = await runProduction(db, services, staff.keeper, branch.codigo, ids, dayKey, rng, index === 0, target);
+      const batches = await runProduction(db, services, staff.keeper, branch.codigo, ids, dayKey, rng, index === 0, target, sellables);
 
       let sold = 0;
       for (let n = 0; n < target; n++) {

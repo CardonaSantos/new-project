@@ -196,6 +196,7 @@ async function runProduction(
   dayKey: string,
   rng: Rng,
   first: boolean,
+  tickets: number,
 ): Promise<number> {
   const locationId = ids.locations.get(branchCode)!;
   const needed = new Set<string>();
@@ -252,6 +253,21 @@ async function runProduction(
   // de lo que cada padre necesita, y recién entonces se produce: tanto
   // bizcocho como pidan los pasteles de hoy, que es como trabaja una
   // pastelería.
+  /** Lo que el mostrador consume hoy de una preparación, rebanada por rebanada. */
+  const offeredSkus = new Set(
+    branch.menus.flatMap((c) => menus.find((m) => m.codigo === c)!.secciones.flatMap((sec) => sec.skus)),
+  );
+  const sold = (articleCode: string): number => {
+    let units = 0;
+    for (const sku of offeredSkus) {
+      for (const component of saleRecipes.find((r) => r.sku === sku)?.componentes ?? []) {
+        if (component.articulo !== articleCode) continue;
+        units += (tickets * 2 * component.cantidad * (1 + (component.merma ?? 0) / 100)) / offeredSkus.size;
+      }
+    }
+    return units * 1.3;
+  };
+
   const plan = new Map<string, number>();
   for (const articleCode of [...ordered].reverse()) {
     const recipe = productionRecipes.find((r) => r.resultado === articleCode)!;
@@ -288,9 +304,11 @@ async function runProduction(
         recetaVersionId: version.id,
         ubicacionDestinoId: locationId,
         ubicacionConsumoId: locationId,
-        // Un veinte por cien de holgura sobre lo planeado: las ventas del día
-        // también consumen bizcocho, rebanada por rebanada.
-        cantidadProducida: qty(planned * 1.2),
+        // Lo planeado por las producciones de hoy, más lo que el mostrador va
+        // a vender de esta misma preparación. Un veinte por cien fijo no
+        // alcanzaba: un sábado de treinta tickets se come el bizcocho
+        // rebanada por rebanada y la comanda de media tarde se queda sin él.
+        cantidadProducida: qty(planned + sold(articleCode) + 1),
         claveOperacion: `DEMO-PRO-${branchCode}-${articleCode}-${dayKey}`.slice(0, 120),
         // Relative to now on purpose: the posting engine refuses to consume a
         // lot already expired today, and the clock is corrected afterwards.
@@ -482,6 +500,15 @@ async function runTicket(
     })) as { id: string };
     const orderId = created.id;
 
+    // Desde aquí hasta el cobro, un fallo deja la orden abierta — y el cierre
+    // operativo del día se niega mientras quede una. En ocho semanas fueron
+    // treinta y dos órdenes trabadas y cincuenta y cuatro días sin cerrar,
+    // casi siempre porque a la cocina se le acabó el bizcocho a media tarde.
+    // Un restaurante no deja la orden colgada: la cancela, con su motivo y su
+    // clasificación. Eso desbloquea el día y además es la cancelación
+    // supervisada operando, que el demo debería mostrar.
+    let paid = false;
+    try {
     // The kitchen works the tickets the send created.
     // queue() lee q.page y q.limit sin valores por defecto, y devuelve
     // {data, meta, totals}: sin la paginación fallaba con «Argument `skip` is
@@ -511,6 +538,7 @@ async function runTicket(
       pagos: paymentParts(payments[0].metodo, due, rng),
       claveOperacion: `${key}-COB`,
     })) as { intentoIds?: string[] };
+    paid = true;
 
     // Una entrega tiene su propio ciclo, y la orden no cierra hasta que esté
     // ENTREGADA: asignar repartidor, despachar, completar. Eran los ocho «La
@@ -558,6 +586,20 @@ async function runTicket(
     await services.accounts.finalize(staff.cashier, orderId).catch((e) => note('liquidar cuenta', e));
     await services.orders.close(staff.cashier, orderId).catch((e) => note('cerrar orden', e));
     return true;
+    } catch (error) {
+      // Cancelar exige que la cuenta no tenga pagos, así que solo se intenta
+      // cuando el fallo fue antes de cobrar.
+      if (!paid) {
+        await services.orders
+          .cancel(staff.manager, orderId, {
+            motivo: `No se pudo completar: ${describe(error).split('\n')[0].slice(0, 180)}`,
+            clasificacion: 'MERMA_OPERATIVA',
+            claveOperacion: `${key}-CAN`,
+          })
+          .catch((e) => note('cancelar orden', e));
+      }
+      throw error;
+    }
   }
 
   // Mostrador y para llevar sin preparados se cobran de un golpe, que es lo
@@ -642,7 +684,7 @@ export async function runHistory(
         continue;
       }
 
-      const batches = await runProduction(db, services, staff.keeper, branch.codigo, ids, dayKey, rng, index === 0);
+      const batches = await runProduction(db, services, staff.keeper, branch.codigo, ids, dayKey, rng, index === 0, target);
 
       let sold = 0;
       for (let n = 0; n < target; n++) {

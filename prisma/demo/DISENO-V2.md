@@ -1,6 +1,6 @@
 # Semilla de demostración v2 — diseño
 
-Fecha: 2026-11-15 · Estado: **propuesta, pendiente de visto bueno**
+Fecha: 2026-11-15 · Estado: **aprobado — decisiones del dueño abajo (§5)**
 
 Objetivo acordado: dos meses de historia, y **todos los registros que una
 instalación en producción tendría** — las cuatro sucursales operando completo,
@@ -151,12 +151,12 @@ emita, se documenta).
 | Movimientos financieros | ~5,500 · extracto ~350 líneas, ~90 % conciliado |
 | Tiempo de corrida | **60–75 min** (hoy 50; lo nuevo es mayormente semanal) |
 
-## 5. Preguntas abiertas antes de implementar
+## 5. Decisiones del dueño (2026-11-15)
 
-1. **¿Transferencias entre sucursales** (cafetería pide pasteles a la
-   repostería) refleja tu modelo, o cada sucursal es autónoma y conviene un
-   segundo almacén (bodega) por sucursal para transferir internamente?
-2. **¿La conciliación bancaria entra** en v2, o se deja documentada para
-   después? Es la fase más laboriosa de lo nuevo (~15-20 % del esfuerzo).
-3. **¿Arreglo ya el bug del inventario en el repo Angular?** Es un cambio
-   centralizado chico; entregable aparte de la semilla.
+1. **Transferencias entre sucursales** — sí: la cafetería requisa pasteles y
+   bizcochos a la repostería, que produce y transfiere.
+2. **La conciliación bancaria entra** en v2.
+3. **El bug del inventario se arregló ya** — repo Angular, rama
+   `fix/inventario-filtros-sucursal`: `InventoryUrlState.patch` limpia
+   `almacenId`/`ubicacionId`/`articuloId`/`loteId` al cambiar de sucursal,
+   con el spec actualizado al contrato nuevo.

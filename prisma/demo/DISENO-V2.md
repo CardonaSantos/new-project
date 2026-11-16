@@ -2,9 +2,14 @@
 
 Fecha: 2026-11-15 · Estado: **aprobado — decisiones del dueño abajo (§5)**
 
-Objetivo acordado: dos meses de historia, y **todos los registros que una
-instalación en producción tendría** — las cuatro sucursales operando completo,
-no solo vendiendo.
+Objetivo acordado: **un mes de historia** (28 días), cantidad moderada y
+calidad alta — el cliente ve cómo el sistema registra con el tiempo, las
+cuatro sucursales operando completo, no solo vendiendo.
+
+**Regla de oro (del dueño): solo se siembra lo que se puede crear desde la
+UI.** Si algo no tiene pantalla, no está implementado de verdad, y sembrarlo
+es maquillar el demo. Cada flujo del diseño está verificado contra las
+páginas del repo Angular; lo que no pasó la prueba quedó fuera (§3.1).
 
 ---
 
@@ -66,11 +71,13 @@ upsertFinancialRoute), `finance-bank` (importLines, match, reverse),
 `delivery-settlements` (repartidor y plataforma). `Orden.clienteId` existe, así
 que los delivery pueden referenciar clientes reales.
 
-### 1.3 Duración
+### 1.3 Duración y volumen
 
-El default actual **ya es 2 meses** (`--semanas=8` = 56 días); la impresión de
-«12 semanas» venía del diseño original. v2 fija 2 meses como contrato del demo
-y conserva `--semanas` para corridas cortas de prueba.
+Decisión final del dueño: **un mes** (default `--semanas=4`, 28 días) y
+**~14 tickets/día** promedio por sucursal en lugar de 22 — la curva semanal
+se mantiene (sábado vende el doble que lunes), baja la cantidad, sube la
+calidad, y la corrida completa queda en ~20 minutos. `--semanas` y
+`--tickets` siguen disponibles para pruebas.
 
 ---
 
@@ -98,16 +105,14 @@ adentro.
 3 clientes     directo    ~30 clientes guatemaltecos, NIT, direcciones con
                           coordenadas, frecuentes por sucursal
 4 abasto       servicios  compra inicial + REPOSICIÓN SEMANAL por proveedor,
-                          una DEVOLUCIÓN+NOTA DE CRÉDITO (lote dañado, sem. 3)
+                          (devoluciones: fuera, sin UI — §3.1)
 5 operación    servicios  el motor actual intacto, MÁS por semana:
                           conteo físico dominical → ajuste chico,
                           consumo interno diario (comida de personal),
                           reservas en restaurante (ciclo completo + no-show),
                           requisición cafetería→repostería atendida con
-                          transferencia (pasteles/bizcochos), liquidación de
-                          repartidor por turno con delivery, liquidación
-                          semanal por canal externo, 1-2 reembolsos en total,
-                          2-3 órdenes QR de autoservicio por semana
+                          transferencia (pasteles/bizcochos), 2 órdenes QR de autoservicio por semana
+                          (liquidaciones y reembolsos: fuera, sin UI — §3.1)
 6 bancos       servicios  extracto quincenal generado de los movimientos
                           reales ± comisiones, match del ~90 %, 3-4 líneas sin
                           conciliar y una reversa — conciliación viva
@@ -133,23 +138,46 @@ Puntos de diseño con intención:
   **falla** si algo esperado quedó en cero. El «se ve vacío» no vuelve a
   descubrirse en la pantalla del cliente.
 
-**Fuera de alcance, con razón**: `Media` (exige archivos reales en el storage;
-los logos se cargan desde la app), `ReintegroProveedor` (sin servicio que lo
-emita, se documenta).
+### 3.1 Recortes por la regla de oro (verificado contra el Angular)
 
-## 4. Volumetría estimada (2 meses, 4 sucursales)
+| Flujo | Veredicto | Evidencia |
+|---|---|---|
+| Conciliación bancaria | **entra** | `finance-statements`, `finance-reconciliation`, `finance-accounts/-create`, `finance-routing` |
+| Horario de menú | **entra** | `catalog-menu-detail` edita horarios |
+| Variantes pausadas | **entra** | `catalog-product-detail` (pausa) |
+| QR + autoservicio | **entra** | `orders-tables-page` genera QR; feature `self-service` |
+| Consumo interno | **entra** | `inventory.api.ts:95` `internalConsumption` |
+| Requisición + transferencia | **entra** | `purchases-requisition-create`, `inventory-document-create` (sucursal destino) |
+| Devolución / nota de crédito a proveedor | **fuera** | sin página de creación en `purchases` |
+| Reembolsos de pago | **fuera** | solo aparecen en reportes, sin pantalla que los emita |
+| Liquidaciones repartidor / canal | **fuera** | solo en helpers de reportes; el servicio existe pero la UI no lo opera |
+| `Media` (fotos/logos) | fuera | exige archivos reales en storage; se cargan desde la app |
+
+Los tres «fuera» con servicio de backend quedan documentados como huecos de
+frontend: cuando tengan pantalla, entran a la semilla.
+
+Los menús **no se olvidan**: publicados como hoy, y ahora con horario (menú
+de desayuno en cafetería y restaurante).
+
+## 4. Volumetría estimada (1 mes, 4 sucursales) — módulos con registros: **13**
+
+organization · users · catalog · inventory · recipes · purchases · orders ·
+payments · delivery · finance · customers · reservations · self-service
+(auth/sesiones se llenan solas al usar; reports lee, no escribe)
 
 | | |
 |---|---|
-| Tickets vendidos | ~4,900 (más ~2 % cancelados por merma, a propósito) |
-| Documentos de compra | ~160–180 ciclos completos |
-| Producciones | ~700 lotes |
-| Movimientos de inventario | ~12,000 |
-| Conteos / ajustes / transferencias | 32 / ~20 / ~16 |
-| Reservas | ~32 (confirmadas, sentadas, 2-3 no-show, 2 canceladas) |
-| Liquidaciones repartidor / canal | ~70 / 24 |
-| Movimientos financieros | ~5,500 · extracto ~350 líneas, ~90 % conciliado |
-| Tiempo de corrida | **60–75 min** (hoy 50; lo nuevo es mayormente semanal) |
+| Tickets vendidos | ~1,500–1,700 (más ~2 % cancelados por merma, a propósito) |
+| Clientes / direcciones | ~30 / ~45, delivery atado a cliente real |
+| Documentos de compra | ~70 (inicial + reposición semanal) |
+| Producciones | ~350 lotes |
+| Movimientos de inventario | ~5,500 |
+| Conteos / ajustes / transferencias / requisiciones | 16 / ~10 / ~8 / ~8 |
+| Consumo interno | ~100 (comida de personal, diario) |
+| Reservas | ~16 (ciclo completo, 2 no-show, 1 cancelada) |
+| Sesiones QR de autoservicio | ~8 |
+| Movimientos financieros | ~2,000 · extracto ~120 líneas, ~90 % conciliado, 1 reversa |
+| Tiempo de corrida | **~20 min** |
 
 ## 5. Decisiones del dueño (2026-11-15)
 

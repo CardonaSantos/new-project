@@ -39,6 +39,11 @@ import { PurchaseOrdersService } from '../../src/modules/purchases/application/p
 import { PurchaseReceiptsService } from '../../src/modules/purchases/application/purchase-receipts.service.js';
 import { PurchaseInvoicesService } from '../../src/modules/purchases/application/purchase-invoices.service.js';
 import { PurchasePaymentsService } from '../../src/modules/purchases/application/purchase-payments.service.js';
+import { SelfServiceService } from '../../src/modules/self-service/application/self-service.service.js';
+import { ReservationsService } from '../../src/modules/reservations/application/reservations.service.js';
+import { SupplyService } from '../../src/modules/supply/application/supply.service.js';
+import { InventoryInternalConsumptionService } from '../../src/modules/inventory/application/inventory-internal-consumption.service.js';
+import { InventoryOperationsService } from '../../src/modules/inventory/application/inventory-operations.service.js';
 import { assertAllowed, parseOptions, progress, DEMO_PREFIX } from './runtime.js';
 import { validateDemoData } from './validate.js';
 import { writeMasters } from './masters.js';
@@ -107,6 +112,26 @@ async function main(): Promise<void> {
       ids = await writeMasters(db, options, process.env.DEMO_SEED_PASSWORD!);
     }
 
+    // El QR de cada mesa lo emite el gerente desde Mesas; issueTableQr desactiva
+    // el anterior de esa mesa, así que repetirlo en otra corrida solo rota el
+    // código. Sin estos tokens los pedidos QR de la historia no tienen por
+    // dónde entrar.
+    const issueQr = async (): Promise<void> => {
+      const selfService = app.get(SelfServiceService);
+      for (const [branchCode, tableIds] of ids!.tables) {
+        const managerId = ids!.staff.get(branchCode)?.get('ADMIN_SUCURSAL');
+        if (!managerId || !tableIds.length) continue;
+        const manager = asPrincipal(managerId, `gerente.${branchCode.toLowerCase()}@demo.local`);
+        const issued: { mesaId: string; token: string }[] = [];
+        for (const mesaId of tableIds) {
+          const qr = await selfService.issueTableQr(manager, mesaId);
+          issued.push({ mesaId, token: qr.token });
+        }
+        ids!.qrTokens.set(branchCode, issued);
+      }
+      progress('maestros', `QR emitidos para ${[...ids!.qrTokens.values()].reduce((n, l) => n + l.length, 0)} mesas`);
+    };
+
     const purchaseServices = () => ({
       orders: app.get(PurchaseOrdersService) as never,
       receipts: app.get(PurchaseReceiptsService) as never,
@@ -123,12 +148,15 @@ async function main(): Promise<void> {
       // acotado al instante en que corre, de modo que los vencimientos de lote
       // —que apuntan al futuro a propósito— no se mueven.
       const beforeStock = marker();
+      // Dentro de la marca: el QR queda fechado con la apertura, antes del mes.
+      await issueQr();
       await stockBranches(db, purchaseServices(), admin, ids, options);
       const moved = await shiftSince(db, beforeStock, options.semanas * 7 + 2);
       progress('compras', `abastecimiento fechado ${options.semanas * 7 + 2} días atrás (${moved} columnas)`);
     }
 
     if (options.fases.includes('historia')) {
+      if (![...ids.qrTokens.values()].some((l) => l.length)) await issueQr();
       const payments = app.get(PaymentsService) as never;
       await runHistory(
         db,
@@ -142,6 +170,11 @@ async function main(): Promise<void> {
           finance: app.get(FinanceService) as never,
           delivery: app.get(DeliveryService) as never,
           closing: app.get(FinanceClosingService) as never,
+          selfService: app.get(SelfServiceService) as never,
+          reservations: app.get(ReservationsService) as never,
+          supply: app.get(SupplyService) as never,
+          consumption: app.get(InventoryInternalConsumptionService) as never,
+          inventoryOps: app.get(InventoryOperationsService) as never,
         },
         ids,
         options,

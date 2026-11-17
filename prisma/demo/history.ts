@@ -30,12 +30,24 @@ import {
   type DemoOptions,
 } from './runtime.js';
 import type { MasterIds } from './masters.js';
+import {
+  internalConsumption,
+  pastryRequisition,
+  reservationsOfDay,
+  upcomingReservations,
+  weeklyCount,
+  type CustomerRef,
+  type OperationsServices,
+  type Seat,
+} from './operations.js';
 
 type Db = PrismaClient;
 type Service = Record<string, (...args: any[]) => Promise<any>>;
 
 /** The services this phase drives, pulled from the Nest context by the caller. */
-export interface HistoryServices {
+export interface HistoryServices extends OperationsServices {
+  /** SelfServiceService: el pedido que el comensal hace desde el QR de su mesa. */
+  selfService: Service;
   orders: Service;
   kitchen: Service;
   accounts: Service;
@@ -477,6 +489,16 @@ export function historyFailures(): string[] {
     .map(([key, count]) => `  ${count}×  ${key}`);
 }
 
+/** Lo que un ticket necesita saber de la sucursal más allá de su menú. */
+interface TicketExtras {
+  /** Los QR vigentes de sus mesas. */
+  qr: { mesaId: string; token: string }[];
+  /** Sus clientes registrados, para teléfono y web. */
+  clients: CustomerRef[];
+  /** La mesa de una reserva que acaba de llegar. */
+  seat?: Seat;
+}
+
 async function runTicket(
   services: HistoryServices,
   staff: { waiter: Principal; cashier: Principal; cook: Principal; manager: Principal },
@@ -488,11 +510,14 @@ async function runTicket(
   ids: MasterIds,
   key: string,
   rng: Rng,
+  extras: TicketExtras,
 ): Promise<boolean> {
   const branch = branches.find((b) => b.codigo === branchCode)!;
-  const modality = rng.weighted(Object.entries(branch.modalidades) as [string, number][]);
-  const origin =
-    modality === 'MESA'
+  // Una reserva que llegó ya tiene mesa y la atiende el mesero.
+  const modality = extras.seat ? 'MESA' : rng.weighted(Object.entries(branch.modalidades) as [string, number][]);
+  const origin = extras.seat
+    ? 'MESERO'
+    : modality === 'MESA'
       ? rng.weighted([['MESERO', 70], ['QR', 30]] as const)
       : modality === 'DELIVERY'
         ? rng.weighted([['PLATAFORMA', 60], ['TELEFONO', 25], ['WEB', 15]] as const)
@@ -513,7 +538,19 @@ async function runTicket(
     lines.reduce((sum, l) => sum + l.sellable.price * l.units, 0) + (needsFee && fee ? fee.price : 0);
 
   const payments = paymentsFor(total, modality, rng);
-  const seated = modality === 'MESA' && tables.length > 0;
+  const seated = modality === 'MESA' && (tables.length > 0 || !!extras.seat);
+  // Un pedido QR de verdad: el comensal escanea, arma su carrito y lo manda a
+  // cocina desde su teléfono, con la cuenta de autoservicio. Antes era el
+  // mesero creando una orden con origen QR, que es exactamente lo que el
+  // autoservicio existe para no necesitar.
+  const viaQr = seated && origin === 'QR' && !extras.seat && extras.qr.length > 0;
+  // Teléfono y web son clientes que la sucursal conoce: la orden queda en su
+  // historial y la entrega va a su dirección registrada. La plataforma trae
+  // a su propio cliente, que la sucursal no ve.
+  const client =
+    modality === 'DELIVERY' && origin !== 'PLATAFORMA' && extras.clients.length && rng.chance(0.75)
+      ? rng.pick(extras.clients)
+      : null;
   // quickCheckout no es un atajo universal: el store lo rechaza fuera de
   // mostrador y para llevar, con cualquier producto PREPARADO, y con una
   // transferencia, que queda pendiente de verificación y necesita el cobro
@@ -538,6 +575,19 @@ async function runTicket(
     // exige delivery.manage, que el cajero no tiene: la toma el gerente, que
     // es quien atiende el teléfono.
     const opener = effective === 'DELIVERY' ? staff.manager : seated ? staff.waiter : staff.cashier;
+    let session: { sesionId: string; sucursalId: string; mesaId: string; ordenId: string | null } | null = null;
+    let orderId: string;
+    if (viaQr) {
+      const spot = rng.pick(extras.qr);
+      const access = (await services.selfService.access(spot.token)) as { sesionId: string; mesa: { id: string } };
+      session = { sesionId: access.sesionId, sucursalId: branchId, mesaId: access.mesa.id, ordenId: null };
+      // addItems abre la orden (MESA, origen QR) sin mandarla a cocina; el
+      // envío es el botón «Enviar pedido», que va dentro del try de abajo.
+      const cart = (await services.selfService.addItems(session, items)) as { ordenId: string | null };
+      if (!cart?.ordenId) throw Error('El autoservicio no abrió la orden');
+      session.ordenId = cart.ordenId;
+      orderId = cart.ordenId;
+    } else {
     // create() termina con `return this.detail(u, result.orderId)`, así que
     // devuelve la orden completa y la clave es `id`. Mi corrección anterior a
     // `.orderId` fue peor que el error: leí el return de createCoreTx y no el
@@ -550,13 +600,20 @@ async function runTicket(
       lineas: items,
       enviarCocina: true,
       claveOperacion: `${key}-ORD`,
-      ...(seated ? { mesaId: rng.pick(tables), personas: rng.int(1, 4) } : {}),
+      ...(extras.seat
+        ? { mesaId: extras.seat.mesaId, personas: extras.seat.personas }
+        : seated
+          ? { mesaId: rng.pick(tables), personas: rng.int(1, 4) }
+          : {}),
+      ...(extras.seat?.clienteId ? { clienteId: extras.seat.clienteId } : {}),
+      ...(client ? { clienteId: client.id } : {}),
       // Una entrega sin dirección se rechaza, y los datos de entrega en
       // cualquier otra modalidad también.
       ...(effective === 'DELIVERY'
         ? {
-            direccionTexto: `${rng.pick(ADDRESSES)}, ${branch.nombre.split(' ').at(-1) ?? 'Centro'}`,
-            telefonoContacto: `5${rng.int(1000000, 9999999)}`,
+            direccionTexto:
+              client?.direccion ?? `${rng.pick(ADDRESSES)}, ${branch.nombre.split(' ').at(-1) ?? 'Centro'}`,
+            telefonoContacto: client?.telefono ?? `5${rng.int(1000000, 9999999)}`,
             // Una orden que entra por plataforma tiene que decir por cuál: la
             // entrega encadenada la rechaza sin canalExternoId, y lo rechaza
             // también en cualquier otro origen.
@@ -569,7 +626,8 @@ async function runTicket(
           }
         : {}),
     })) as { id: string };
-    const orderId = created.id;
+    orderId = created.id;
+    }
 
     // Desde aquí hasta el cobro, un fallo deja la orden abierta — y el cierre
     // operativo del día se niega mientras quede una. En ocho semanas fueron
@@ -580,6 +638,7 @@ async function runTicket(
     // supervisada operando, que el demo debería mostrar.
     let paid = false;
     try {
+    if (session) await services.selfService.send(session);
     // The kitchen works the tickets the send created.
     // queue() lee q.page y q.limit sin valores por defecto, y devuelve
     // {data, meta, totals}: sin la paginación fallaba con «Argument `skip` is
@@ -677,6 +736,9 @@ async function runTicket(
     // puede no liquidarse todavía: eso es parte de lo que el demo muestra.
     await services.accounts.finalize(staff.cashier, orderId).catch((e) => note('liquidar cuenta', e));
     await services.orders.close(staff.cashier, orderId).catch((e) => note('cerrar orden', e));
+    // La mesa se pagó: la sesión del teléfono termina, como cuando el mesero
+    // cobra y el comensal se va.
+    if (session) await services.selfService.closeSession(session).catch((e) => note('cerrar sesión QR', e));
     return true;
     } catch (error) {
       // Cancelar exige que la cuenta no tenga pagos, así que solo se intenta
@@ -690,6 +752,7 @@ async function runTicket(
           })
           .catch((e) => note('cancelar orden', e));
       }
+      if (session) await services.selfService.closeSession(session).catch((e) => note('cerrar sesión QR', e));
       throw error;
     }
   }
@@ -708,6 +771,75 @@ async function runTicket(
   return true;
 }
 
+type Staff = { waiter: Principal; cashier: Principal; cook: Principal; keeper: Principal; manager: Principal };
+
+/** Lo que cada sucursal arrastra por todo el mes. */
+interface BranchContext {
+  branch: (typeof branches)[number];
+  branchId: string;
+  sellables: Sellable[];
+  tables: string[];
+  qr: { mesaId: string; token: string }[];
+  clients: CustomerRef[];
+  registerId: string;
+  staff: Staff;
+}
+
+/** Los clientes de la sucursal con su teléfono y su dirección principal. */
+async function customersOf(db: Db, clientIds: string[]): Promise<CustomerRef[]> {
+  if (!clientIds.length) return [];
+  const rows = await db.cliente.findMany({
+    where: { id: { in: clientIds }, activo: true },
+    select: {
+      id: true,
+      nombre: true,
+      telefono: true,
+      direccionClientesComoCliente: { select: { direccion: true, principal: true, activa: true } },
+    },
+    orderBy: { nombre: 'asc' },
+  });
+  return rows.map((row) => {
+    const addresses = row.direccionClientesComoCliente.filter((a) => a.activa);
+    const main = addresses.find((a) => a.principal) ?? addresses[0];
+    return { id: row.id, nombre: row.nombre, telefono: row.telefono, direccion: main?.direccion ?? null };
+  });
+}
+
+/**
+ * Mueve inicio y fin de las reservas del día con el mismo intervalo que
+ * shiftSince —`columna - (días, segundos)`— solo si el reajuste no los alcanzó,
+ * es decir, si quedaron después del instante en que corrió.
+ */
+async function shiftReservations(db: Db, reservationIds: string[], until: Date, days: number, seconds: number): Promise<void> {
+  const delta = days * 86400000 + seconds * 1000;
+  for (const id of reservationIds) {
+    const row = await db.reserva.findUnique({ where: { id }, select: { inicio: true, fin: true } });
+    if (!row) continue;
+    const move = (value: Date) => (value.getTime() > until.getTime() ? new Date(value.getTime() - delta) : value);
+    await db.reserva.update({ where: { id }, data: { inicio: move(row.inicio), fin: move(row.fin) } });
+  }
+}
+
+/**
+ * Una sesión de autoservicio vence tres horas después de abrirse
+ * (SESSION_TTL_MS en self-service.store). Se abrió ahora, así que su
+ * vencimiento quedó en el futuro y el reajuste no lo alcanzó: una sesión del
+ * día 3 se vería vigente hasta hoy. Se recalcula desde su creación ya movida.
+ */
+const SELF_SERVICE_TTL_MS = 3 * 60 * 60 * 1000;
+async function alignSelfServiceExpiry(db: Db, mark: Date, until: Date): Promise<void> {
+  const sessions = await db.sesionAutoservicio.findMany({
+    where: { expiraEn: { gt: until }, creadaEn: { lt: mark } },
+    select: { id: true, creadaEn: true },
+  });
+  for (const session of sessions) {
+    await db.sesionAutoservicio.update({
+      where: { id: session.id },
+      data: { expiraEn: new Date(session.creadaEn.getTime() + SELF_SERVICE_TTL_MS) },
+    });
+  }
+}
+
 export async function runHistory(
   db: Db,
   services: HistoryServices,
@@ -724,6 +856,11 @@ export async function runHistory(
     ...[...ids.variants].map(([sku, id]) => [id, sku] as const),
   ]);
 
+  // Cada sucursal prepara su contexto una vez; el mes se recorre día por día
+  // con las cuatro dentro. Antes era sucursal por sucursal: repostería vivía
+  // su mes entero antes de que la cafetería abriera, y una requisición fechada
+  // el día 10 se llevaba lotes que repostería produjo el día 27.
+  const contexts: BranchContext[] = [];
   for (const branch of branches) {
     const branchId = ids.branches.get(branch.codigo);
     if (!branchId) continue;
@@ -734,34 +871,46 @@ export async function runHistory(
       progress('historia', `${branch.codigo}: sin precios, se omite`);
       continue;
     }
-    const tables = ids.tables.get(branch.codigo) ?? [];
     const people = ids.staff.get(branch.codigo)!;
-    const staff = {
-      waiter: asPrincipal(people.get('MESERO')!, `mesero.${branch.codigo.toLowerCase()}@demo.local`),
-      cashier: asPrincipal(people.get('CAJERO')!, `cajero.${branch.codigo.toLowerCase()}@demo.local`),
-      cook: asPrincipal(people.get('COCINA')!, `cocina.${branch.codigo.toLowerCase()}@demo.local`),
-      keeper: asPrincipal(people.get('ALMACEN')!, `almacen.${branch.codigo.toLowerCase()}@demo.local`),
-      manager: asPrincipal(people.get('ADMIN_SUCURSAL')!, `gerente.${branch.codigo.toLowerCase()}@demo.local`),
-    };
-    const registerId = [...(ids.registers.get(branch.codigo)?.values() ?? [])][0];
+    contexts.push({
+      branch,
+      branchId,
+      sellables,
+      tables: ids.tables.get(branch.codigo) ?? [],
+      qr: ids.qrTokens.get(branch.codigo) ?? [],
+      clients: await customersOf(db, ids.clients.get(branch.codigo) ?? []),
+      registerId: [...(ids.registers.get(branch.codigo)?.values() ?? [])][0],
+      staff: {
+        waiter: asPrincipal(people.get('MESERO')!, `mesero.${branch.codigo.toLowerCase()}@demo.local`),
+        cashier: asPrincipal(people.get('CAJERO')!, `cajero.${branch.codigo.toLowerCase()}@demo.local`),
+        cook: asPrincipal(people.get('COCINA')!, `cocina.${branch.codigo.toLowerCase()}@demo.local`),
+        keeper: asPrincipal(people.get('ALMACEN')!, `almacen.${branch.codigo.toLowerCase()}@demo.local`),
+        manager: asPrincipal(people.get('ADMIN_SUCURSAL')!, `gerente.${branch.codigo.toLowerCase()}@demo.local`),
+      },
+    });
+  }
+  const pastry = contexts.find((c) => c.branch.codigo === 'REPOSTERIA');
 
-    for (const [index, day] of days.entries()) {
-      const dayKey = formatDay(day);
+  for (const [index, day] of days.entries()) {
+    const dayKey = formatDay(day);
+    for (const { branch, branchId, sellables, tables, qr, clients, registerId, staff } of contexts) {
       // A day already closed is a day already lived: this is the whole resume
       // mechanism, and it needs no file to go stale.
       const closed = await db.cierreOperativo.findFirst({
         where: { sucursalId: branchId, fechaOperativa: new Date(dayKey) },
       });
-      // La semana abre comprando lo que falta, como un negocio: la reposición
-      // corre aquí y no en la fase de compras para que el reajuste diario la
-      // feche en su lunes, y para que el déficit se mida contra lo que de
-      // verdad quedó después de la semana vendida.
-      if (!closed && restock && index > 0 && index % 7 === 0) {
-        await restock(branch.codigo, index / 7 + 1);
-      }
       if (closed) continue;
 
       const mark = new Date();
+      // La semana abre comprando lo que falta, como un negocio. Corre aquí, en
+      // la historia, por dos razones: el déficit se mide contra lo que de verdad
+      // quedó tras la semana vendida, y el reajuste del día la fecha en el
+      // primer día de su semana. Va después de la marca a propósito: antes de
+      // ella el reajuste no la alcanzaba y todas las compras semanales quedaban
+      // con la fecha de hoy.
+      if (restock && index > 0 && index % 7 === 0) {
+        await restock(branch.codigo, index / 7 + 1);
+      }
       const rng = new Rng(0xc0ffee + index * 977 + branch.codigo.length * 31);
       const target = ticketsForDay(options.tickets, day.getUTCDay(), rng);
 
@@ -784,19 +933,56 @@ export async function runHistory(
         continue;
       }
 
+      const weekday = day.getUTCDay();
+      // Separado del rng del día: los flujos nuevos no deben mover la
+      // secuencia de tickets y producción que la simulación validó.
+      const side = new Rng(0x0b5e7 + index * 131 + branch.codigo.length * 17);
+      if (branch.codigo === 'CAFETERIA' && (weekday === 2 || weekday === 5) && pastry) {
+        await pastryRequisition(db, services, ids, staff, pastry.staff, dayKey, side, note).catch((e) =>
+          note('requisición a repostería', e),
+        );
+      }
+
       const batches = await runProduction(db, services, staff.keeper, branch.codigo, ids, dayKey, rng, index === 0, target, sellables);
 
       let sold = 0;
       for (let n = 0; n < target; n++) {
         const key = `DEMO-${branch.codigo}-${dayKey}-${n}`;
         try {
-          if (await runTicket(services, staff, branch.codigo, branchId, shift!.shiftId, sellables, tables, ids, key, rng))
+          if (await runTicket(services, staff, branch.codigo, branchId, shift!.shiftId, sellables, tables, ids, key, rng, { qr, clients }))
             sold++;
         } catch (error) {
           // A ticket that cannot be served — an ingredient ran out mid-service —
           // is part of what the demo should show, not a failure of the run.
           note('ticket', error);
         }
+      }
+
+      // Las reservas del día en el restaurante: las que llegan se sientan y
+      // su orden se sirve como cualquier ticket de mesa.
+      const moved: string[] = [];
+      let seats = 0;
+      if (branch.codigo === 'RESTAURANTE') {
+        const result = await reservationsOfDay(
+          services, branchId, staff.manager, clients, dayKey, index, weekday, side,
+          (seat) =>
+            runTicket(services, staff, branch.codigo, branchId, shift!.shiftId, sellables, tables, ids,
+              `DEMO-${branch.codigo}-${dayKey}-R${seats++}`, side, { qr, clients, seat })
+              .catch((e) => (note('ticket de reserva', e), false)),
+          note,
+        );
+        moved.push(...result.moved);
+        sold += result.served;
+        if (index === days.length - 1) {
+          await upcomingReservations(services, branchId, staff.manager, clients, side, note);
+        }
+      }
+
+      await internalConsumption(services, ids, branch.codigo, staff.keeper, dayKey, side, note);
+      if (weekday === 0) {
+        await weeklyCount(db, services, ids, branch.codigo, staff.keeper, side).catch((e) =>
+          note('conteo físico', e),
+        );
       }
 
       if (rng.chance(0.3)) {
@@ -860,7 +1046,14 @@ export async function runHistory(
 
       // Move the whole day back as a unit, preserving the order within it.
       const back = Math.round((today.getTime() - day.getTime()) / 86400000);
-      await shiftSince(db, mark, back, -rng.int(0, 3600 * 6));
+      const seconds = -rng.int(0, 3600 * 6);
+      const until = new Date();
+      await shiftSince(db, mark, back, seconds);
+      // El horario de una reserva del día se creó a minutos de ahora, en el
+      // futuro, y el reajuste solo mueve lo que ya pasó. Se mueve aquí con el
+      // mismo intervalo, para que la reserva caiga en su día y no en hoy.
+      await shiftReservations(db, moved, until, back, seconds);
+      await alignSelfServiceExpiry(db, mark, until);
       totalSold += sold;
       progress('historia', `${branch.codigo} ${dayKey}: ${sold}/${target} tickets, ${batches} lotes`);
     }

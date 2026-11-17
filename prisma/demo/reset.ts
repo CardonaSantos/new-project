@@ -194,7 +194,11 @@ function statements(branchIds: string[], articleIds: string[]): { label: string;
     // parámetros") or, where the payload happens to match, returns the stored
     // result without doing the work and reports a success that wrote nothing.
     // No foreign keys point here, so it goes last.
-    { label: 'claves de idempotencia', sql: `DELETE FROM "OperacionIdempotente" WHERE clave LIKE '${DEMO_PREFIX}%'` },
+    // Reservas, requisiciones y clientes guardan la clave con su espacio de
+    // nombres y el actor delante —'RSV:<usuario>:DEMO-…'—, y los usuarios demo
+    // conservan su id entre corridas: sin la segunda condición, la corrida
+    // siguiente reproduciría una reserva ya borrada y fallaría con «inexistente».
+    { label: 'claves de idempotencia', sql: `DELETE FROM "OperacionIdempotente" WHERE clave LIKE '${DEMO_PREFIX}%' OR clave LIKE '%:${DEMO_PREFIX}%'` },
   ];
 }
 

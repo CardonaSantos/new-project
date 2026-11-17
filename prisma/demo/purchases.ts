@@ -13,7 +13,7 @@
  */
 import type { PrismaClient } from '../../src/generated/prisma/client.js';
 import type { Principal } from '../../src/modules/auth/application/auth.service.js';
-import { articles } from './articles.js';
+import { articles, INTERNAL_USE } from './articles.js';
 import { modifierGroups, products } from './products.js';
 import { branches, menus } from './branches.js';
 import { packagingRules, suppliers, type DemoPresentation } from './supply.js';
@@ -104,7 +104,7 @@ export function articlesNeededBy(branchCode: string): Set<string> {
  * and how often it is made. Sales are an estimate: tickets in the period,
  * spread over what the branch offers, at a couple of units each.
  */
-function demandFor(branchCode: string, weeks: number, ticketsPerDay: number): Map<string, number> {
+export function demandFor(branchCode: string, weeks: number, ticketsPerDay: number): Map<string, number> {
   const days = weeks * 7;
   const branch = branches.find((b) => b.codigo === branchCode)!;
   const purchasable = articlesNeededBy(branchCode);
@@ -153,17 +153,37 @@ function demandFor(branchCode: string, weeks: number, ticketsPerDay: number): Ma
     const variant = products.flatMap((pr) => pr.variantes).find((v) => v.sku === sku);
     if (variant?.articulo) add(variant.articulo, perSku);
   }
+  // Lo que la operación gasta sin vender: el consumo interno diario.
+  for (const [articleCode, use] of Object.entries(INTERNAL_USE)) add(articleCode, use.porDia * days);
   return demand;
 }
 
 /** Whole presentations to cover an opening stock, never a fraction of a sack. */
-function packsToBuy(
+export function packsToBuy(
   articleCode: string,
   presentation: DemoPresentation,
   weeks: number,
   rng: Rng,
   demand: Map<string, number>,
 ): number {
+  const target = shelfTarget(articleCode, demand, weeks) * rng.float(0.95, 1.15);
+  return Math.max(1, Math.ceil(target / Math.max(unitsPerPack(presentation), 1)));
+}
+
+/** Unidades base que trae una presentación: un saco de 25 lb son 11 340 g. */
+export function unitsPerPack(presentation: DemoPresentation): number {
+  const factor = presentation.unidadCompra === 'LB' ? 453.59237 : presentation.unidadCompra === 'L' ? 1000 : 1;
+  return presentation.cantidad * factor;
+}
+
+/**
+ * Cuánto quiere el negocio en el estante después de comprar, para `weeks` de
+ * cobertura. La compra inicial y la reposición semanal usan la misma regla:
+ * cuando la reposición compraba solo «demanda menos existencia», sin margen ni
+ * piso, quedaba por debajo de lo que la apertura había comprado y el estante
+ * bajaba semana a semana.
+ */
+export function shelfTarget(articleCode: string, demand: Map<string, number>, weeks: number): number {
   const article = articles.find((a) => a.codigo === articleCode)!;
   // The floor stays: an article nobody consumes still opens with something on
   // the shelf. Above it, buy for the period's demand with room to spare.
@@ -171,9 +191,37 @@ function packsToBuy(
   // El margen cubre dos cosas que esta cuenta no modela: que una producción
   // arrastra a la de sus componentes cuando el padre corre y el hijo no le
   // tocaba, y la holgura con que la historia produce sobre lo planeado.
-  const target = Math.max(floor, (demand.get(articleCode) ?? 0) * 1.9) * rng.float(0.95, 1.15);
-  const perPack = presentation.cantidad * (presentation.unidadCompra === 'LB' ? 453.59237 : presentation.unidadCompra === 'L' ? 1000 : 1);
-  return Math.max(1, Math.ceil(target / Math.max(perPack, 1)));
+  return Math.max(floor, (demand.get(articleCode) ?? 0) * 1.9);
+}
+
+/** Semanas que cubre una compra, la inicial y cada reposición. */
+export const COVER_WEEKS = 1.5;
+
+/**
+ * La reposición de una semana, sin tocar la base: por proveedor, las
+ * presentaciones enteras que faltan para volver al objetivo de estante.
+ * `onHand` va por código de artículo. Es pura para que la simulación pruebe
+ * esta misma función y no una copia.
+ */
+export function restockPlan(
+  branchCode: string,
+  onHand: Map<string, number>,
+  ticketsPerDay: number,
+): Map<string, Map<string, number>> {
+  const needed = articlesNeededBy(branchCode);
+  const demand = demandFor(branchCode, COVER_WEEKS, ticketsPerDay);
+  const plan = new Map<string, Map<string, number>>();
+  for (const supplier of suppliers) {
+    const packs = new Map<string, number>();
+    for (const presentation of supplier.presentaciones) {
+      if (!needed.has(presentation.articulo)) continue;
+      const deficit = shelfTarget(presentation.articulo, demand, COVER_WEEKS) - (onHand.get(presentation.articulo) ?? 0);
+      if (deficit <= 0) continue;
+      packs.set(presentation.articulo, Math.max(1, Math.ceil(deficit / Math.max(unitsPerPack(presentation), 1))));
+    }
+    if (packs.size) plan.set(supplier.codigo, packs);
+  }
+  return plan;
 }
 
 /**
@@ -365,7 +413,7 @@ export async function stockBranches(
   options: DemoOptions,
 ): Promise<void> {
   const rng = new Rng(0x5eed0001);
-  const coverWeeks = Math.min(options.semanas, 1.5);
+  const coverWeeks = Math.min(options.semanas, COVER_WEEKS);
 
   for (const branch of branches) {
     if (!ids.branches.get(branch.codigo)) continue;
@@ -405,30 +453,18 @@ export async function restockBranch(
   options: DemoOptions,
 ): Promise<void> {
   const rng = new Rng(0x5eed0100 + week * 97);
-  const needed = articlesNeededBy(branchCode);
-  const demand = demandFor(branchCode, 1.5, options.tickets);
-  const locationId = ids.locations.get(branchCode)!;
+  const codeOf = new Map([...ids.articles].map(([articleCode, id]) => [id, articleCode] as const));
   const stock = await db.existencia.findMany({
-    where: { ubicacionId: locationId },
+    where: { ubicacionId: ids.locations.get(branchCode)! },
     select: { articuloId: true, cantidad: true },
   });
   const onHand = new Map<string, number>();
   for (const row of stock) {
-    onHand.set(row.articuloId, (onHand.get(row.articuloId) ?? 0) + Number(row.cantidad));
+    const articleCode = codeOf.get(row.articuloId);
+    if (articleCode) onHand.set(articleCode, (onHand.get(articleCode) ?? 0) + Number(row.cantidad));
   }
-
-  for (const supplier of suppliers) {
-    const packs = new Map<string, number>();
-    for (const presentation of supplier.presentaciones) {
-      if (!needed.has(presentation.articulo)) continue;
-      const have = onHand.get(ids.articles.get(presentation.articulo)!) ?? 0;
-      const deficit = (demand.get(presentation.articulo) ?? 0) - have;
-      if (deficit <= 0) continue;
-      const factor = presentation.unidadCompra === 'LB' ? 453.59237 : presentation.unidadCompra === 'L' ? 1000 : 1;
-      const perPack = presentation.cantidad * factor;
-      packs.set(presentation.articulo, Math.max(1, Math.ceil(deficit / perPack)));
-    }
-    if (!packs.size) continue;
+  for (const [supplierCode, packs] of restockPlan(branchCode, onHand, options.tickets)) {
+    const supplier = suppliers.find((s) => s.codigo === supplierCode)!;
     await supplierCycle(
       db, services, actor, ids, branchCode, supplier, packs,
       `W${week}`, `Reposición semanal ${week}`, rng,

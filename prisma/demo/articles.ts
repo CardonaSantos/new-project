@@ -133,3 +133,17 @@ export const articles: DemoArticle[] = [
   { codigo: 'SUM-BOLSA-BASURA', nombre: 'Bolsa para basura', tipo: 'SUMINISTRO', unidad: 'UND', costo: 1.3200, stockMinimo: 100 },
   { codigo: 'SUM-PAPEL-COCINA', nombre: 'Papel de cocina', tipo: 'SUMINISTRO', unidad: 'UND', costo: 8.0000, stockMinimo: 20 },
 ];
+
+/**
+ * Lo que cada sucursal gasta al día sin venderlo, registrado como consumo
+ * interno (Inventario → Consumo interno). El servicio solo acepta SUMINISTRO o
+ * EMPAQUE. La compra lo cuenta como demanda: sin eso la reposición semanal
+ * nunca vería bajar el detergente y la tercera semana el consumo fallaría.
+ * `porDia` es la media; la historia lo varía ±20 % y redondea a la unidad.
+ */
+export const INTERNAL_USE: Record<string, { porDia: number; destino: string; motivo: string }> = {
+  'SUM-DETERGENTE': { porDia: 350, destino: 'Cocina', motivo: 'Lavado de loza y utensilios del turno' },
+  'SUM-GUANTES': { porDia: 6, destino: 'Cocina', motivo: 'Manipulación de alimentos del turno' },
+  'SUM-BOLSA-BASURA': { porDia: 3, destino: 'Limpieza', motivo: 'Recolección de desechos del día' },
+  'SUM-PAPEL-COCINA': { porDia: 0.5, destino: 'Cocina', motivo: 'Limpieza de superficies de trabajo' },
+};

@@ -7,7 +7,7 @@
  * enforces it — and failing early beats failing at insert time — or because it
  * caught a real mistake while this data was being written.
  */
-import { articles, type DemoArticle } from './articles.js';
+import { articles, INTERNAL_USE, type DemoArticle } from './articles.js';
 import { products, categories, modifierGroups } from './products.js';
 import { branches, menus, basePrices } from './branches.js';
 import { packagingRules, suppliers } from './supply.js';
@@ -231,6 +231,19 @@ export function validateDemoData(): string[] {
       fail.push(`artículo comprable sin presentación de compra: ${a.codigo}`);
   }
 
+  // El consumo interno solo acepta SUMINISTRO o EMPAQUE, y lo que se gasta a
+  // diario tiene que poder reponerse.
+  for (const [code, use] of Object.entries(INTERNAL_USE)) {
+    const a = art.get(code);
+    if (!a) fail.push(`consumo interno: ${code} no existe`);
+    else if (a.tipo !== 'SUMINISTRO' && a.tipo !== 'EMPAQUE')
+      fail.push(`consumo interno: ${code} es ${a.tipo}; el servicio solo acepta SUMINISTRO o EMPAQUE`);
+    if (!suppliers.some((s) => s.presentaciones.some((p) => p.articulo === code)))
+      fail.push(`consumo interno: ningún proveedor vende ${code}`);
+    if (use.porDia <= 0) fail.push(`consumo interno: ${code} con consumo diario no positivo`);
+    if (use.destino.trim().length < 3 || use.motivo.trim().length < 5)
+      fail.push(`consumo interno: ${code} con destino o motivo demasiado corto`);
+  }
   return fail;
 }
 

@@ -113,6 +113,14 @@ async function sellablesFor(db: Db, branchCode: string, ids: MasterIds): Promise
   for (const sku of offered) {
     const variantId = ids.variants.get(sku);
     if (!variantId) continue;
+    // Una variante pausada o deshabilitada en la sucursal no aparece en el POS
+    // ni en el QR, y el store la rechaza con «Variante no habilitada en
+    // sucursal». La pausa corre desde hoy, así que cubre todo el mes simulado:
+    // el demo la muestra pausada y no la vende.
+    const override = await db.varianteSucursal.findUnique({
+      where: { varianteId_sucursalId: { varianteId: variantId, sucursalId: branchId } },
+    });
+    if (override && (!override.habilitada || (override.pausadaHasta && override.pausadaHasta > new Date()))) continue;
     const price = await db.precioVariante.findFirst({
       where: { varianteId: variantId, sucursalId: branchId, vigenteHasta: null },
     });

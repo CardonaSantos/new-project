@@ -228,6 +228,135 @@ async function lotFor(
   return row.id;
 }
 
+/**
+ * Un ciclo de compra a un proveedor: orden → confirmación → recepción →
+ * factura → pago, exactamente la cadena que las pantallas de compras
+ * recorren. `cycle` viaja en la clave de idempotencia y en las referencias de
+ * documento, porque la reposición semanal repite proveedor y sucursal y la
+ * factura es única por [proveedor, número]: sin el ciclo en la referencia, la
+ * semana dos chocaría con la uno.
+ */
+async function supplierCycle(
+  db: Db,
+  services: PurchaseServices,
+  actor: Principal,
+  ids: MasterIds,
+  branchCode: string,
+  supplier: (typeof suppliers)[number],
+  packsByArticle: Map<string, number>,
+  cycle: string,
+  observaciones: string,
+  rng: Rng,
+): Promise<number> {
+  const branchId = ids.branches.get(branchCode)!;
+  const warehouseId = ids.warehouses.get(branchCode)!;
+  const locationId = ids.locations.get(branchCode)!;
+  const branch = branches.find((b) => b.codigo === branchCode)!;
+
+  const key = `DEMO-STOCK-${branchCode}-${supplier.codigo}-${cycle}`;
+  const ref = `${docRef(branchCode, supplier.codigo)}-${cycle}`;
+  const orderLines = supplier.presentaciones
+    .filter((presentation) => (packsByArticle.get(presentation.articulo) ?? 0) > 0)
+    .map((presentation) => {
+      const packs = packsByArticle.get(presentation.articulo)!;
+      const unitsPerPack = presentation.cantidad;
+      const unitPrice = presentation.precio / unitsPerPack;
+      const factor = presentation.unidadCompra === 'LB' ? 453.59237 : presentation.unidadCompra === 'L' ? 1000 : 1;
+      return {
+        articuloId: ids.articles.get(presentation.articulo)!,
+        presentacionId: ids.presentations.get(`${supplier.codigo}:${presentation.articulo}`)!,
+        // cantidadCompra is in purchase units, so packs times units per pack:
+        // base quantity is this times factorAUnidadBase, which is what the
+        // purchase store multiplies.
+        cantidadCompra: qty(packs * unitsPerPack),
+        factorAUnidadBase: qty(factor),
+        precioUnitarioCompra: money(unitPrice),
+        articleCode: presentation.articulo,
+      };
+    });
+  if (!orderLines.length) return 0;
+
+  const order = await services.orders.create(actor, {
+    claveOperacion: key + '-ORD',
+    proveedorId: ids.suppliers.get(supplier.codigo)!,
+    sucursalId: branchId,
+    observaciones,
+    lineas: orderLines.map(({ articleCode, ...line }) => line),
+  });
+  await services.orders.confirm(actor, order.id, { claveOperacion: key + '-OCF' });
+
+  // Receipt lines must pair with order lines one to one: the store rejects
+  // a receipt that references an order while any line does not.
+  const placed = await db.ordenCompraLinea.findMany({
+    where: { ordenCompraId: order.id },
+    select: { id: true, articuloId: true, cantidadCompra: true, factorAUnidadBase: true, precioUnitarioCompra: true },
+  });
+  const receiptLines = [];
+  for (const line of placed) {
+    const articleCode = orderLines.find((l) => l.articuloId === line.articuloId)!.articleCode;
+    receiptLines.push({
+      ordenCompraLineaId: line.id,
+      articuloId: line.articuloId,
+      ubicacionId: locationId,
+      loteId: (await lotFor(db, articleCode, line.articuloId, ref, rng)) ?? undefined,
+      cantidadCompra: qty(Number(line.cantidadCompra)),
+      factorAUnidadBase: qty(Number(line.factorAUnidadBase)),
+      precioUnitarioCompra: money(Number(line.precioUnitarioCompra)),
+    });
+  }
+  const receipt = await services.receipts.create(actor, {
+    ordenCompraId: order.id,
+    proveedorId: ids.suppliers.get(supplier.codigo)!,
+    almacenId: warehouseId,
+    referenciaProveedor: `REM-${ref}`,
+    lineas: receiptLines,
+  });
+  // Confirming is what posts the stock and opens the cost layers.
+  await services.receipts.confirm(actor, receipt.id, { claveOperacion: key + '-RCF' });
+
+  const today = new Date().toISOString().slice(0, 10);
+  const due = new Date();
+  due.setUTCDate(due.getUTCDate() + 30);
+  const invoice = await services.invoices.create(actor, {
+    proveedorId: ids.suppliers.get(supplier.codigo)!,
+    sucursalId: branchId,
+    numeroDocumento: `FAC-${ref}`,
+    fechaEmision: today,
+    fechaVencimiento: due.toISOString().slice(0, 10),
+    precioIncluyeImpuesto: true,
+    lineas: receiptLines.map((line) => ({
+      articuloId: line.articuloId,
+      descripcion: articles.find((a) => ids.articles.get(a.codigo) === line.articuloId)!.nombre,
+      cantidad: line.cantidadCompra,
+      precioUnitario: line.precioUnitarioCompra,
+    })),
+  });
+  await services.invoices.confirm(actor, invoice.id, { claveOperacion: key + '-FCF' });
+
+  const total = receiptLines.reduce(
+    (sum, line) => sum + Number(line.cantidadCompra) * Number(line.precioUnitarioCompra),
+    0,
+  );
+  const payment = await services.payments.create(actor, {
+    claveOperacion: key + '-PAG',
+    proveedorId: ids.suppliers.get(supplier.codigo)!,
+    sucursalId: branchId,
+    metodo: 'TRANSFERENCIA',
+    monto: money(total),
+    referencia: `TRF-${ref}`,
+    aplicaciones: [{ facturaId: invoice.id, monto: money(total) }],
+  });
+  await services.payments.confirm(actor, payment.id, { claveOperacion: key + '-PCF' });
+
+  progress('compras', `${branch.codigo} ${cycle}: ${supplier.nombre}, ${receiptLines.length} artículos por Q${total.toFixed(2)}`);
+  return total;
+}
+
+/**
+ * Opening stock: about a week and a half of cover, not the whole period.
+ * Production buys weekly, and that is what the purchase history should show;
+ * the weekly cycles during the history do the rest.
+ */
 export async function stockBranches(
   db: Db,
   services: PurchaseServices,
@@ -236,114 +365,73 @@ export async function stockBranches(
   options: DemoOptions,
 ): Promise<void> {
   const rng = new Rng(0x5eed0001);
+  const coverWeeks = Math.min(options.semanas, 1.5);
 
   for (const branch of branches) {
-    const branchId = ids.branches.get(branch.codigo);
-    if (!branchId) continue;
-    const warehouseId = ids.warehouses.get(branch.codigo)!;
-    const locationId = ids.locations.get(branch.codigo)!;
+    if (!ids.branches.get(branch.codigo)) continue;
     const needed = articlesNeededBy(branch.codigo);
-    const demand = demandFor(branch.codigo, options.semanas, options.tickets);
-
+    const demand = demandFor(branch.codigo, coverWeeks, options.tickets);
     for (const supplier of suppliers) {
-      const lines = supplier.presentaciones.filter((p) => needed.has(p.articulo));
-      if (!lines.length) continue;
-
-      // Deterministic, so a re-run is recognised as the same operation rather
-      // than stocking the branch twice: `once()` short-circuits on this key.
-      const key = `DEMO-STOCK-${branch.codigo}-${supplier.codigo}`;
-      const ref = docRef(branch.codigo, supplier.codigo);
-      const orderLines = lines.map((presentation) => {
-        const packs = packsToBuy(presentation.articulo, presentation, options.semanas, rng, demand);
-        const unitsPerPack = presentation.cantidad;
-        const unitPrice = presentation.precio / unitsPerPack;
-        const factor = presentation.unidadCompra === 'LB' ? 453.59237 : presentation.unidadCompra === 'L' ? 1000 : 1;
-        return {
-          articuloId: ids.articles.get(presentation.articulo)!,
-          presentacionId: ids.presentations.get(`${supplier.codigo}:${presentation.articulo}`)!,
-          // cantidadCompra is in purchase units, so packs times units per pack:
-          // base quantity is this times factorAUnidadBase, which is what the
-          // purchase store multiplies.
-          cantidadCompra: qty(packs * unitsPerPack),
-          factorAUnidadBase: qty(factor),
-          precioUnitarioCompra: money(unitPrice),
-          articleCode: presentation.articulo,
-        };
-      });
-
-      const order = await services.orders.create(actor, {
-        claveOperacion: key + '-ORD',
-        proveedorId: ids.suppliers.get(supplier.codigo)!,
-        sucursalId: branchId,
-        observaciones: `Abastecimiento inicial de ${branch.nombre}`,
-        lineas: orderLines.map(({ articleCode, ...line }) => line),
-      });
-      await services.orders.confirm(actor, order.id, { claveOperacion: key + '-OCF' });
-
-      // Receipt lines must pair with order lines one to one: the store rejects
-      // a receipt that references an order while any line does not.
-      const placed = await db.ordenCompraLinea.findMany({
-        where: { ordenCompraId: order.id },
-        select: { id: true, articuloId: true, cantidadCompra: true, factorAUnidadBase: true, precioUnitarioCompra: true },
-      });
-      const receiptLines = [];
-      for (const line of placed) {
-        const articleCode = orderLines.find((l) => l.articuloId === line.articuloId)!.articleCode;
-        receiptLines.push({
-          ordenCompraLineaId: line.id,
-          articuloId: line.articuloId,
-          ubicacionId: locationId,
-          loteId: (await lotFor(db, articleCode, line.articuloId, ref, rng)) ?? undefined,
-          cantidadCompra: qty(Number(line.cantidadCompra)),
-          factorAUnidadBase: qty(Number(line.factorAUnidadBase)),
-          precioUnitarioCompra: money(Number(line.precioUnitarioCompra)),
-        });
+      const packs = new Map<string, number>();
+      for (const presentation of supplier.presentaciones) {
+        if (!needed.has(presentation.articulo)) continue;
+        packs.set(
+          presentation.articulo,
+          packsToBuy(presentation.articulo, presentation, coverWeeks, rng, demand),
+        );
       }
-      const receipt = await services.receipts.create(actor, {
-        ordenCompraId: order.id,
-        proveedorId: ids.suppliers.get(supplier.codigo)!,
-        almacenId: warehouseId,
-        referenciaProveedor: `REM-${ref}`,
-        lineas: receiptLines,
-      });
-      // Confirming is what posts the stock and opens the cost layers.
-      await services.receipts.confirm(actor, receipt.id, { claveOperacion: key + '-RCF' });
-
-      const today = new Date().toISOString().slice(0, 10);
-      const due = new Date();
-      due.setUTCDate(due.getUTCDate() + 30);
-      const invoice = await services.invoices.create(actor, {
-        proveedorId: ids.suppliers.get(supplier.codigo)!,
-        sucursalId: branchId,
-        numeroDocumento: `FAC-${ref}`,
-        fechaEmision: today,
-        fechaVencimiento: due.toISOString().slice(0, 10),
-        precioIncluyeImpuesto: true,
-        lineas: receiptLines.map((line) => ({
-          articuloId: line.articuloId,
-          descripcion: articles.find((a) => ids.articles.get(a.codigo) === line.articuloId)!.nombre,
-          cantidad: line.cantidadCompra,
-          precioUnitario: line.precioUnitarioCompra,
-        })),
-      });
-      await services.invoices.confirm(actor, invoice.id, { claveOperacion: key + '-FCF' });
-
-      const total = receiptLines.reduce(
-        (sum, line) => sum + Number(line.cantidadCompra) * Number(line.precioUnitarioCompra),
-        0,
+      await supplierCycle(
+        db, services, actor, ids, branch.codigo, supplier, packs,
+        'INI', `Abastecimiento inicial de ${branch.nombre}`, rng,
       );
-      const payment = await services.payments.create(actor, {
-        claveOperacion: key + '-PAG',
-        proveedorId: ids.suppliers.get(supplier.codigo)!,
-        sucursalId: branchId,
-        metodo: 'TRANSFERENCIA',
-        monto: money(total),
-        referencia: `TRF-${ref}`,
-        aplicaciones: [{ facturaId: invoice.id, monto: money(total) }],
-      });
-      await services.payments.confirm(actor, payment.id, { claveOperacion: key + '-PCF' });
-
-      progress('compras', `${branch.codigo}: ${supplier.nombre}, ${receiptLines.length} artículos por Q${total.toFixed(2)}`);
     }
+  }
+}
+
+/**
+ * Weekly replenishment, called from the history at the start of each week:
+ * read what the location holds, compare against a week and a half of demand,
+ * and buy only the deficit, in whole presentations. A supplier with nothing
+ * missing simply gets no order that week — which is also what keeps the
+ * purchase history looking like a business and not like a script.
+ */
+export async function restockBranch(
+  db: Db,
+  services: PurchaseServices,
+  actor: Principal,
+  ids: MasterIds,
+  branchCode: string,
+  week: number,
+  options: DemoOptions,
+): Promise<void> {
+  const rng = new Rng(0x5eed0100 + week * 97);
+  const needed = articlesNeededBy(branchCode);
+  const demand = demandFor(branchCode, 1.5, options.tickets);
+  const locationId = ids.locations.get(branchCode)!;
+  const stock = await db.existencia.findMany({
+    where: { ubicacionId: locationId },
+    select: { articuloId: true, cantidad: true },
+  });
+  const onHand = new Map<string, number>();
+  for (const row of stock) {
+    onHand.set(row.articuloId, (onHand.get(row.articuloId) ?? 0) + Number(row.cantidad));
+  }
+
+  for (const supplier of suppliers) {
+    const packs = new Map<string, number>();
+    for (const presentation of supplier.presentaciones) {
+      if (!needed.has(presentation.articulo)) continue;
+      const have = onHand.get(ids.articles.get(presentation.articulo)!) ?? 0;
+      const deficit = (demand.get(presentation.articulo) ?? 0) - have;
+      if (deficit <= 0) continue;
+      const factor = presentation.unidadCompra === 'LB' ? 453.59237 : presentation.unidadCompra === 'L' ? 1000 : 1;
+      const perPack = presentation.cantidad * factor;
+      packs.set(presentation.articulo, Math.max(1, Math.ceil(deficit / perPack)));
+    }
+    if (!packs.size) continue;
+    await supplierCycle(
+      db, services, actor, ids, branchCode, supplier, packs,
+      `W${week}`, `Reposición semanal ${week}`, rng,
+    );
   }
 }

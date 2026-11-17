@@ -42,7 +42,7 @@ import { PurchasePaymentsService } from '../../src/modules/purchases/application
 import { assertAllowed, parseOptions, progress, DEMO_PREFIX } from './runtime.js';
 import { validateDemoData } from './validate.js';
 import { writeMasters } from './masters.js';
-import { stockBranches } from './purchases.js';
+import { restockBranch, stockBranches } from './purchases.js';
 import { asPrincipal, runHistory } from './history.js';
 import { auditDates, marker, shiftSince } from './backdate.js';
 import { resetDemo } from './reset.js';
@@ -107,6 +107,13 @@ async function main(): Promise<void> {
       ids = await writeMasters(db, options, process.env.DEMO_SEED_PASSWORD!);
     }
 
+    const purchaseServices = () => ({
+      orders: app.get(PurchaseOrdersService) as never,
+      receipts: app.get(PurchaseReceiptsService) as never,
+      invoices: app.get(PurchaseInvoicesService) as never,
+      payments: app.get(PurchasePaymentsService) as never,
+    });
+
     if (options.fases.includes('compras')) {
       // El abastecimiento inicial se fecha antes de que el período empiece.
       // Sin esto las órdenes de compra, las recepciones, las facturas y los
@@ -116,18 +123,7 @@ async function main(): Promise<void> {
       // acotado al instante en que corre, de modo que los vencimientos de lote
       // —que apuntan al futuro a propósito— no se mueven.
       const beforeStock = marker();
-      await stockBranches(
-        db,
-        {
-          orders: app.get(PurchaseOrdersService) as never,
-          receipts: app.get(PurchaseReceiptsService) as never,
-          invoices: app.get(PurchaseInvoicesService) as never,
-          payments: app.get(PurchasePaymentsService) as never,
-        },
-        admin,
-        ids,
-        options,
-      );
+      await stockBranches(db, purchaseServices(), admin, ids, options);
       const moved = await shiftSince(db, beforeStock, options.semanas * 7 + 2);
       progress('compras', `abastecimiento fechado ${options.semanas * 7 + 2} días atrás (${moved} columnas)`);
     }
@@ -150,6 +146,10 @@ async function main(): Promise<void> {
         ids,
         options,
         admin,
+        // La reposición semanal corre dentro de la historia, al abrir cada
+        // semana: así cada ciclo queda fechado en su lunes por el reajuste
+        // diario, y compra solo el déficit contra lo que de verdad quedó.
+        (branchCode, week) => restockBranch(db, purchaseServices(), admin, ids, branchCode, week, options),
       );
     }
 

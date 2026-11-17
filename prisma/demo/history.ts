@@ -714,6 +714,7 @@ export async function runHistory(
   ids: MasterIds,
   options: DemoOptions,
   admin: Principal,
+  restock?: (branchCode: string, week: number) => Promise<void>,
 ): Promise<void> {
   const days = operationalDays(options.semanas);
   const today = new Date();
@@ -751,6 +752,13 @@ export async function runHistory(
       const closed = await db.cierreOperativo.findFirst({
         where: { sucursalId: branchId, fechaOperativa: new Date(dayKey) },
       });
+      // La semana abre comprando lo que falta, como un negocio: la reposición
+      // corre aquí y no en la fase de compras para que el reajuste diario la
+      // feche en su lunes, y para que el déficit se mida contra lo que de
+      // verdad quedó después de la semana vendida.
+      if (!closed && restock && index > 0 && index % 7 === 0) {
+        await restock(branch.codigo, index / 7 + 1);
+      }
       if (closed) continue;
 
       const mark = new Date();

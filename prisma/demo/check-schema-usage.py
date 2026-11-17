@@ -423,6 +423,9 @@ for f, src in sources.items():
         declared |= set(re.findall(r'\b([a-z_$]\w*)\s*(?::|,|=|\))', params + ')'))
         declared |= set(re.findall(r'^\s*(\w+)', params))
     declared |= set(re.findall(r'catch\s*\(\s*(\w+)', code))
+    # parámetros con tipo función: `restock?: (a, b) => void` — los paréntesis
+    # anidados del tipo rompen la extracción general de parámetros
+    declared |= set(re.findall(r'(\w+)\??:\s*\(', code))
     # métodos de clase: se llaman como this.x() pero se declaran sin palabra clave
     declared |= set(re.findall(
         r'^\s*(?:private\s+|public\s+|protected\s+|static\s+|readonly\s+|async\s+|\*)*(\w+)\s*\([^;]*?\)\s*(?::[^{;]+)?\{',

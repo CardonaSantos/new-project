@@ -1,6 +1,6 @@
 # Semilla de demostración v2 — diseño
 
-Fecha: 2026-11-15 · Estado: **aprobado — decisiones del dueño abajo (§5)**
+Fecha: 2026-11-15 · Estado: **implementado (2026-11-17) — pendiente la primera corrida local; ver §6**
 
 Objetivo acordado: **un mes de historia** (28 días), cantidad moderada y
 calidad alta — el cliente ve cómo el sistema registra con el tiempo, las
@@ -188,3 +188,62 @@ payments · delivery · finance · customers · reservations · self-service
    `fix/inventario-filtros-sucursal`: `InventoryUrlState.patch` limpia
    `almacenId`/`ubicacionId`/`articuloId`/`loteId` al cambiar de sucursal,
    con el spec actualizado al contrato nuevo.
+
+## 6. Estado de implementación (2026-11-17)
+
+Rama `feat/seed-initial-20261113`, cuatro commits, cada uno con los
+verificadores en verde antes de subir:
+
+| Commit | Fases | Qué entra |
+|---|---|---|
+| `f4d7b49` | 0–3 | dispositivos, menú de desayuno con horario, variantes pausadas, precios de modificador, tesorería, 30 clientes |
+| `30d3b8b` | 4 | compra inicial de semana y media + reposición semanal por déficit |
+| `b0e90d4` | 5 | QR real, clientes en delivery, reservas, requisición cafetería→repostería, consumo interno, conteo dominical; historia día por día |
+| `3c9e851` | 6–7 | tesorería corregida, servicios del mes con un duplicado anulado, extracto quincenal conciliado, tabla de cobertura que falla la corrida |
+
+### 6.1 Dónde la implementación se apartó del diseño, y por qué
+
+- **Tesorería por sucursal, no global.** El diseño suponía una cuenta de
+  empresa. Los stores la hacen imposible: la pantalla crea cuentas siempre
+  con sucursal, una ruta solo acepta una cuenta de su sucursal, el cobro solo
+  asienta si la cuenta es de la sucursal y el extracto se importa contra una
+  de ella. Con la cuenta global ningún cobro con tarjeta llegaba a tesorería.
+  Ahora: una cuenta BAC y una caja fuerte por sucursal.
+- **Rutas solo TARJETA y TRANSFERENCIA.** La pantalla de rutas no acepta
+  EFECTIVO, y el cobro en efectivo nunca consulta una ruta.
+- **No hay NO_ASISTIO.** La regla exige 15 minutos reales después del inicio
+  y el inicio no puede estar en el pasado. Forzar el reloj sería mentir.
+  Las reservas muestran llegada (con confirmación previa en algunas),
+  cancelación y reservas futuras reales con recordatorio pendiente.
+- **Consumo interno de suministros, no comida de personal.** El servicio solo
+  acepta artículos SUMINISTRO o EMPAQUE: detergente, guantes, bolsas, papel.
+- **QR de autoservicio con más peso.** En vez de dos por semana, el ~30 % de
+  las órdenes de mesa entran por el QR real (sesión, carrito, envío).
+- **La apertura no pasa por el banco.** Pagarla desde la cuenta dejaba el
+  saldo hondo en negativo (no existe flujo de depósito de efectivo). Queda
+  como inversión inicial pendiente de cuenta; la reposición semanal sí sale
+  del banco.
+- **Menú de desayuno solo en cafetería** (el diseño decía también
+  restaurante).
+
+### 6.2 Defectos encontrados en el camino
+
+- La reposición semanal corría antes de la marca del día y habría quedado
+  fechada hoy (`30d3b8b` decía lo contrario; corregido en `b0e90d4`).
+- La reposición compraba sin el margen ni el piso de la compra inicial.
+- El reset no borraba las claves `RSV:<usuario>:DEMO-…`: la segunda corrida
+  habría reproducido una reserva borrada.
+- El verificador no veía los modelos indentados con un espacio.
+
+### 6.3 Cómo probar (Windows, cmd)
+
+```
+set DEMO_SEED_ALLOW=yes
+set DEMO_SEED_PASSWORD=<la de siempre>
+npm run seed:demo -- --reset --semanas=1 --tickets=5
+npm run seed:demo -- --reset
+```
+
+La primera es la de humo (unos minutos); la segunda, el mes completo. Al final
+de cada una se imprime la tabla «Cobertura del demo»; si algo que correspondía
+quedó vacío, la corrida termina con error y dice qué.

@@ -40,12 +40,13 @@ import {
   type OperationsServices,
   type Seat,
 } from './operations.js';
+import { bankStatement, monthlyBills, type TreasuryServices } from './treasury.js';
 
 type Db = PrismaClient;
 type Service = Record<string, (...args: any[]) => Promise<any>>;
 
 /** The services this phase drives, pulled from the Nest context by the caller. */
-export interface HistoryServices extends OperationsServices {
+export interface HistoryServices extends OperationsServices, TreasuryServices {
   /** SelfServiceService: el pedido que el comensal hace desde el QR de su mesa. */
   selfService: Service;
   orders: Service;
@@ -890,6 +891,10 @@ export async function runHistory(
     });
   }
   const pastry = contexts.find((c) => c.branch.codigo === 'REPOSTERIA');
+  // El gasto duplicado espera su reversa al día siguiente, y un asiento que ya
+  // salió en un extracto no vuelve a salir en el siguiente.
+  const duplicates = new Map<string, string>();
+  const stated = new Set<string>();
 
   for (const [index, day] of days.entries()) {
     const dayKey = formatDay(day);
@@ -983,6 +988,23 @@ export async function runHistory(
         await weeklyCount(db, services, ids, branch.codigo, staff.keeper, side).catch((e) =>
           note('conteo físico', e),
         );
+      }
+
+      // Tesorería: los servicios del mes salen del banco, y finanzas importa el
+      // extracto a mitad de mes y al cierre, y lo concilia.
+      await monthlyBills(services, ids, branch.codigo, branchId, staff.manager, admin, index, dayKey, side, duplicates, note);
+      const midMonth = index === 14 && days.length > 15;
+      const monthEnd = index === days.length - 1;
+      if (midMonth || monthEnd) {
+        try {
+          const statement = await bankStatement(
+            db, services, ids, branch.codigo, branchId, admin, mark, dayKey,
+            `E${dayKey.replace(/-/g, '').slice(2)}`, monthEnd, stated, note,
+          );
+          progress('historia', `${branch.codigo} ${dayKey}: extracto de ${statement.lines} líneas, ${statement.matched} conciliadas`);
+        } catch (error) {
+          note('extracto bancario', error);
+        }
       }
 
       if (rng.chance(0.3)) {

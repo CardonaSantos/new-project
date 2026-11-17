@@ -45,7 +45,7 @@ export interface MasterIds {
   staff: Map<string, Map<string, string>>;
   /** Canal externo code -> id, for the orders that arrive from a platform. */
   channels: Map<string, string>;
-  /** 'BANCO' y 'CAJA_FUERTE:<sucursal>' -> id de CuentaFinanciera. */
+  /** 'BANCO:<sucursal>' y 'CAJA_FUERTE:<sucursal>' -> id de CuentaFinanciera. */
   accounts: Map<string, string>;
   /** Clientes frecuentes por sucursal, para atar los delivery a gente real. */
   clients: Map<string, string[]>;
@@ -142,14 +142,20 @@ async function writeModifierBranchPrices(
  * it only lacked an active route to switch it on.
  */
 async function writeFinance(db: Db, branchIds: Map<string, string>): Promise<Map<string, string>> {
+  // Una cuenta bancaria por sucursal, porque el sistema no admite otra cosa:
+  // la pantalla crea cuentas siempre con sucursal, una ruta solo acepta una
+  // cuenta de su sucursal, el cobro solo asienta si la cuenta es de la
+  // sucursal, y el extracto se importa contra una cuenta de la sucursal. La
+  // versión anterior usaba una cuenta global: ningún cobro con tarjeta habría
+  // llegado a tesorería y no habría extracto que conciliar.
   const accounts = new Map<string, string>();
-  const bank =
-    (await db.cuentaFinanciera.findFirst({ where: { nombre: BANK_ACCOUNT.nombre, sucursalId: null } })) ??
-    (await db.cuentaFinanciera.create({
-      data: { nombre: BANK_ACCOUNT.nombre, tipo: BANK_ACCOUNT.tipo, moneda: 'GTQ', activa: true },
-    }));
-  accounts.set('BANCO', bank.id);
   for (const [branchCode, sucursalId] of branchIds) {
+    const bank =
+      (await db.cuentaFinanciera.findFirst({ where: { nombre: BANK_ACCOUNT.nombre, sucursalId } })) ??
+      (await db.cuentaFinanciera.create({
+        data: { sucursalId, nombre: BANK_ACCOUNT.nombre, tipo: BANK_ACCOUNT.tipo, moneda: 'GTQ', activa: true },
+      }));
+    accounts.set(`BANCO:${branchCode}`, bank.id);
     const name = `${SAFE_ACCOUNT_PREFIX} ${branchCode}`;
     const safe =
       (await db.cuentaFinanciera.findFirst({ where: { nombre: name, sucursalId } })) ??
@@ -158,13 +164,14 @@ async function writeFinance(db: Db, branchIds: Map<string, string>): Promise<Map
       }));
     accounts.set(`CAJA_FUERTE:${branchCode}`, safe.id);
     for (const route of FINANCIAL_ROUTES) {
-      const cuentaFinancieraId = route.cuenta === 'BANCO' ? bank.id : safe.id;
       await db.rutaFinanciera.upsert({
         where: { sucursalId_metodo: { sucursalId, metodo: route.metodo } },
-        update: { cuentaFinancieraId, activa: true },
-        create: { sucursalId, metodo: route.metodo, cuentaFinancieraId, activa: true },
+        update: { cuentaFinancieraId: bank.id, activa: true },
+        create: { sucursalId, metodo: route.metodo, cuentaFinancieraId: bank.id, activa: true },
       });
     }
+    // Lo que dejó una corrida de la versión anterior y la UI no puede crear.
+    await db.rutaFinanciera.deleteMany({ where: { sucursalId, metodo: 'EFECTIVO' } });
   }
   return accounts;
 }

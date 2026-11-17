@@ -295,6 +295,8 @@ async function supplierCycle(
   cycle: string,
   observaciones: string,
   rng: Rng,
+  /** La cuenta bancaria que paga; sin ella el pago no se asienta en tesorería. */
+  cuentaFinancieraId?: string,
 ): Promise<number> {
   const branchId = ids.branches.get(branchCode)!;
   const warehouseId = ids.warehouses.get(branchCode)!;
@@ -392,6 +394,7 @@ async function supplierCycle(
     metodo: 'TRANSFERENCIA',
     monto: money(total),
     referencia: `TRF-${ref}`,
+    ...(cuentaFinancieraId ? { cuentaFinancieraId } : {}),
     aplicaciones: [{ facturaId: invoice.id, monto: money(total) }],
   });
   await services.payments.confirm(actor, payment.id, { claveOperacion: key + '-PCF' });
@@ -468,6 +471,8 @@ export async function restockBranch(
     await supplierCycle(
       db, services, actor, ids, branchCode, supplier, packs,
       `W${week}`, `Reposición semanal ${week}`, rng,
+      // La reposición sale del banco de la sucursal y aparece en su extracto.
+      ids.accounts.get(`BANCO:${branchCode}`),
     );
   }
 }

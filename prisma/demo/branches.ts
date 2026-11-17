@@ -271,17 +271,21 @@ export const variantPauses: { sucursal: string; sku: string; dias: number; motiv
 ];
 
 /**
- * Tesorería: una cuenta de banco de la empresa y una caja fuerte por
- * sucursal, con las rutas que el motor de pagos consulta al cobrar. Esto es
- * lo que hace que cada cobro, gasto y pago a proveedor del mes escriba su
- * MovimientoFinanciero solo: el posting ya existe en el motor, únicamente le
- * faltaba una ruta activa que lo encendiera.
+ * Tesorería: por sucursal, una cuenta bancaria y una caja fuerte, con las
+ * rutas que el motor de pagos consulta al cobrar. Con la ruta activa, cada
+ * cobro con tarjeta o transferencia verificada asienta su MovimientoFinanciero
+ * solo. Los pagos a proveedor llegan al banco cuando el pago lleva la cuenta
+ * (la reposición semanal la lleva; la compra de apertura no, y queda como
+ * inversión inicial pendiente de cuenta), y los servicios del mes se pagan
+ * como gasto con origen en la cuenta.
  */
 export const BANK_ACCOUNT = { nombre: 'BAC Cuenta Monetaria GTQ', tipo: 'BANCO' as const };
 export const SAFE_ACCOUNT_PREFIX = 'Caja fuerte';
 /** Método de pago → a qué cuenta llega el dinero. */
-export const FINANCIAL_ROUTES: { metodo: 'EFECTIVO' | 'TARJETA' | 'TRANSFERENCIA'; cuenta: 'CAJA_FUERTE' | 'BANCO' }[] = [
-  { metodo: 'EFECTIVO', cuenta: 'CAJA_FUERTE' },
+// Solo lo que la pantalla de rutas acepta: TARJETA, TRANSFERENCIA u OTRO. El
+// efectivo entra a la caja del turno y el cobro nunca consulta una ruta para
+// él; la ruta EFECTIVO que hubo aquí no se podía crear desde la UI.
+export const FINANCIAL_ROUTES: { metodo: 'TARJETA' | 'TRANSFERENCIA'; cuenta: 'BANCO' }[] = [
   { metodo: 'TARJETA', cuenta: 'BANCO' },
   { metodo: 'TRANSFERENCIA', cuenta: 'BANCO' },
 ];

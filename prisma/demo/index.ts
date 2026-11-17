@@ -35,6 +35,7 @@ import { RecipeService } from '../../src/modules/recipes/application/recipe.serv
 import { FinanceService } from '../../src/modules/finance/application/finance.service.js';
 import { DeliveryService } from '../../src/modules/delivery/application/delivery.service.js';
 import { FinanceClosingService } from '../../src/modules/finance/application/finance-closing.service.js';
+import { FinanceBankService } from '../../src/modules/finance/application/finance-bank.service.js';
 import { PurchaseOrdersService } from '../../src/modules/purchases/application/purchase-orders.service.js';
 import { PurchaseReceiptsService } from '../../src/modules/purchases/application/purchase-receipts.service.js';
 import { PurchaseInvoicesService } from '../../src/modules/purchases/application/purchase-invoices.service.js';
@@ -51,6 +52,7 @@ import { restockBranch, stockBranches } from './purchases.js';
 import { asPrincipal, runHistory } from './history.js';
 import { auditDates, marker, shiftSince } from './backdate.js';
 import { resetDemo } from './reset.js';
+import { coverage, coverageReport } from './coverage.js';
 
 async function main(): Promise<void> {
   const options = parseOptions(process.argv.slice(2));
@@ -101,6 +103,9 @@ async function main(): Promise<void> {
     const admin = asPrincipal(adminRow.id, adminRow.email);
 
     const started = marker();
+    // Se informa al final, después de la auditoría de fechas: si falta algo,
+    // las dos cosas ayudan a encontrar por qué.
+    let uncovered: string[] = [];
     let ids = null as Awaited<ReturnType<typeof writeMasters>> | null;
 
     if (options.fases.includes('maestros')) {
@@ -175,6 +180,7 @@ async function main(): Promise<void> {
           supply: app.get(SupplyService) as never,
           consumption: app.get(InventoryInternalConsumptionService) as never,
           inventoryOps: app.get(InventoryOperationsService) as never,
+          bank: app.get(FinanceBankService) as never,
         },
         ids,
         options,
@@ -184,6 +190,12 @@ async function main(): Promise<void> {
         // diario, y compra solo el déficit contra lo que de verdad quedó.
         (branchCode, week) => restockBranch(db, purchaseServices(), admin, ids, branchCode, week, options),
       );
+
+      // Lo que el cliente debería encontrar, contado. Una tabla vacía que la
+      // corrida tenía que llenar es un fallo, no un «listo».
+      const report = coverageReport(await coverage(db, ids, options));
+      process.stdout.write(`\nCobertura del demo:\n${report.text}\n`);
+      uncovered = report.missing;
     }
 
     // Anything still stamped after the run began is a column the shift missed,
@@ -197,6 +209,12 @@ async function main(): Promise<void> {
         process.stdout.write(`  ${table}.${column}: ${rows} filas\n`);
       process.stdout.write(
         'Las de maestros y catálogo son esperadas; si aparece una tabla de operación, avise.\n',
+      );
+    }
+
+    if (uncovered.length) {
+      throw Error(
+        `El demo quedó sin: ${uncovered.join(', ')}. Las causas están en los fallos tolerados de arriba.`,
       );
     }
 

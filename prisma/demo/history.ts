@@ -34,6 +34,7 @@ import {
 } from './runtime.js';
 import type { MasterIds } from './masters.js';
 import {
+  endOfDayWaste,
   internalConsumption,
   weeklyCount,
   type CustomerRef,
@@ -360,10 +361,12 @@ async function runProduction(
     const recipe = productionRecipes.find((r) => r.resultado === articleCode)!;
     const shelfLife = recipe.vidaUtilDias ?? 30;
     const have = onHand.get(ids.articles.get(articleCode)!) ?? 0;
-    // Lo que dura una semana o más no se echa a perder en el estante: un
-    // jarabe o un cold brew se planifican con doble cobertura, y un día de
-    // muchas limonadas no deja la barra sin jarabe a media tarde.
-    const cover = shelfLife >= 7 ? 2 : 1;
+    // Doble cobertura para lo que dura más de un día: la demanda de un día
+    // concreto se desvía de su media, y con treinta corridas simuladas la
+    // cobertura simple dejaba sin frijol o sin jarabe un día movido. Lo que
+    // dura un solo día —el atol— no: se hace la olla del día a la medida, y lo
+    // que sobra se descarta como merma al cierre.
+    const cover = shelfLife <= 1 ? 1 : 2;
     const demand = (need.get(articleCode) ?? 0) + (counter.get(articleCode) ?? 0) * cover;
     // El dado hornea por adelantado, pero solo cuando queda menos de dos días
     // de cobertura. Sin esa condición, una preparación de vida corta se hacía
@@ -373,7 +376,7 @@ async function runProduction(
     // restaurante.
     const wellStocked = have >= demand * 2;
     const batch =
-      !wellStocked && (first || rng.chance(batchChance(shelfLife)))
+      shelfLife > 1 && !wellStocked && (first || rng.chance(batchChance(shelfLife)))
         ? recipe.rendimiento * rng.float(0.8, 1.3)
         : 0;
     let make = Math.max(batch, demand - have);
@@ -521,7 +524,12 @@ interface TicketExtras {
   clients: CustomerRef[];
   /** La mesa de una reserva que acaba de llegar. */
   seat?: Seat;
+  /** Existencia de un artículo en la ubicación, por código. */
+  onHand: (articleCode: string) => Promise<number>;
 }
+
+/** Lo que la cafetería produce en casa: lo único que el cajero ve agotarse. */
+const HOUSE_MADE: ReadonlySet<string> = new Set(productionRecipes.map((r) => r.resultado));
 
 async function runTicket(
   services: HistoryServices,
@@ -547,7 +555,34 @@ async function runTicket(
         ? rng.weighted([['PLATAFORMA', 60], ['TELEFONO', 25], ['WEB', 15]] as const)
         : rng.weighted([['CAJA', 80], ['QUIOSCO', 20]] as const);
 
-  const { lines, needsFee } = composeTicket(sellables, rng, modality);
+  const composed = composeTicket(sellables, rng, modality);
+  const { needsFee } = composed;
+  // Agotado: lo que se produce en casa y ya no alcanza no se vende. El cajero
+  // ve el pan de banano o el atol agotados y el cliente pide lo demás; antes
+  // se cobraba igual y la cocina terminaba cancelando la orden por merma. Si
+  // todo lo que quería se acabó, se lleva un café de pichel.
+  const reserved = new Map<string, number>();
+  const lines: typeof composed.lines = [];
+  for (const line of composed.lines) {
+    const wants = new Map<string, number>();
+    for (const c of saleRecipes.find((r) => r.sku === line.sellable.sku)?.componentes ?? []) {
+      if (HOUSE_MADE.has(c.articulo))
+        wants.set(c.articulo, (wants.get(c.articulo) ?? 0) + baseQty(c) * (1 + (c.merma ?? 0) / 100) * line.units);
+    }
+    const direct = products.flatMap((p) => p.variantes).find((v) => v.sku === line.sellable.sku)?.articulo;
+    if (direct && HOUSE_MADE.has(direct)) wants.set(direct, (wants.get(direct) ?? 0) + line.units);
+    let enough = true;
+    for (const [articleCode, amount] of wants) {
+      if ((await extras.onHand(articleCode)) + 1e-6 < (reserved.get(articleCode) ?? 0) + amount) enough = false;
+    }
+    if (!enough) continue;
+    for (const [articleCode, amount] of wants) reserved.set(articleCode, (reserved.get(articleCode) ?? 0) + amount);
+    lines.push(line);
+  }
+  if (!lines.length) {
+    const fallback = sellables.find((s) => s.sku === 'SKU-PICHEL-8') ?? composed.lines[0].sellable;
+    lines.push({ sellable: fallback, units: 1, mods: [] });
+  }
   const items = lines.map((line) => ({
     varianteId: line.sellable.variantId,
     cantidad: qty(line.units),
@@ -998,6 +1033,15 @@ export async function runHistory(
       }
       await stamp(openedAt, 6 * 60 + 50 + clock.int(0, 5));
 
+      const locationId = ids.locations.get(branch.codigo)!;
+      const onHand = async (articleCode: string): Promise<number> => {
+        const total = await db.existencia.aggregate({
+          where: { ubicacionId: locationId, articuloId: ids.articles.get(articleCode)! },
+          _sum: { cantidad: true },
+        });
+        return Number(total._sum.cantidad ?? 0);
+      };
+
       // Cada ticket a su minuto, en orden: el número de orden y la hora
       // avanzan juntos.
       const times = ticketTimes(target, clock);
@@ -1006,7 +1050,7 @@ export async function runHistory(
         const key = `DEMO-${branch.codigo}-${dayKey}-${n}`;
         const at = new Date();
         try {
-          if (await runTicket(services, staff, branch.codigo, branchId, shift!.shiftId, sellables, tables, ids, key, rng, { qr, clients }))
+          if (await runTicket(services, staff, branch.codigo, branchId, shift!.shiftId, sellables, tables, ids, key, rng, { qr, clients, onHand }))
             sold++;
         } catch (error) {
           // A ticket that cannot be served — an ingredient ran out mid-service —
@@ -1048,6 +1092,7 @@ export async function runHistory(
       // servicios del mes y, a mitad y a fin de período, el extracto.
       const eveningAt = new Date();
       await internalConsumption(services, ids, branch.codigo, staff.keeper, dayKey, side, note);
+      await endOfDayWaste(db, services, ids, branch.codigo, staff.keeper, dayKey, note);
       if (weekday === 0) {
         await weeklyCount(db, services, ids, branch.codigo, staff.keeper, side).catch((e) =>
           note('conteo físico', e),

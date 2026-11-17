@@ -9,10 +9,14 @@
  *  - InventoryOperationsService.createCount/confirmCount: un conteo por encima
  *    del teórico exige costo y inventory.costs.manage; las diferencias de un
  *    conteo real de cierre de semana son merma, no sobrante.
+ *  - InventoryOperationsService.manual(actor, 'WASTE', dto): la operación
+ *    «Merma» de la pantalla de inventario; sale con tipo MERMA, con lote si el
+ *    artículo lo lleva, y su clave es la del movimiento.
  */
 import type { PrismaClient } from '../../src/generated/prisma/client.js';
 import type { Principal } from '../../src/modules/auth/application/auth.service.js';
 import { articles, INTERNAL_USE } from './articles.js';
+import { productionRecipes } from './recipes.js';
 import type { MasterIds } from './masters.js';
 import type { Rng } from './runtime.js';
 
@@ -139,4 +143,48 @@ export async function weeklyCount(
   })) as { id: string };
   const confirmed = (await services.inventoryOps.confirmCount(keeper, count.id)) as { operaciones?: number };
   return confirmed?.operaciones ?? 0;
+}
+
+/**
+ * Lo que dura un solo día —el atol— y sobró, se descarta al cierre como
+ * merma, posición por posición. Sin esto el atol de días anteriores se
+ * acumulaba en el estante, porque durante la corrida el reloj real no avanza
+ * y nada llega a vencer.
+ */
+export async function endOfDayWaste(
+  db: Db,
+  services: OperationsServices,
+  ids: MasterIds,
+  branchCode: string,
+  keeper: Principal,
+  dayKey: string,
+  note: Note,
+): Promise<number> {
+  const locationId = ids.locations.get(branchCode);
+  if (!locationId) return 0;
+  let wasted = 0;
+  for (const recipe of productionRecipes) {
+    if ((recipe.vidaUtilDias ?? 30) > 1) continue;
+    const positions = await db.existencia.findMany({
+      where: { ubicacionId: locationId, articuloId: ids.articles.get(recipe.resultado)!, cantidad: { gt: 0 } },
+      select: { articuloId: true, loteId: true, cantidad: true },
+      orderBy: { loteId: 'asc' },
+    });
+    for (const [i, position] of positions.entries()) {
+      try {
+        await services.inventoryOps.manual(keeper, 'WASTE', {
+          articuloId: position.articuloId,
+          ubicacionId: locationId,
+          ...(position.loteId ? { loteId: position.loteId } : {}),
+          cantidad: position.cantidad.toFixed(),
+          claveOperacion: `DEMO-MERMA-${recipe.resultado}-${dayKey}-${i}`,
+          motivo: `${articles.find((a) => a.codigo === recipe.resultado)!.nombre} del día no vendido; se descarta al cierre`,
+        });
+        wasted++;
+      } catch (error) {
+        note('merma de cierre', error);
+      }
+    }
+  }
+  return wasted;
 }

@@ -47,6 +47,7 @@ export async function coverage(db: Db, ids: MasterIds, options: DemoOptions): Pr
     ['Conteos físicos', db.conteoInventario.count({ where: { almacen: { sucursalId: b } } }), true],
     ['Ajustes por conteo', db.ajusteInventario.count({ where: { almacen: { sucursalId: b } } }), true],
     ['Consumos internos', db.consumoInterno.count({ where: { ubicacionId: { in: locations } } }), true],
+    ['Mermas de cierre', db.movimientoInventario.count({ where: { tipo: 'MERMA', ubicacion: { almacen: { sucursalId: b } } } }), false],
     ['Turnos de caja', db.turnoCaja.count({ where: { caja: { sucursalId: b } } }), true],
     ['Cierres operativos', db.cierreOperativo.count({ where: { sucursalId: b } }), true],
     ['Gastos', db.gastoOperativo.count({ where: { sucursalId: b } }), true],

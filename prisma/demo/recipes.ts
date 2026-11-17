@@ -79,15 +79,16 @@ export const productionRecipes: DemoProductionRecipe[] = [
     ],
   },
   {
-    // Diez elotes molidos con litro y medio de leche y un litro de agua.
+    // Una olla del día: cinco elotes molidos con 750 ml de leche y medio
+    // litro de agua. Lo que no se vende se descarta al cierre como merma.
     codigo: 'REC-ATOL-ELOTE', nombre: 'Atol de elote', resultado: 'PRE-ATOL-ELOTE',
-    rendimiento: 3000, vidaUtilDias: 1,
+    rendimiento: 1500, vidaUtilDias: 1,
     componentes: [
-      { articulo: 'VER-ELOTE', cantidad: 10 },
-      { articulo: 'LAC-LECHE-ENTERA', cantidad: 1500 },
-      { articulo: 'SEC-AZUCAR', cantidad: 200 },
-      { articulo: 'SEC-CANELA-RAJA', cantidad: 2 },
-      { articulo: 'SEC-SAL', cantidad: 3 },
+      { articulo: 'VER-ELOTE', cantidad: 5 },
+      { articulo: 'LAC-LECHE-ENTERA', cantidad: 750 },
+      { articulo: 'SEC-AZUCAR', cantidad: 100 },
+      { articulo: 'SEC-CANELA-RAJA', cantidad: 1 },
+      { articulo: 'SEC-SAL', cantidad: 2 },
     ],
   },
   {

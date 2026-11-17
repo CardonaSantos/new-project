@@ -39,7 +39,7 @@ prefijo DEMO-. `--reset` ya no existe.
 ## Catálogo
 
 - **Carta publicada** (sin horario, para que el POS la muestre a cualquier
-  hora): 31 productos, 39 variantes con precio. Café caliente, café frío,
+  hora): 30 productos, 39 variantes con precio; 77 artículos de inventario. Café caliente, café frío,
   sin café, desayunos todo el día, pan y repostería, embotelladas y el cargo
   por domicilio.
 - **Toppings**: tipo de leche (sustituye la entera), shot extra, jarabes,
@@ -51,8 +51,10 @@ prefijo DEMO-. `--reset` ya no existe.
   en gramos, el café de pichel en cucharadas de café, la leche condensada,
   los jarabes, la miel y la crema en cucharadas, la vainilla en cucharaditas.
 - **Producción propia**: jarabe simple, jarabe de vainilla (lleva jarabe
-  simple), cold brew, frijol volteado, atol de elote, pan de banano (por
-  molde de 10 rebanadas) y rellenitos (por docena, llevan frijol volteado).
+  simple), cold brew, frijol volteado, atol de elote (la olla del día, a la
+  medida), pan de banano (por molde de 10 rebanadas) y rellenitos (por
+  docena, llevan frijol volteado). Lo que dura más de un día se planifica con
+  doble cobertura.
 - Costo de receta entre 10 % y 38 % del precio.
 
 ## La operación de cada día
@@ -64,9 +66,13 @@ prefijo DEMO-. `--reset` ya no existe.
 | 06:50 | cajero | apertura de caja con Q500 |
 | 07:00–18:45 | cajero y barista | ~25 tickets (sábado más que lunes), cada uno a su minuto |
 | media jornada | cajero | gasto de caja chica, tres de cada diez días |
-| 18:50 | gerente / dueño | consumo interno, conteo dominical, servicios del mes, extracto |
+| 18:50 | gerente / dueño | consumo interno, merma del atol sobrante, conteo dominical, servicios del mes, extracto |
 | 19:05 | cajero | cierre de caja con su arqueo |
 | 19:20 | dueño | cierre operativo del día |
+
+Agotados: lo que se produce en casa y ya no alcanza no se vende; el cliente
+pide lo demás, o un café de pichel si todo lo que quería se acabó. Antes se
+cobraba igual y la cocina cancelaba la orden.
 
 Modalidades: 45 % mesa (de esas, 30 % por el QR de la mesa), 15 %
 mostrador, 28 % para llevar con empaque, 12 % domicilio (propio por teléfono
@@ -91,8 +97,10 @@ vencimientos nunca.
 - `validateDemoData`: referencias, costos contra presentaciones, unidades de
   cocina en su dimensión, rutas a estación, empaque.
 - Simulación ticket por ticket de las tres semanas con las funciones reales
-  de compra: 525/525 tickets, 0 producciones fallidas; también a 15 y 40
-  tickets diarios.
+  de compra, con 30 semillas aleatorias distintas: ninguna corrida con un
+  ticket fallido, ~9 líneas agotadas por corrida de ~1,300, merma de atol
+  ~0.5 L diarios. Una sola semilla no basta: así se veía bien y en la
+  corrida real se agotó el atol.
 
 ## Fuera, y por qué
 

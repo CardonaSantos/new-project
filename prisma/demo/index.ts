@@ -1,0 +1,313 @@
+/**
+ * Entry point for the demonstration seed: Café Pepita de Oro, Antigua
+ * Guatemala, three weeks of operation in the PRINCIPAL branch.
+ *
+ *   npx prisma migrate reset
+ *   npm run seed:initial
+ *   npm run seed:demo
+ *   npm run seed:demo -- --semanas=1 --tickets=8     (prueba corta)
+ *   npm run seed:demo -- --simular
+ *
+ * Requires DEMO_SEED_ALLOW=yes and DEMO_SEED_PASSWORD on the machine being
+ * seeded. Runs on a freshly initialised database only, and never deletes
+ * anything: it refuses if the catalog already exists.
+ *
+ * The transactional phases drive the application's own services through a
+ * standalone Nest context, so what the demo shows is what the system
+ * computes. Masters go in directly; see masters.ts for why.
+ */
+// Nest reads the constructor metadata this installs, so it comes before any
+// module is imported. Compilation is tsc's, not tsx's, for the same reason:
+// see run.mjs.
+import 'reflect-metadata';
+// Loaded before the guard reads process.env: the variables that authorise this
+// run are most conveniently kept in .env, and on Windows the alternative is
+// remembering that cmd wants `set` where a shell wants `export`.
+import 'dotenv/config';
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from '../../src/app.module.js';
+import { PrismaService } from '../../src/infrastructure/database/prisma/prisma.service.js';
+import { OrderService } from '../../src/modules/orders/application/order.service.js';
+import { KitchenService } from '../../src/modules/orders/application/kitchen.service.js';
+import { CashService } from '../../src/modules/payments/application/cash.service.js';
+import { PaymentsService } from '../../src/modules/payments/application/payments.service.js';
+import { RecipeService } from '../../src/modules/recipes/application/recipe.service.js';
+import { FinanceService } from '../../src/modules/finance/application/finance.service.js';
+import { DeliveryService } from '../../src/modules/delivery/application/delivery.service.js';
+import { FinanceClosingService } from '../../src/modules/finance/application/finance-closing.service.js';
+import { FinanceBankService } from '../../src/modules/finance/application/finance-bank.service.js';
+import { PurchaseOrdersService } from '../../src/modules/purchases/application/purchase-orders.service.js';
+import { PurchaseReceiptsService } from '../../src/modules/purchases/application/purchase-receipts.service.js';
+import { PurchaseInvoicesService } from '../../src/modules/purchases/application/purchase-invoices.service.js';
+import { PurchasePaymentsService } from '../../src/modules/purchases/application/purchase-payments.service.js';
+import { SelfServiceService } from '../../src/modules/self-service/application/self-service.service.js';
+import { InventoryInternalConsumptionService } from '../../src/modules/inventory/application/inventory-internal-consumption.service.js';
+import { InventoryOperationsService } from '../../src/modules/inventory/application/inventory-operations.service.js';
+import { MediaService } from '../../src/modules/media/application/media.service.js';
+import { CatalogService } from '../../src/modules/catalog/application/catalog.service.js';
+import { productImage } from './images.js';
+import { products } from './products.js';
+import { assertAllowed, parseOptions, progress } from './runtime.js';
+import { validateDemoData } from './validate.js';
+import { writeMasters } from './masters.js';
+import { restockBranch, stockBranches } from './purchases.js';
+import { asPrincipal, runHistory } from './history.js';
+import { auditDates, marker, shiftSince } from './backdate.js';
+import { coverage, coverageReport } from './coverage.js';
+
+async function main(): Promise<void> {
+  const options = parseOptions(process.argv.slice(2));
+  assertAllowed(process.env);
+
+  // Data problems are caught before a connection is opened: a referential
+  // mistake otherwise surfaces as a half-written database partway into a run
+  // that takes the better part of an hour.
+  const problems = validateDemoData();
+  if (problems.length) {
+    process.stderr.write(`Los datos del demo tienen ${problems.length} problemas:\n`);
+    for (const problem of problems) process.stderr.write('  - ' + problem + '\n');
+    process.exit(1);
+  }
+  progress('maestros', `datos verificados; fases: ${options.fases.join(', ')}`);
+
+  if (options.simular) {
+    process.stdout.write(
+      `Simulación: ${options.fases.join(', ')} sobre ` +
+        `${options.sucursales.length ? options.sucursales.join(', ') : 'la cafetería'}, ` +
+        `${options.semanas} semanas, ~${options.tickets} tickets/día.\n` +
+        'No se escribió nada.\n',
+    );
+    return;
+  }
+
+  const app = await NestFactory.createApplicationContext(AppModule, {
+    logger: ['error', 'warn'],
+  });
+  const db = app.get(PrismaService);
+
+  try {
+    // La semilla escribe el catálogo con los códigos del negocio, sin marcas de
+    // demo, así que no tiene cómo distinguir lo suyo de lo ajeno: corre solo
+    // sobre una base recién preparada, y nunca borra nada.
+    if (options.fases.includes('maestros') && (await db.producto.count()) > 0) {
+      throw Error(
+        'La base ya tiene catálogo. La semilla de demostración corre sobre una base recién preparada:\n' +
+          '  npx prisma migrate reset\n  npm run seed:initial\n  npm run seed:demo',
+      );
+    }
+
+    // The business owner does the buying and signs the closings; the branch
+    // staff created by the masters phase do the daily work, so the audit trail
+    // reads like a business rather than one account doing everything.
+    const adminRow = await db.usuario.findFirst({
+      where: { usuarioRolesComoUsuario: { some: { rol: { codigo: 'SUPER_ADMIN' } } }, activo: true },
+      orderBy: { creadoEn: 'asc' },
+    });
+    if (!adminRow)
+      throw Error('No hay un usuario SUPER_ADMIN: ejecute primero "npm run seed:initial".');
+    const admin = asPrincipal(adminRow.id, adminRow.email);
+
+    const started = marker();
+    // Se informa al final, después de la auditoría de fechas: si falta algo,
+    // las dos cosas ayudan a encontrar por qué.
+    let uncovered: string[] = [];
+    // Lo de hoy —la reposición y la producción de la mañana— es de hoy a
+    // propósito: la auditoría de fechas termina donde empieza.
+    let todayFrom: Date | undefined;
+    let ids = null as Awaited<ReturnType<typeof writeMasters>> | null;
+
+    if (options.fases.includes('maestros')) {
+      // Desde que la semilla inicial creó la empresa: la instalación entera y
+      // los maestros se fechan juntos, diez días antes de que empiece la
+      // operación, como un negocio que abrió, configuró y después vendió.
+      const company = await db.empresaConfiguracion.findFirst({ select: { creadoEn: true } });
+      ids = await writeMasters(db, options, process.env.DEMO_SEED_PASSWORD!);
+
+      // Las fotos del catálogo. El POS y el autoservicio solo muestran un
+      // producto con imagen confirmada: sin esto la carta publicada sale vacía
+      // («No hay carta publicada para esta sucursal y horario»). Se suben y se
+      // vinculan como desde la pantalla de producto: MediaService.upload,
+      // pública para que el menú del QR la vea, y CatalogService.replaceMedia.
+      const media = app.get(MediaService);
+      const catalog = app.get(CatalogService);
+      let photos = 0;
+      for (const product of products) {
+        const png = productImage(product.codigo);
+        if (!png) continue;
+        const row = await db.producto.findUnique({ where: { codigo: product.codigo }, select: { id: true } });
+        if (!row) continue;
+        try {
+          const uploaded = await media.upload(admin, {
+            file: png,
+            declaredMime: 'image/png',
+            name: `${product.codigo.toLowerCase()}.png`,
+            contexto: 'PRODUCTO',
+            sucursalId: null,
+            publico: true,
+          });
+          await catalog.replaceMedia(admin, 'product', row.id, [uploaded.id]);
+          photos++;
+        } catch (error) {
+          throw Error(
+            `No se pudo subir la foto de ${product.nombre} a DigitalOcean Spaces: ${(error as Error).message}. ` +
+              'Revise DO_SPACES_* en el .env: sin fotos el POS no muestra la carta.',
+            { cause: error },
+          );
+        }
+      }
+      progress('maestros', `${photos} fotos de producto subidas y vinculadas`);
+
+      if (company) {
+        const setupFrom = new Date(company.creadoEn.getTime() - 5000);
+        const opened = options.semanas * 7 + 10;
+        const moved = await shiftSince(db, setupFrom, opened, 0, { dates: true });
+        progress('maestros', `configuración fechada ${opened} días atrás (${moved} columnas)`);
+      }
+    } else {
+      // Later phases need the id maps, and rebuilding them is just the masters
+      // phase again: upserts, so it costs little and keeps them honest.
+      progress('compras', 'reconstruyendo identificadores desde los maestros');
+      ids = await writeMasters(db, options, process.env.DEMO_SEED_PASSWORD!);
+    }
+
+    // El QR de cada mesa lo emite el gerente desde Mesas; issueTableQr desactiva
+    // el anterior de esa mesa, así que repetirlo en otra corrida solo rota el
+    // código. Sin estos tokens los pedidos QR de la historia no tienen por
+    // dónde entrar.
+    const issueQr = async (): Promise<void> => {
+      const selfService = app.get(SelfServiceService);
+      for (const [branchCode, tableIds] of ids!.tables) {
+        const managerId = ids!.staff.get(branchCode)?.get('ADMIN_SUCURSAL');
+        if (!managerId || !tableIds.length) continue;
+        const manager = asPrincipal(managerId, 'gerente@demo.local');
+        const issued: { mesaId: string; token: string }[] = [];
+        for (const mesaId of tableIds) {
+          const qr = await selfService.issueTableQr(manager, mesaId);
+          issued.push({ mesaId, token: qr.token });
+        }
+        ids!.qrTokens.set(branchCode, issued);
+      }
+      progress('maestros', `QR emitidos para ${[...ids!.qrTokens.values()].reduce((n, l) => n + l.length, 0)} mesas`);
+    };
+
+    const purchaseServices = () => ({
+      orders: app.get(PurchaseOrdersService) as never,
+      receipts: app.get(PurchaseReceiptsService) as never,
+      invoices: app.get(PurchaseInvoicesService) as never,
+      payments: app.get(PurchasePaymentsService) as never,
+    });
+
+    if (options.fases.includes('compras')) {
+      // El abastecimiento inicial se fecha antes de que el período empiece.
+      // Sin esto las órdenes de compra, las recepciones, las facturas y los
+      // pagos a proveedor quedaban con la fecha de hoy mientras las ventas se
+      // extendían ocho semanas hacia atrás: el demo mostraba un negocio que
+      // compró hoy lo que llevaba dos meses vendiendo. El reajuste está
+      // acotado al instante en que corre, de modo que los vencimientos de lote
+      // —que apuntan al futuro a propósito— no se mueven.
+      const beforeStock = marker();
+      // Dentro de la marca: el QR queda fechado con la apertura, antes del mes.
+      await issueQr();
+      await stockBranches(db, purchaseServices(), admin, ids, options);
+      const moved = await shiftSince(db, beforeStock, options.semanas * 7 + 2, 0, { dates: true });
+      progress('compras', `abastecimiento fechado ${options.semanas * 7 + 2} días atrás (${moved} columnas)`);
+    }
+
+    if (options.fases.includes('historia')) {
+      if (![...ids.qrTokens.values()].some((l) => l.length)) await issueQr();
+      const payments = app.get(PaymentsService) as never;
+      todayFrom = await runHistory(
+        db,
+        {
+          orders: app.get(OrderService) as never,
+          kitchen: app.get(KitchenService) as never,
+          accounts: payments,
+          cash: app.get(CashService) as never,
+          recipes: app.get(RecipeService) as never,
+          inventory: payments,
+          finance: app.get(FinanceService) as never,
+          delivery: app.get(DeliveryService) as never,
+          closing: app.get(FinanceClosingService) as never,
+          selfService: app.get(SelfServiceService) as never,
+          consumption: app.get(InventoryInternalConsumptionService) as never,
+          inventoryOps: app.get(InventoryOperationsService) as never,
+          bank: app.get(FinanceBankService) as never,
+        },
+        ids,
+        options,
+        admin,
+        // La reposición semanal corre dentro de la historia, al abrir cada
+        // semana: así cada ciclo queda fechado en su lunes por el reajuste
+        // diario, y compra solo el déficit contra lo que de verdad quedó.
+        (branchCode, week) => restockBranch(db, purchaseServices(), admin, ids, branchCode, week, options),
+      );
+
+      // Lo que el cliente debería encontrar, contado. Una tabla vacía que la
+      // corrida tenía que llenar es un fallo, no un «listo».
+      // Lo que el cajero verá al abrir el POS: la misma consulta que usan el
+      // punto de venta y el menú del QR, con el reloj de ahora.
+      const rows = await coverage(db, ids, options);
+      for (const [branchCode, branchId] of ids.branches) {
+        if (options.sucursales.length && !options.sucursales.includes(branchCode)) continue;
+        const menu = (await app.get(CatalogService).branchMenu(admin, branchId)) as {
+          menus?: { secciones?: { items?: unknown[] }[] }[];
+        };
+        const visible = (menu?.menus ?? []).flatMap((m) => (m.secciones ?? []).flatMap((sec) => sec.items ?? [])).length;
+        rows.push({ label: 'Productos en la carta del POS ahora', count: visible, required: true });
+      }
+      const report = coverageReport(rows);
+      process.stdout.write(`\nCobertura del demo:\n${report.text}\n`);
+      uncovered = report.missing;
+    }
+
+    // Anything still stamped after the run began is a column the shift missed,
+    // and it shows up as one corner of the demo dated today while everything
+    // around it sits weeks back. Reported rather than thrown: the data is
+    // usable, and knowing which table is off is what makes it fixable.
+    const leftovers = await auditDates(db, started, new Set(), todayFrom);
+    if (leftovers.length) {
+      process.stdout.write('\nColumnas que quedaron con fecha de esta corrida:\n');
+      for (const { table, column, rows } of leftovers)
+        process.stdout.write(`  ${table}.${column}: ${rows} filas\n`);
+      process.stdout.write(
+        'Las de maestros y catálogo son esperadas; si aparece una tabla de operación, avise.\n',
+      );
+    }
+
+    if (uncovered.length) {
+      throw Error(
+        `El demo quedó sin: ${uncovered.join(', ')}. Las causas están en los fallos tolerados de arriba.`,
+      );
+    }
+
+    process.stdout.write(
+      `\nListo: Café Pepita de Oro, Antigua Guatemala, ${options.semanas * 7} días de operación.\n` +
+        `Usuarios, con la contraseña de DEMO_SEED_PASSWORD:\n` +
+        `  gerente@demo.local  (Lucía Morales, gerente)\n` +
+        `  cajero@demo.local   (Diego Ajú, cajero)\n` +
+        `  barista@demo.local  (Andrea Xocop, barista)\n` +
+        `El dueño es el administrador de la semilla inicial.\n`,
+    );
+  } finally {
+    await app.close();
+  }
+}
+
+main().catch((error: unknown) => {
+  process.stderr.write(`\nLa semilla de demostración falló: ${(error as Error).message}\n`);
+  // The stack matters here: this runs unattended for the better part of an
+  // hour and the message alone rarely says which phase gave up.
+  if (error instanceof Error && error.stack) process.stderr.write(error.stack + '\n');
+  // And the cause matters more than the message: a service reports a unique
+  // violation and a serialisation failure with the same words, so without the
+  // Prisma error underneath there is no way to tell a real race from a
+  // duplicate that will never succeed however many times it is retried.
+  for (let cause = (error as Error)?.cause; cause; cause = (cause as Error)?.cause) {
+    const e = cause as Error & { code?: string; meta?: unknown };
+    process.stderr.write(
+      `\nCausa: ${e.code ? e.code + ' ' : ''}${e.message}` +
+        (e.meta ? `\n  ${JSON.stringify(e.meta)}\n` : '\n'),
+    );
+  }
+  process.exit(1);
+});

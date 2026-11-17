@@ -1,0 +1,449 @@
+#!/usr/bin/env python3
+"""
+Verifica el uso del esquema sin compilar ni conectarse a la base.
+
+Existe porque la semilla se escribe en un entorno sin node_modules ni
+PostgreSQL: sin esto, un campo mal escrito o una clave compuesta inventada
+solo aparece cuando la corrida lleva media hora. Contrasta cada escritura de
+Prisma contra schema.prisma: que el modelo exista, que el `where` use una
+clave realmente unique, que todo campo enviado exista, y que ningun `create`
+omita un campo obligatorio sin default.
+
+Uso:  python3 prisma/demo/check-schema-usage.py prisma/demo/*.ts prisma/seed.ts
+      (el SQL del reset se revisa siempre, no hace falta pasarlo)
+"""
+import os, re, sys
+schema = open('prisma/schema.prisma').read()
+models, uniques = {}, {}
+for m in re.finditer(r'^model (\w+) \{(.*?)^\}', schema, re.S | re.M):
+    name, body = m.group(1), m.group(2)
+    models[name] = set(re.findall(r'^[ \t]+(\w+)\s+\w', body, re.M))
+    us = ['_'.join(x.strip() for x in u.split(',')) for u in re.findall(r'@@unique\(\[([^\]]+)\]', body)]
+    us += ['_'.join(x.strip() for x in u.split(',')) for u in re.findall(r'@@id\(\[([^\]]+)\]', body)]
+    us += re.findall(r'^[ \t]+(\w+)\s+\w+[^\n]*@unique', body, re.M)
+    uniques[name] = set(us)
+
+def pascal(x): return x[0].upper() + x[1:]
+
+def balanced(src, i):
+    """Devuelve el contenido del objeto que abre en src[i] == '{'."""
+    depth, j = 0, i
+    while j < len(src):
+        if src[j] == '{': depth += 1
+        elif src[j] == '}':
+            depth -= 1
+            if depth == 0: return src[i+1:j], j
+        j += 1
+    raise ValueError('sin cerrar')
+
+def top_keys(obj):
+    """Claves de primer nivel, incluyendo propiedades abreviadas (`campo,`)."""
+    segments, depth, start = [], 0, 0
+    for i, c in enumerate(obj):
+        if c in '{[(': depth += 1
+        elif c in '}])': depth -= 1
+        elif c == ',' and depth == 0:
+            segments.append(obj[start:i]); start = i + 1
+    segments.append(obj[start:])
+    keys = []
+    for seg in segments:
+        seg = seg.strip()
+        if not seg or seg.startswith('//') or seg.startswith('...'): continue
+        seg = re.sub(r'^(?://.*\n)+', '', seg).strip()
+        m = re.match(r'(\w+)\s*:', seg)
+        if m: keys.append(m.group(1))
+        elif re.fullmatch(r'\w+', seg): keys.append(seg)
+    return keys
+
+def sub_object(obj, key):
+    m = re.search(r'\b'+key+r':\s*\{', obj)
+    if not m: return None
+    return balanced(obj, m.end()-1)[0]
+
+fails = []
+for path in sys.argv[1:]:
+    src = open(path).read()
+    writes = 0
+    for m in re.finditer(r'\b(?:db|tx)\.(\w+)\.(upsert|create|update|updateMany|createMany)\(\s*\{', src):
+        model = pascal(m.group(1))
+        if model not in models:
+            fails.append(f'{path}: modelo inexistente {model}'); continue
+        obj, _ = balanced(src, m.end()-1)
+        writes += 1
+        # clave del where
+        where = sub_object(obj, 'where')
+        if where:
+            for k in top_keys(where):
+                if k not in uniques[model] and k not in models[model]:
+                    fails.append(f'{path}: {model}.where.{k} no es unique ni campo (uniques: {sorted(uniques[model])})')
+        for section in ('data', 'create', 'update'):
+            body = sub_object(obj, section)
+            if body is None: continue
+            for k in top_keys(body):
+                if k not in models[model]:
+                    fails.append(f'{path}: {model}.{section}.{k} no existe')
+    print(f'{path}: {writes} escrituras verificadas')
+print('\n'.join(sorted(set(fails))) if fails else 'Todos los modelos, claves y campos existen en el esquema.')
+
+# --- campos obligatorios ausentes en los create ---
+required = {}
+for m in re.finditer(r'^model (\w+) \{(.*?)^\}', schema, re.S | re.M):
+    name, body = m.group(1), m.group(2)
+    req = []
+    for line in body.splitlines():
+        fm = re.match(r'[ \t]+(\w+)\s+(\w+)(\[\])?(\?)?(.*)$', line)
+        if not fm: continue
+        field, typ, lst, opt, rest = fm.groups()
+        if lst or opt: continue
+        if '@default' in rest or '@id' in rest or '@updatedAt' in rest or '@relation' in rest: continue
+        if typ in models or typ in ('Json',) and False: continue
+        req.append(field)
+    required[name] = req
+
+missing = []
+for path in sys.argv[1:]:
+    src = open(path).read()
+    for m in re.finditer(r'\b(?:db|tx)\.(\w+)\.(upsert|create)\(\s*\{', src):
+        model = pascal(m.group(1))
+        if model not in models: continue
+        obj, _ = balanced(src, m.end()-1)
+        body = sub_object(obj, 'create') if m.group(2) == 'upsert' else sub_object(obj, 'data')
+        if body is None: continue
+        provided = set(top_keys(body))
+        for field in required[model]:
+            # una relación anidada cubre su FK (perfil: { create: {} } cubre usuarioId)
+            if field not in provided and field.replace('Id','') not in provided:
+                missing.append(f'{path}: {model}.create no envía "{field}" (obligatorio sin default)')
+print('\n'.join(sorted(set(missing))) if missing else 'Ningún create omite un campo obligatorio.')
+
+# --- rutas de importación ---------------------------------------------------
+# Las rutas al código de la app se escribieron sin poder resolverlas: este
+# chequeo las contrasta con el arbol real. Las de src/generated se omiten
+# porque las crea `prisma generate` y no existen hasta entonces.
+import os, glob
+rotas = []
+for f in sorted(glob.glob('prisma/demo/*.ts')) + ['prisma/seed.ts', 'prisma/seed-roles.ts']:
+    if not os.path.isfile(f): continue
+    for imp in re.findall(r"from '(\.[^']+)'", open(f, encoding='utf-8').read()):
+        if 'src/generated/' in imp: continue
+        real = os.path.normpath(os.path.join(os.path.dirname(f), imp)).replace('.js', '.ts')
+        if not os.path.isfile(real): rotas.append(f'{f} -> {imp}')
+print('\n'.join('ruta inexistente: ' + r for r in rotas) if rotas else 'Todas las rutas de importación resuelven.')
+
+# --- filtros where, en profundidad y también en las lecturas -----------------
+# El bloque de arriba solo miraba las escrituras, y solo el primer nivel del
+# where. Un findFirst sobre `usuarioRoles` —que en este esquema se llama
+# `usuarioRolesComoUsuario`, porque las relaciones inversas llevan el sufijo
+# del campo que las origina— pasaba sin que nadie dijera nada. Esto recorre
+# cada where entrando por las relaciones, con el modelo que corresponde a cada
+# salto. Limitación: toma el where de primer nivel de cada llamada, no los que
+# van dentro de una escritura anidada.
+relations = {}
+for m in re.finditer(r'^model (\w+) \{(.*?)^\}', schema, re.S | re.M):
+    relations[m.group(1)] = {
+        f: t for f, t in re.findall(r'^[ \t]+(\w+)\s+(\w+)', m.group(2), re.M) if t in models
+    }
+
+OPS = {'AND', 'OR', 'NOT', 'some', 'every', 'none', 'is', 'isNot'}       # siguen en el modelo
+LEAF = {'equals', 'not', 'in', 'notIn', 'lt', 'lte', 'gt', 'gte', 'contains',
+        'startsWith', 'endsWith', 'mode', 'search', 'has', 'hasEvery', 'hasSome', 'isEmpty'}
+
+def top_entries(obj):
+    """[(clave, texto del valor)] del primer nivel."""
+    out, depth, start = [], 0, 0
+    segs = []
+    for i, c in enumerate(obj):
+        if c in '{[(': depth += 1
+        elif c in '}])': depth -= 1
+        elif c == ',' and depth == 0:
+            segs.append(obj[start:i]); start = i + 1
+    segs.append(obj[start:])
+    for seg in segs:
+        seg = re.sub(r'^(?:\s*//.*\n)+', '', seg).strip()
+        if not seg or seg.startswith('...'): continue
+        m = re.match(r'(\w+)\s*:\s*(.*)', seg, re.S)
+        if m: out.append((m.group(1), m.group(2).strip()))
+        elif re.fullmatch(r'\w+', seg): out.append((seg, ''))
+    return out
+
+def check_where(path, model, obj, trail):
+    for key, value in top_entries(obj):
+        inner = balanced(value, 0)[0] if value.startswith('{') else None
+        if key in LEAF: continue
+        if key in OPS:
+            if inner is not None: check_where(path, model, inner, trail)
+            continue
+        if key in uniques.get(model, ()) and '_' in key:        # clave compuesta
+            if inner is not None:
+                for part, _ in top_entries(inner):
+                    if part not in models[model]:
+                        fails2.append(f'{path}: {trail}.{key}.{part} no existe en {model}')
+            continue
+        if key not in models.get(model, ()):
+            near = [f for f in models.get(model, ()) if f.lower().startswith(key.lower()[:6])]
+            hint = f' ¿{near[0]}?' if near else ''
+            fails2.append(f'{path}: {trail}.{key} no existe en {model}.{hint}')
+            continue
+        target = relations.get(model, {}).get(key)
+        if target and inner is not None:
+            check_where(path, target, inner, f'{trail}.{key}')
+
+fails2, checked = [], 0
+READS = r'find(?:First|Unique|Many)|count|aggregate|groupBy|delete|deleteMany|update|updateMany|upsert'
+for path in sys.argv[1:]:
+    src = open(path, encoding='utf-8').read()
+    for m in re.finditer(r'\b(?:db|tx)\.(\w+)\.(?:' + READS + r')\(\s*\{', src):
+        model = pascal(m.group(1))
+        if model not in models: continue
+        obj, _ = balanced(src, m.end() - 1)
+        for key, value in top_entries(obj):
+            if key == 'where' and value.startswith('{'):
+                checked += 1
+                check_where(path, model, balanced(value, 0)[0], f'{model}.where')
+print(f'{checked} filtros where recorridos')
+print('\n'.join(sorted(set(fails2))) if fails2 else 'Todas las claves de los where existen en su modelo.')
+
+# --- reset (si existe) -----------------------------------------------------
+# La semilla de la cafetería corre sobre una base recién preparada y no borra
+# nada; si algún día vuelve a haber un reset.ts, se revisa como antes.
+if os.path.exists('prisma/demo/reset.ts'):
+    # --- SQL crudo del reset ----------------------------------------------------
+    # reset.ts no pasa por el cliente de Prisma: son 74 DELETE escritos a mano,
+    # y hasta ahora nadie los contrastaba con nada. Un `sucursalId` en una tabla
+    # que se ancla por `cuentaId` solo aparecia al ejecutar el reset, que es
+    # justo cuando ya no se puede volver atras. Esto expande las plantillas,
+    # resuelve los alias y exige que cada columna exista en la tabla que le
+    # corresponde.
+    reset_src = open('prisma/demo/reset.ts', encoding='utf-8').read()
+    def sql_template(src, i):
+        """Cuerpo de la plantilla que abre en src[i] == '`', con ${} anidados.
+
+        Las sentencias que arman listas de nombres contienen plantillas dentro de
+        la interpolación, y un regex hasta el siguiente backtick las parte por la
+        mitad: aparecían como "interpolación no expandida", que era el verificador
+        rindiéndose, no un error del SQL.
+        """
+        depth, j = 0, i + 1
+        while j < len(src):
+            if src[j] == '\\': j += 2; continue
+            if src[j:j+2] == '${': depth += 1; j += 2; continue
+            if src[j] == '}' and depth: depth -= 1
+            elif src[j] == '`' and not depth: return src[i+1:j], j
+            j += 1
+        raise ValueError('plantilla sin cerrar')
+
+    statements_sql = []
+    for m in re.finditer(r"\{\s*label:\s*'([^']+)',\s*sql:\s*", reset_src):
+        body, _ = sql_template(reset_src, m.end())
+        body = body.replace("${inBranch()}", '"sucursalId" IN (\'x\')')
+        body = re.sub(r"\$\{inBranch\('(\w+)'\)\}", lambda g: f'"{g.group(1)}" IN (\'x\')', body)
+        # Las listas de nombres que el reset arma desde los datos del demo valen
+        # como un literal: lo que se verifica son las tablas y las columnas.
+        body = re.sub(r'\$\{(?:[^{}]|\{[^{}]*\})*\}', "'x'", body)
+        statements_sql.append((m.group(1), body))
+
+    def scope_at(sql):
+        """Para cada posición del SQL, el ámbito al que pertenece.
+
+        Un `(SELECT` abre uno y su paréntesis lo cierra. Partir el texto por
+        `(SELECT` sin cerrar nada dejaba todo lo que viniera después dentro de la
+        subconsulta: por eso `articuloResultadoId`, que es columna de Receta y
+        está detrás de una subconsulta, se reportaba como inexistente.
+        """
+        scopes, stack, owner, opens = [set()], [0], [0] * len(sql), []
+        for i, c in enumerate(sql):
+            if c == '(':
+                if sql[i + 1:i + 8].upper() == 'SELECT ':
+                    scopes.append(set()); stack.append(len(scopes) - 1); opens.append(True)
+                else: opens.append(False)
+            elif c == ')' and opens:
+                if opens.pop() and len(stack) > 1: stack.pop()
+            owner[i] = stack[-1]
+        return scopes, owner
+
+    sql_fails = []
+    for label, sql in statements_sql:
+        if '${' in sql:
+            sql_fails.append(f'{label}: interpolación no expandida, revise el verificador'); continue
+        target = re.search(r'DELETE FROM "(\w+)"', sql)
+        tables = set(re.findall(r'(?:FROM|JOIN)\s+"(\w+)"', sql)) | ({target.group(1)} if target else set())
+        for t in sorted(tables):
+            if t not in models: sql_fails.append(f'{label}: la tabla {t} no es un modelo')
+        scopes, owner = scope_at(sql)
+        parents = {}
+        if target: scopes[0].add(target.group(1))
+        aliases = {}
+        for m in re.finditer(r'(?:FROM|JOIN)\s+"(\w+)"(?:\s+(?:AS\s+)?(\w+))?', sql):
+            scopes[owner[m.start()]].add(m.group(1))
+            if m.group(2) and m.group(2).upper() not in ('ON', 'WHERE'): aliases[m.group(2)] = m.group(1)
+
+        def visible(pos):
+            """Las tablas del ámbito y las de los que lo contienen."""
+            seen, k = set(), owner[pos]
+            seen |= scopes[k]
+            return seen | scopes[0]
+
+        for m in re.finditer(r'\b(\w+)\."(\w+)"', sql):
+            t = aliases.get(m.group(1))
+            if t and m.group(2) not in models.get(t, ()):
+                sql_fails.append(f'{label}: {t}.{m.group(2)} no existe (alias {m.group(1)})')
+        for m in re.finditer(r'(?<![.\w])"(\w+)"', sql):
+            col = m.group(1)
+            if col in tables: continue
+            here = visible(m.start())
+            if not any(col in models.get(t, ()) for t in here):
+                sql_fails.append(f'{label}: la columna {col} no existe en {sorted(here)}')
+        for m in re.finditer(r'(?:WHERE|AND)\s+(\w+)\s+(?:LIKE|IN|=)', sql):
+            here = visible(m.start())
+            if not any(m.group(1) in models.get(t, ()) for t in here):
+                sql_fails.append(f'{label}: la columna {m.group(1)} no existe en {sorted(here)}')
+    print(f'{len(statements_sql)} sentencias del reset revisadas')
+    print('\n'.join(dict.fromkeys(sql_fails)) if sql_fails else 'Todas las columnas del reset existen en su tabla.')
+
+    # --- orden de borrado -------------------------------------------------------
+    # Casi toda llave foránea de este esquema es Restrict, así que el orden del
+    # reset no es un detalle: un DELETE adelantado falla a mitad de camino y deja
+    # la base ni sembrada ni limpia. Verificarlo a ojo sobre 73 sentencias no es
+    # verificarlo. Esto construye el grafo de dependencias y exige que quien
+    # apunta se borre antes que el apuntado.
+    fks = []   # (hijo, padre, onDelete)
+    for m in re.finditer(r'^model (\w+) \{(.*?)^\}', schema, re.S | re.M):
+        child, body = m.group(1), m.group(2)
+        for rel in re.finditer(r'^[ \t]+\w+\s+(\w+)(\?)?\s+@relation\(([^)]*)\)', body, re.M):
+            parent, optional, args = rel.group(1), bool(rel.group(2)), rel.group(3)
+            if parent not in models or 'fields:' not in args: continue
+            od = re.search(r'onDelete:\s*(\w+)', args)
+            fks.append((child, parent, od.group(1) if od else ('SetNull' if optional else 'Restrict')))
+
+    first, last = {}, {}
+    for i, (label, sql) in enumerate(statements_sql):
+        t = re.search(r'DELETE FROM "(\w+)"', sql)
+        if not t: continue
+        first.setdefault(t.group(1), i)
+        last[t.group(1)] = i
+
+    order_fails, never = [], set()
+    for child, parent, od in fks:
+        if od in ('Cascade', 'SetNull', 'SetDefault'): continue
+        if parent not in first: continue                      # el padre no se borra
+        if child not in first:
+            never.add(f'  {child} apunta a {parent} con {od} y nunca se borra')
+            continue
+        if child == parent: continue
+        if last[child] > first[parent]:
+            order_fails.append(
+                f'  {child} debe borrarse antes de {parent} ({od}): '
+                f'{child} va en la sentencia {last[child] + 1}, {parent} en la {first[parent] + 1}')
+    print(f'{len(fks)} llaves foráneas en el grafo')
+    if order_fails:
+        print('Orden de borrado incorrecto:'); print('\n'.join(dict.fromkeys(order_fails)))
+    else:
+        print('El orden de borrado respeta todas las llaves foráneas.')
+    if never:
+        print('Tablas que referencian algo borrado y no se borran (revise si el demo las escribe):')
+        print('\n'.join(sorted(never)))
+
+else:
+    print('Sin reset: la semilla corre sobre una base recién preparada y no borra nada.')
+
+# --- identificadores y exportaciones ---------------------------------------
+# Esta semilla se escribe sin node_modules, así que no hay `tsc` a mano: una
+# función usada sin importar solo aparece cuando la corrida ya va por la mitad.
+# Dos comprobaciones precisas, sin adivinar: que todo lo que se llama como
+# función esté definido o importado, y que todo nombre importado de un módulo
+# hermano exista de verdad en él.
+def strip_noise(src):
+    """Quita comentarios y texto de cadenas, conservando lo de dentro de ${}."""
+    out, i, n = [], 0, len(src)
+    while i < n:
+        c = src[i]
+        if src[i:i+2] == '//':
+            i = src.find('\n', i); i = n if i < 0 else i
+        elif src[i:i+2] == '/*':
+            j = src.find('*/', i + 2); i = n if j < 0 else j + 2
+        elif c in '\'"':
+            i += 1
+            while i < n and src[i] != c:
+                i += 2 if src[i] == '\\' else 1
+            i += 1
+        elif c == '`':
+            i += 1
+            while i < n and src[i] != '`':
+                if src[i:i+2] == '${':
+                    depth, i = 1, i + 2
+                    while i < n and depth:
+                        if src[i] == '{': depth += 1
+                        elif src[i] == '}': depth -= 1
+                        if depth: out.append(src[i])
+                        i += 1
+                    out.append(' ')
+                else:
+                    i += 2 if src[i] == '\\' else 1
+            i += 1
+        else:
+            out.append(c); i += 1
+    return ''.join(out)
+
+KEYWORDS = {
+    'if','for','while','switch','catch','return','typeof','await','new','function',
+    'async','do','else','throw','delete','void','in','of','instanceof','case','yield',
+    'super','this','import','export','const','let','var','class','extends','set','get',
+    'constructor','readonly','private','public','protected','static','declare','satisfies',
+}
+GLOBALS = {
+    'console','Math','JSON','Object','Array','Map','Set','Number','String','Boolean',
+    'Date','Error','Promise','process','Buffer','Float32Array','Uint32Array','Uint8Array','Symbol','BigInt','RegExp','parseInt',
+    'parseFloat','isNaN','structuredClone','crypto','globalThis','require','TextEncoder',
+    'TextDecoder','URL','AbortController','setTimeout','clearTimeout','setInterval',
+}
+
+exports_of, sources = {}, {}
+for f in glob.glob('prisma/demo/*.ts') + ['prisma/seed-roles.ts', 'prisma/seed.ts']:
+    src = open(f, encoding='utf-8').read()
+    sources[f] = src
+    names = set(re.findall(r'^export\s+(?:async\s+)?(?:function|const|let|var|class|interface|type|enum)\s+(\w+)', src, re.M))
+    for group in re.findall(r'^export\s*\{([^}]*)\}', src, re.M):
+        names |= {part.strip().split(' as ')[-1].strip() for part in group.split(',') if part.strip()}
+    exports_of[os.path.basename(f)] = names
+
+id_fails = []
+for f, src in sources.items():
+    code = strip_noise(src)
+    declared = set(KEYWORDS) | set(GLOBALS)
+    # importados
+    for group, module in re.findall(r'import\s+(?:type\s+)?\{([^}]*)\}\s*from\s*[\'"]([^\'"]+)', src):
+        imported = {p.strip().replace('type ', '').split(' as ')[-1].strip() for p in group.split(',') if p.strip()}
+        declared |= imported
+        target = os.path.basename(module).replace('.js', '.ts')
+        if module.startswith('.') and target in exports_of:
+            for name in imported:
+                if name and name not in exports_of[target]:
+                    id_fails.append(f'{f}: importa {name} de {target}, que no lo exporta')
+    declared |= set(re.findall(r'import\s+(\w+)\s+from', src))
+    declared |= set(re.findall(r'import\s*\*\s*as\s+(\w+)', src))
+    # declarados y parámetros, en cualquier ámbito
+    declared |= set(re.findall(r'\b(?:function|class|interface|type|enum)\s+(\w+)', code))
+    declared |= set(re.findall(r'\b(?:const|let|var)\s+(\w+)', code))
+    for group in re.findall(r'\b(?:const|let|var)\s*\{([^}]*)\}', code):
+        declared |= {p.strip().split(':')[-1].split('=')[0].strip() for p in group.split(',')}
+    for params in re.findall(r'\(([^()]*)\)\s*(?:=>|\{|:)', code):
+        declared |= set(re.findall(r'\b([a-z_$]\w*)\s*(?::|,|=|\))', params + ')'))
+        declared |= set(re.findall(r'^\s*(\w+)', params))
+    declared |= set(re.findall(r'catch\s*\(\s*(\w+)', code))
+    # parámetros con tipo función: `restock?: (a, b) => void` — los paréntesis
+    # anidados del tipo rompen la extracción general de parámetros
+    declared |= set(re.findall(r'(\w+)\??:\s*\(', code))
+    # métodos de clase: se llaman como this.x() pero se declaran sin palabra clave
+    declared |= set(re.findall(
+        r'^\s*(?:private\s+|public\s+|protected\s+|static\s+|readonly\s+|async\s+|\*)*(\w+)\s*\([^;]*?\)\s*(?::[^{;]+)?\{',
+        code, re.M))
+    # firmas dentro de un type/interface: declaran, no llaman
+    declared |= set(re.findall(r'(\w+)\s*\([^;{)]*\)\s*:\s*[^;{]+[;}]', code))
+    declared |= set(re.findall(r'\bfor\s*\(\s*(?:const|let|var)?\s*\[?\s*(\w+)', code))
+    # llamadas
+    for m in re.finditer(r'(?<![.\w$])([A-Za-z_$][\w$]*)\s*\(', code):
+        name = m.group(1)
+        if name in declared or name in KEYWORDS: continue
+        id_fails.append(f'{f}: llama a {name}(), que no está declarado ni importado')
+print(f'{len(sources)} archivos revisados por identificadores')
+print('\n'.join(dict.fromkeys(id_fails)) if id_fails else 'Todo lo que se llama está declarado, y cada import existe.')

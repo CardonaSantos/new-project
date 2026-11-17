@@ -38,6 +38,12 @@ export class CreateOrderDto{
  @IsOptional() @IsString() @MaxLength(500) referenciaDireccion?:string;
  @IsOptional() @IsString() @MaxLength(45) telefonoContacto?:string;
  @IsOptional() @IsString() repartidorId?:string;
+ // Exigidos por la entrega cuando origen==='PLATAFORMA', y rechazados por ella
+ // en cualquier otro origen. Sin reenviarlos no habia forma de crear una orden
+ // de plataforma: createCoreTx encadena la Entrega en la misma transaccion, de
+ // modo que no queda ningun momento para informar el canal despues.
+ @IsOptional() @IsString() canalExternoId?:string;
+ @IsOptional() @IsString() @MaxLength(160) referenciaExterna?:string;
  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(100) @ValidateNested({each:true})
  @Type(()=>OrderItemDto) lineas!:OrderItemDto[];
  @IsOptional() @IsBoolean() enviarCocina?:boolean;

@@ -193,7 +193,10 @@ try{
   await tx.sala.upsert({
    where:{sucursalId_nombre:{sucursalId:principal.id,nombre:'Sala principal'}},
    update:{},create:{sucursalId:principal.id,nombre:'Sala principal'}});
- });
+ // Prisma's default interactive-transaction window is 5 s. Against a remote
+ // database (Railway over the internet) the ~200 sequential upserts above
+ // take longer than that, so the seed gets its own generous window.
+ },{maxWait:30_000,timeout:180_000});
  process.stdout.write(
   'Seed inicial completado; credenciales no impresas.\n'+
   'Listo para operar: empresa, sucursal PRINCIPAL, SUPER_ADMIN, roles operativos\n'+

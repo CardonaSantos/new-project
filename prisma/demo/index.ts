@@ -84,6 +84,7 @@ async function main(): Promise<void> {
     logger: ['error', 'warn'],
   });
   const db = app.get(PrismaService);
+  roomyTransactions(db);
 
   try {
     // La semilla escribe el catálogo con los códigos del negocio, sin marcas de
@@ -311,3 +312,26 @@ main().catch((error: unknown) => {
   }
   process.exit(1);
 });
+
+// Los servicios abren sus transacciones con 20–30 s de plazo, de sobra cuando
+// el servidor corre junto a la base. La semilla puede correr desde otra
+// máquina contra una base remota (Railway), donde cada consulta cruza
+// internet y una recepción de 13 artículos ya pasa de 20 s. Solo dentro de la
+// semilla, toda transacción interactiva recibe un plazo amplio; el código de
+// la aplicación no cambia.
+function roomyTransactions(db: PrismaService): void {
+  const minutes = Number(process.env.DEMO_SEED_TX_MINUTES ?? '5');
+  const timeout = Math.max(1, minutes) * 60_000;
+  const original = db.$transaction.bind(db) as (...a: unknown[]) => unknown;
+  (db as unknown as { $transaction: unknown }).$transaction = (
+    arg: unknown,
+    opts?: { timeout?: number; maxWait?: number },
+  ) =>
+    typeof arg === 'function'
+      ? original(arg, {
+          ...opts,
+          timeout: Math.max(opts?.timeout ?? 0, timeout),
+          maxWait: Math.max(opts?.maxWait ?? 0, 60_000),
+        })
+      : original(arg, opts);
+}

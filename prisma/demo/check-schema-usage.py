@@ -17,10 +17,10 @@ schema = open('prisma/schema.prisma').read()
 models, uniques = {}, {}
 for m in re.finditer(r'^model (\w+) \{(.*?)^\}', schema, re.S | re.M):
     name, body = m.group(1), m.group(2)
-    models[name] = set(re.findall(r'^\s{2}(\w+)\s+\w', body, re.M))
+    models[name] = set(re.findall(r'^[ \t]+(\w+)\s+\w', body, re.M))
     us = ['_'.join(x.strip() for x in u.split(',')) for u in re.findall(r'@@unique\(\[([^\]]+)\]', body)]
     us += ['_'.join(x.strip() for x in u.split(',')) for u in re.findall(r'@@id\(\[([^\]]+)\]', body)]
-    us += re.findall(r'^\s{2}(\w+)\s+\w+[^\n]*@unique', body, re.M)
+    us += re.findall(r'^[ \t]+(\w+)\s+\w+[^\n]*@unique', body, re.M)
     uniques[name] = set(us)
 
 def pascal(x): return x[0].upper() + x[1:]
@@ -91,7 +91,7 @@ for m in re.finditer(r'^model (\w+) \{(.*?)^\}', schema, re.S | re.M):
     name, body = m.group(1), m.group(2)
     req = []
     for line in body.splitlines():
-        fm = re.match(r'\s{2}(\w+)\s+(\w+)(\[\])?(\?)?(.*)$', line)
+        fm = re.match(r'[ \t]+(\w+)\s+(\w+)(\[\])?(\?)?(.*)$', line)
         if not fm: continue
         field, typ, lst, opt, rest = fm.groups()
         if lst or opt: continue
@@ -141,7 +141,7 @@ print('\n'.join('ruta inexistente: ' + r for r in rotas) if rotas else 'Todas la
 relations = {}
 for m in re.finditer(r'^model (\w+) \{(.*?)^\}', schema, re.S | re.M):
     relations[m.group(1)] = {
-        f: t for f, t in re.findall(r'^\s{2}(\w+)\s+(\w+)', m.group(2), re.M) if t in models
+        f: t for f, t in re.findall(r'^[ \t]+(\w+)\s+(\w+)', m.group(2), re.M) if t in models
     }
 
 OPS = {'AND', 'OR', 'NOT', 'some', 'every', 'none', 'is', 'isNot'}       # siguen en el modelo
@@ -305,7 +305,7 @@ print('\n'.join(dict.fromkeys(sql_fails)) if sql_fails else 'Todas las columnas 
 fks = []   # (hijo, padre, onDelete)
 for m in re.finditer(r'^model (\w+) \{(.*?)^\}', schema, re.S | re.M):
     child, body = m.group(1), m.group(2)
-    for rel in re.finditer(r'^\s{2}\w+\s+(\w+)(\?)?\s+@relation\(([^)]*)\)', body, re.M):
+    for rel in re.finditer(r'^[ \t]+\w+\s+(\w+)(\?)?\s+@relation\(([^)]*)\)', body, re.M):
         parent, optional, args = rel.group(1), bool(rel.group(2)), rel.group(3)
         if parent not in models or 'fields:' not in args: continue
         od = re.search(r'onDelete:\s*(\w+)', args)

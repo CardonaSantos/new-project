@@ -17,11 +17,12 @@
 import { argon2id, hash } from 'argon2';
 import type { PrismaClient } from '../../src/generated/prisma/client.js';
 import { articles } from './articles.js';
-import { categories, modifierGroups, products } from './products.js';
+import { categories, modifierBranchPrices, modifierGroups, products } from './products.js';
 import { productionRecipes, saleRecipes } from './recipes.js';
-import { basePrices, branches, menus } from './branches.js';
+import { BANK_ACCOUNT, FINANCIAL_ROUTES, SAFE_ACCOUNT_PREFIX, basePrices, branches, devices, menus, variantPauses } from './branches.js';
 import { packagingRules, suppliers } from './supply.js';
 import { DEMO_PREFIX, progress, type DemoOptions } from './runtime.js';
+import { DEMO_CUSTOMER_MARK, customers } from './customers.js';
 
 type Db = PrismaClient;
 export const code = (raw: string): string => DEMO_PREFIX + raw;
@@ -44,6 +45,177 @@ export interface MasterIds {
   staff: Map<string, Map<string, string>>;
   /** Canal externo code -> id, for the orders that arrive from a platform. */
   channels: Map<string, string>;
+  /** 'BANCO' y 'CAJA_FUERTE:<sucursal>' -> id de CuentaFinanciera. */
+  accounts: Map<string, string>;
+  /** Clientes frecuentes por sucursal, para atar los delivery a gente real. */
+  clients: Map<string, string[]>;
+  /**
+   * Tokens QR por sucursal, emitidos por el servicio de autoservicio después
+   * de los maestros (necesita contexto Nest). Vacío si la fase de historia
+   * corre sola: las sesiones QR simplemente se omiten.
+   */
+  qrTokens: Map<string, { mesaId: string; token: string }[]>;
+}
+
+/**
+ * Devices, as the devices screen registers them: the till, the kitchen
+ * display tied to its preparation station, and whatever distinguishes each
+ * branch — the self-service kiosk, the ticket printer.
+ */
+async function writeDevices(
+  db: Db,
+  branchIds: Map<string, string>,
+  stations: Map<string, Map<string, string>>,
+): Promise<void> {
+  for (const [branchCode, list] of Object.entries(devices)) {
+    const sucursalId = branchIds.get(branchCode);
+    if (!sucursalId) continue;
+    for (const device of list) {
+      const estacionPreparacionId = device.estacion
+        ? stations.get(branchCode)?.get(device.estacion) ?? null
+        : null;
+      await db.dispositivo.upsert({
+        where: { sucursalId_codigo: { sucursalId, codigo: code(device.codigo) } },
+        update: { nombre: device.nombre, tipo: device.tipo, estacionPreparacionId, activo: true },
+        create: {
+          sucursalId, codigo: code(device.codigo), nombre: device.nombre,
+          tipo: device.tipo, estacionPreparacionId, activo: true,
+        },
+      });
+    }
+  }
+}
+
+/**
+ * Paused variants, as the product detail screen leaves them. The pause runs
+ * from the end of the history forward, so the month of sales does not
+ * contradict it: it sold until today, and today it is paused.
+ */
+async function writeVariantPauses(
+  db: Db,
+  branchIds: Map<string, string>,
+  variantIds: Map<string, string>,
+): Promise<void> {
+  for (const pause of variantPauses) {
+    const sucursalId = branchIds.get(pause.sucursal);
+    const varianteId = variantIds.get(pause.sku);
+    if (!sucursalId || !varianteId) continue;
+    const until = new Date();
+    until.setUTCDate(until.getUTCDate() + pause.dias);
+    await db.varianteSucursal.upsert({
+      where: { varianteId_sucursalId: { varianteId, sucursalId } },
+      update: { habilitada: true, pausadaHasta: until, motivo: pause.motivo },
+      create: { varianteId, sucursalId, habilitada: true, pausadaHasta: until, motivo: pause.motivo },
+    });
+  }
+}
+
+/** Per-branch modifier prices, same pattern as variant prices: close and recreate. */
+async function writeModifierBranchPrices(
+  db: Db,
+  branchIds: Map<string, string>,
+  modifierOptions: Map<string, string>,
+  now: Date,
+): Promise<void> {
+  for (const price of modifierBranchPrices) {
+    const sucursalId = branchIds.get(price.sucursal);
+    const modificadorId = modifierOptions.get(price.opcion);
+    if (!sucursalId || !modificadorId) continue;
+    const current = await db.precioModificador.findFirst({
+      where: { modificadorId, sucursalId, vigenteHasta: null },
+    });
+    if (current) {
+      if (current.importe.equals(price.importe)) continue;
+      await db.precioModificador.update({ where: { id: current.id }, data: { vigenteHasta: now } });
+    }
+    await db.precioModificador.create({
+      data: { modificadorId, sucursalId, importe: price.importe, vigenteDesde: now },
+    });
+  }
+}
+
+/**
+ * Treasury: the company bank account, one safe per branch, and the routes the
+ * payment engine consults when money comes in. This is what makes every
+ * collection, expense and supplier payment of the month write its
+ * MovimientoFinanciero on its own — the posting already exists in the engine;
+ * it only lacked an active route to switch it on.
+ */
+async function writeFinance(db: Db, branchIds: Map<string, string>): Promise<Map<string, string>> {
+  const accounts = new Map<string, string>();
+  const bank =
+    (await db.cuentaFinanciera.findFirst({ where: { nombre: BANK_ACCOUNT.nombre, sucursalId: null } })) ??
+    (await db.cuentaFinanciera.create({
+      data: { nombre: BANK_ACCOUNT.nombre, tipo: BANK_ACCOUNT.tipo, moneda: 'GTQ', activa: true },
+    }));
+  accounts.set('BANCO', bank.id);
+  for (const [branchCode, sucursalId] of branchIds) {
+    const name = `${SAFE_ACCOUNT_PREFIX} ${branchCode}`;
+    const safe =
+      (await db.cuentaFinanciera.findFirst({ where: { nombre: name, sucursalId } })) ??
+      (await db.cuentaFinanciera.create({
+        data: { sucursalId, nombre: name, tipo: 'EFECTIVO_EXTERNO', moneda: 'GTQ', activa: true },
+      }));
+    accounts.set(`CAJA_FUERTE:${branchCode}`, safe.id);
+    for (const route of FINANCIAL_ROUTES) {
+      const cuentaFinancieraId = route.cuenta === 'BANCO' ? bank.id : safe.id;
+      await db.rutaFinanciera.upsert({
+        where: { sucursalId_metodo: { sucursalId, metodo: route.metodo } },
+        update: { cuentaFinancieraId, activa: true },
+        create: { sucursalId, metodo: route.metodo, cuentaFinancieraId, activa: true },
+      });
+    }
+  }
+  return accounts;
+}
+
+/**
+ * Customers with their addresses, as the customers screen creates them.
+ * Idempotency hangs on nombre + the DEMO-SEED mark in notas, because Cliente
+ * has no coded unique — and that mark is also the reset's anchor.
+ */
+async function writeCustomers(db: Db, branchIds: Map<string, string>): Promise<Map<string, string[]>> {
+  const byBranch = new Map<string, string[]>();
+  for (const customer of customers) {
+    const found = await db.cliente.findFirst({
+      where: { nombre: customer.nombre, notas: DEMO_CUSTOMER_MARK },
+    });
+    const row =
+      found ??
+      (await db.cliente.create({
+        data: {
+          nombre: customer.nombre, nit: customer.nit ?? null, telefono: customer.telefono,
+          email: customer.email ?? null, notas: DEMO_CUSTOMER_MARK, activo: true,
+        },
+      }));
+    for (const [index, address] of customer.direcciones.entries()) {
+      const existing = await db.direccionCliente.findFirst({
+        where: { clienteId: row.id, alias: address.alias },
+      });
+      if (!existing) {
+        await db.direccionCliente.create({
+          data: {
+            clienteId: row.id, alias: address.alias, direccion: address.direccion,
+            referencia: address.referencia ?? null, latitud: address.latitud,
+            longitud: address.longitud, principal: index === 0, activa: true,
+          },
+        });
+      }
+    }
+    for (const branchCode of customer.sucursales) {
+      const sucursalId = branchIds.get(branchCode);
+      if (!sucursalId) continue;
+      await db.clienteSucursal.upsert({
+        where: { clienteId_sucursalId: { clienteId: row.id, sucursalId } },
+        update: {},
+        create: { clienteId: row.id, sucursalId },
+      });
+      const list = byBranch.get(branchCode) ?? [];
+      list.push(row.id);
+      byBranch.set(branchCode, list);
+    }
+  }
+  return byBranch;
 }
 
 /**
@@ -454,6 +626,16 @@ async function writeMenusAndPrices(
       create: { codigo: code(menu.codigo), nombre: menu.nombre, publicadoEn: now },
     });
     menuIds.set(menu.codigo, row.id);
+    // La franja horaria, como la edita la pantalla de detalle de menú. Borrar
+    // y recrear es idempotente y barato: son siete filas por menú a lo sumo.
+    await db.menuHorario.deleteMany({ where: { menuId: row.id } });
+    if (menu.horario?.length) {
+      await db.menuHorario.createMany({
+        data: menu.horario.map((h) => ({
+          menuId: row.id, diaSemana: h.diaSemana, desde: h.desde, hasta: h.hasta, activo: true,
+        })),
+      });
+    }
     for (const [sectionIndex, section] of menu.secciones.entries()) {
       const sectionRow = await db.menuSeccion.upsert({
         where: { menuId_nombre: { menuId: row.id, nombre: section.nombre } },
@@ -690,6 +872,13 @@ export async function writeMasters(db: Db, options: DemoOptions, password: strin
   const staff = await writeStaff(db, branchData.branches, password);
   const channels = await writeChannels(db);
 
+  progress('maestros', 'dispositivos, pausas, tesorería y clientes');
+  await writeDevices(db, branchData.branches, branchData.stations);
+  await writeVariantPauses(db, branchData.branches, variantIds);
+  await writeModifierBranchPrices(db, branchData.branches, modifierOptions, now);
+  const accounts = await writeFinance(db, branchData.branches);
+  const clients = await writeCustomers(db, branchData.branches);
+
   return {
     units,
     articles: articleIds,
@@ -700,5 +889,8 @@ export async function writeMasters(db: Db, options: DemoOptions, password: strin
     presentations: supplierData.presentations,
     staff,
     channels,
+    accounts,
+    clients,
+    qrTokens: new Map(),
   };
 }

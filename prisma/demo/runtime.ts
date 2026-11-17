@@ -30,8 +30,12 @@ export interface DemoOptions {
 const DEFAULTS: DemoOptions = {
   fases: [...PHASES],
   sucursales: [],
-  semanas: 8,
-  tickets: 22,
+  // Un mes y volumen moderado, por decisión del dueño: el propósito del demo
+  // es que el cliente vea al sistema registrar con el tiempo, no impresionar
+  // por tonelaje. Menos cantidad, más calidad — y la corrida completa queda
+  // en ~20 minutos en lugar de 50.
+  semanas: 4,
+  tickets: 14,
   reset: false,
   simular: false,
 };

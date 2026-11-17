@@ -43,6 +43,15 @@ function statements(branchIds: string[], articleIds: string[]): { label: string;
     { label: 'movimientos de caja', sql: `DELETE FROM "MovimientoCaja" WHERE "turnoId" IN (SELECT t.id FROM "TurnoCaja" t JOIN "Caja" c ON c.id=t."cajaId" WHERE c.${inBranch()})` },
     { label: 'líneas de consumo de orden', sql: `DELETE FROM "ConsumoOrdenLinea" WHERE "consumoId" IN (SELECT id FROM "ConsumoOrden" WHERE "ordenId" IN (SELECT id FROM "Orden" WHERE ${inBranch()}))` },
     { label: 'consumos de orden', sql: `DELETE FROM "ConsumoOrden" WHERE "ordenId" IN (SELECT id FROM "Orden" WHERE ${inBranch()})` },
+    { label: 'consumos internos', sql: `DELETE FROM "ConsumoInterno" WHERE "articuloId" IN (${articles})` },
+    // Devoluciones a proveedor: el demo no las escribe aún (sin pantalla),
+    // pero el seguro va puesto — la corrida que estrene la función es la que
+    // rompería el reset, y esa es la que tiene datos que conservar.
+    { label: 'reintegros de proveedor', sql: `DELETE FROM "ReintegroProveedor" WHERE "notaId" IN (SELECT id FROM "NotaCreditoProveedor" WHERE ${inBranch()})` },
+    { label: 'aplicaciones de nota de crédito', sql: `DELETE FROM "AplicacionNotaCreditoProveedor" WHERE "notaId" IN (SELECT id FROM "NotaCreditoProveedor" WHERE ${inBranch()})` },
+    { label: 'líneas de devolución a proveedor', sql: `DELETE FROM "DevolucionProveedorLinea" WHERE "devolucionId" IN (SELECT id FROM "DevolucionProveedor" WHERE ${inBranch()})` },
+    { label: 'notas de crédito de proveedor', sql: `DELETE FROM "NotaCreditoProveedor" WHERE ${inBranch()}` },
+    { label: 'devoluciones a proveedor', sql: `DELETE FROM "DevolucionProveedor" WHERE ${inBranch()}` },
     { label: 'aplicaciones de capa de costo', sql: `DELETE FROM "AplicacionCapaCosto" WHERE "capaId" IN (SELECT id FROM "CapaCostoInventario" WHERE "articuloId" IN (${articles}))` },
     { label: 'arqueos de caja', sql: `DELETE FROM "ArqueoCaja" WHERE "turnoId" IN (SELECT t.id FROM "TurnoCaja" t JOIN "Caja" c ON c.id=t."cajaId" WHERE c.${inBranch()})` },
     { label: 'líneas de ajuste', sql: `DELETE FROM "AjusteInventarioLinea" WHERE "ajusteId" IN (SELECT id FROM "AjusteInventario" WHERE "almacenId" IN (SELECT id FROM "Almacen" WHERE ${inBranch()}))` },
@@ -82,8 +91,11 @@ function statements(branchIds: string[], articleIds: string[]): { label: string;
     { label: 'líneas de cuenta', sql: `DELETE FROM "CuentaLinea" WHERE "cuentaId" IN (SELECT c.id FROM "Cuenta" c JOIN "Orden" o ON o.id=c."ordenId" WHERE o.${inBranch()})` },
     { label: 'cuentas', sql: `DELETE FROM "Cuenta" WHERE "ordenId" IN (SELECT id FROM "Orden" WHERE ${inBranch()})` },
     { label: 'gastos operativos', sql: `DELETE FROM "GastoOperativo" WHERE ${inBranch()}` },
+    // La reversa y el extracto apuntan a movimientos financieros: van antes.
+    { label: 'reversas financieras', sql: `DELETE FROM "ReversaFinanciera" WHERE ${inBranch()}` },
+    { label: 'líneas de extracto bancario', sql: `DELETE FROM "LineaExtractoBancario" WHERE "cuentaFinancieraId" IN (SELECT id FROM "CuentaFinanciera" WHERE ${inBranch()} OR ("sucursalId" IS NULL AND nombre = 'BAC Cuenta Monetaria GTQ'))` },
     // Un movimiento financiero no conoce la sucursal: cuelga de la cuenta.
-    { label: 'movimientos financieros', sql: `DELETE FROM "MovimientoFinanciero" WHERE "cuentaId" IN (SELECT id FROM "CuentaFinanciera" WHERE ${inBranch()})` },
+    { label: 'movimientos financieros', sql: `DELETE FROM "MovimientoFinanciero" WHERE "cuentaId" IN (SELECT id FROM "CuentaFinanciera" WHERE ${inBranch()} OR ("sucursalId" IS NULL AND nombre = 'BAC Cuenta Monetaria GTQ'))` },
     { label: 'turnos de caja', sql: `DELETE FROM "TurnoCaja" WHERE "cajaId" IN (SELECT id FROM "Caja" WHERE ${inBranch()})` },
     { label: 'cierres operativos', sql: `DELETE FROM "CierreOperativo" WHERE ${inBranch()}` },
 
@@ -121,6 +133,7 @@ function statements(branchIds: string[], articleIds: string[]): { label: string;
     { label: 'ítems de menú', sql: `DELETE FROM "MenuItem" WHERE "seccionId" IN (SELECT s.id FROM "MenuSeccion" s JOIN "Menu" m ON m.id=s."menuId" WHERE m.codigo LIKE '${DEMO_PREFIX}%')` },
     { label: 'secciones de menú', sql: `DELETE FROM "MenuSeccion" WHERE "menuId" IN (SELECT id FROM "Menu" WHERE codigo LIKE '${DEMO_PREFIX}%')` },
     { label: 'menús por sucursal', sql: `DELETE FROM "MenuSucursal" WHERE "menuId" IN (SELECT id FROM "Menu" WHERE codigo LIKE '${DEMO_PREFIX}%')` },
+    { label: 'horarios de menú', sql: `DELETE FROM "MenuHorario" WHERE "menuId" IN (SELECT id FROM "Menu" WHERE codigo LIKE '${DEMO_PREFIX}%')` },
     { label: 'menús', sql: `DELETE FROM "Menu" WHERE codigo LIKE '${DEMO_PREFIX}%'` },
     { label: 'líneas de regla de empaque', sql: `DELETE FROM "ReglaEmpaqueLinea" WHERE "reglaId" IN (SELECT id FROM "ReglaEmpaque" WHERE nombre IN (${packagingRules.map((r) => `'${r.nombre.replace(/'/g, "''")}'`).join(',')}))` },
     { label: 'reglas de empaque', sql: `DELETE FROM "ReglaEmpaque" WHERE nombre IN (${packagingRules.map((r) => `'${r.nombre.replace(/'/g, "''")}'`).join(',')})` },
@@ -157,13 +170,19 @@ function statements(branchIds: string[], articleIds: string[]): { label: string;
     { label: 'rutas financieras', sql: `DELETE FROM "RutaFinanciera" WHERE ${inBranch()}` },
     { label: 'dispositivos', sql: `DELETE FROM "Dispositivo" WHERE ${inBranch()}` },
     { label: 'media de sucursal', sql: `DELETE FROM "Media" WHERE ${inBranch()}` },
-    { label: 'cuentas financieras', sql: `DELETE FROM "CuentaFinanciera" WHERE ${inBranch()}` },
+    // La cuenta de banco de la empresa no tiene sucursal: sin la segunda
+    // condición sobrevivía a todos los reset.
+    { label: 'cuentas financieras', sql: `DELETE FROM "CuentaFinanciera" WHERE ${inBranch()} OR ("sucursalId" IS NULL AND nombre = 'BAC Cuenta Monetaria GTQ')` },
     { label: 'configuración de sucursal', sql: `DELETE FROM "ConfiguracionSucursal" WHERE ${inBranch()}` },
     { label: 'roles de usuario demo', sql: `DELETE FROM "UsuarioRol" WHERE "usuarioId" IN (SELECT id FROM "Usuario" WHERE email LIKE '%@demo.local')` },
     { label: 'perfiles de usuario demo', sql: `DELETE FROM "PerfilUsuario" WHERE "usuarioId" IN (SELECT id FROM "Usuario" WHERE email LIKE '%@demo.local')` },
     { label: 'sesiones de usuario demo', sql: `DELETE FROM "SesionUsuario" WHERE "usuarioId" IN (SELECT id FROM "Usuario" WHERE email LIKE '%@demo.local')` },
     { label: 'usuarios demo', sql: `DELETE FROM "Usuario" WHERE email LIKE '%@demo.local'` },
     { label: 'proveedores demo', sql: `DELETE FROM "Proveedor" WHERE nit IN ('3456789-1','4567890-2','5678901-3','6789012-4','7890123-5','8901234-6','9012345-7')` },
+    // Cliente no tiene código con prefijo: su ancla es la marca DEMO-SEED en
+    // notas, puesta a propósito por la fase de maestros.
+    { label: 'direcciones de clientes', sql: `DELETE FROM "DireccionCliente" WHERE "clienteId" IN (SELECT id FROM "Cliente" WHERE notas = 'DEMO-SEED')` },
+    { label: 'clientes', sql: `DELETE FROM "Cliente" WHERE notas = 'DEMO-SEED'` },
     { label: 'canales externos', sql: `DELETE FROM "CanalExterno" WHERE codigo LIKE '${DEMO_PREFIX}%'` },
     { label: 'sucursales', sql: `DELETE FROM "Sucursal" WHERE codigo LIKE '${DEMO_PREFIX}%'` },
 

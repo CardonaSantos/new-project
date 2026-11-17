@@ -394,3 +394,20 @@ export const products: DemoProduct[] = [
     variantes: [{ sku: 'SKU-DESCORCHE', nombre: 'Por botella' }],
   },
 ];
+
+/**
+ * Precios de modificador por sucursal, como los deja la pantalla de extras:
+ * el mismo jarabe cuesta un quetzal más en zona 10 que en zona 1, igual que
+ * los precios de variante. Solo las opciones con cobro y solo donde el precio
+ * difiere del general; el resto usa el incremento del catálogo.
+ */
+export const modifierBranchPrices: { sucursal: string; opcion: string; importe: number }[] = [
+  { sucursal: 'CAFETERIA', opcion: 'MOD-JARABE-VAINILLA', importe: 6 },
+  { sucursal: 'CAFETERIA', opcion: 'MOD-JARABE-CARAMELO', importe: 6 },
+  { sucursal: 'CAFETERIA', opcion: 'MOD-SHOT-EXTRA', importe: 8 },
+  { sucursal: 'CAFETERIA', opcion: 'MOD-LECHE-ALMENDRA', importe: 7 },
+  { sucursal: 'REPOSTERIA', opcion: 'MOD-JARABE-VAINILLA', importe: 5 },
+  { sucursal: 'RESTAURANTE', opcion: 'MOD-SHOT-EXTRA', importe: 8 },
+  { sucursal: 'RAPIDA', opcion: 'MOD-EXTRA-QUESO', importe: 7 },
+  { sucursal: 'RAPIDA', opcion: 'MOD-EXTRA-TOCINO', importe: 11 },
+];

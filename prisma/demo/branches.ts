@@ -78,7 +78,7 @@ export const branches: DemoBranch[] = [
       { nombre: 'Mezzanine', mesas: ['M1', 'M2', 'M3', 'M4'], capacidades: [4, 6] },
     ],
     cajas: ['CAJA-1', 'CAJA-2'],
-    menus: ['MENU-CAFETERIA'],
+    menus: ['MENU-CAFETERIA', 'MENU-DESAYUNOS'],
     modalidades: { MESA: 0.34, MOSTRADOR: 0.3, PARA_LLEVAR: 0.24, DELIVERY: 0.12 },
   },
   {
@@ -137,6 +137,14 @@ export interface DemoMenu {
   codigo: string;
   nombre: string;
   secciones: { nombre: string; skus: string[] }[];
+  /**
+   * Franja horaria del menú (diaSemana 0-6, horas HH:MM), como la edita la
+   * pantalla de detalle de menú. Sin horario, el menú rige todo el día.
+   * Regla de los datos: un menú con horario solo usa SKUs que ya están en el
+   * menú principal de la misma sucursal, para que el motor de la semilla
+   * —que ignora horarios— no venda nada que el POS no mostraría.
+   */
+  horario?: { diaSemana: number; desde: string; hasta: string }[];
 }
 
 const cafeSkus = [
@@ -201,6 +209,88 @@ export const menus: DemoMenu[] = [
  * A price rise partway through the history is applied by the writer to a
  * subset of these, so reports show the old price on old tickets.
  */
+export const desayunosMenu: DemoMenu = {
+  codigo: 'MENU-DESAYUNOS',
+  nombre: 'Desayunos',
+  // Todos los días de 6:00 a 11:00 — la pantalla de menús muestra la franja y
+  // el POS lo oculta fuera de ella.
+  horario: [0, 1, 2, 3, 4, 5, 6].map((diaSemana) => ({ diaSemana, desde: '06:00', hasta: '11:00' })),
+  secciones: [
+    { nombre: 'Para empezar el día', skus: ['SKU-CROISSANT', 'SKU-CROISSANT-ALMENDRA', 'SKU-CHAMPURRADA', 'SKU-GALLETA'] },
+    { nombre: 'Café de la mañana', skus: ['SKU-AMERICANO-12', 'SKU-CAPUCHINO-12', 'SKU-LATTE-12', 'SKU-CHOCOLATE-12', 'SKU-TE-NEGRO-12'] },
+    { nombre: 'Jugos y licuados', skus: ['SKU-JUGO-500', 'SKU-LICUADO-BANANO', 'SKU-LICUADO-FRESA'] },
+  ],
+};
+
+/**
+ * Dispositivos por sucursal, como los registra la pantalla de dispositivos:
+ * la caja (POS), la pantalla de cocina (KDS) atada a su estación de
+ * preparación, y lo que distingue a cada local — el kiosko de autoservicio en
+ * comida rápida, la impresora de comandas del restaurante.
+ */
+export interface DemoDevice {
+  codigo: string;
+  nombre: string;
+  tipo: 'POS' | 'KDS' | 'QUIOSCO' | 'IMPRESORA';
+  /** Nombre de la estación de preparación a la que se ata (solo KDS). */
+  estacion?: string;
+}
+
+export const devices: Record<string, DemoDevice[]> = {
+  REPOSTERIA: [
+    { codigo: 'CAJA-01', nombre: 'Caja mostrador', tipo: 'POS' },
+    { codigo: 'KDS-PRODUCCION', nombre: 'Pantalla de producción', tipo: 'KDS', estacion: 'Cocina' },
+    { codigo: 'IMP-RECIBOS', nombre: 'Impresora de recibos', tipo: 'IMPRESORA' },
+  ],
+  CAFETERIA: [
+    { codigo: 'CAJA-01', nombre: 'Caja principal', tipo: 'POS' },
+    { codigo: 'KDS-BARRA', nombre: 'Pantalla de barra', tipo: 'KDS', estacion: 'Barra' },
+  ],
+  RESTAURANTE: [
+    { codigo: 'CAJA-01', nombre: 'Caja principal', tipo: 'POS' },
+    { codigo: 'KDS-COCINA', nombre: 'Pantalla de cocina', tipo: 'KDS', estacion: 'Cocina' },
+    { codigo: 'IMP-COMANDAS', nombre: 'Impresora de comandas', tipo: 'IMPRESORA' },
+  ],
+  RAPIDA: [
+    { codigo: 'CAJA-01', nombre: 'Caja principal', tipo: 'POS' },
+    { codigo: 'KIOSKO-01', nombre: 'Kiosko de autoservicio', tipo: 'QUIOSCO' },
+    { codigo: 'KDS-COCINA', nombre: 'Pantalla de cocina', tipo: 'KDS', estacion: 'Cocina' },
+  ],
+};
+
+/**
+ * Variantes pausadas por sucursal, como las deja la pantalla de detalle de
+ * producto. La pausa corre desde el final de la historia hacia adelante, así
+ * que las ventas del mes no la contradicen: el producto se vendió hasta hoy y
+ * hoy está pausado, que es exactamente la escena que un negocio real muestra.
+ */
+export const variantPauses: { sucursal: string; sku: string; dias: number; motivo: string }[] = [
+  { sucursal: 'RESTAURANTE', sku: 'SKU-CAMARONES', dias: 3, motivo: 'Proveedor sin camarón fresco esta semana' },
+  { sucursal: 'CAFETERIA', sku: 'SKU-LICUADO-FRESA', dias: 5, motivo: 'Fresa fuera de temporada' },
+  { sucursal: 'RAPIDA', sku: 'SKU-HAMBURGUESA-DOBLE', dias: 2, motivo: 'Plancha grande en mantenimiento' },
+];
+
+/**
+ * Tesorería: una cuenta de banco de la empresa y una caja fuerte por
+ * sucursal, con las rutas que el motor de pagos consulta al cobrar. Esto es
+ * lo que hace que cada cobro, gasto y pago a proveedor del mes escriba su
+ * MovimientoFinanciero solo: el posting ya existe en el motor, únicamente le
+ * faltaba una ruta activa que lo encendiera.
+ */
+export const BANK_ACCOUNT = { nombre: 'BAC Cuenta Monetaria GTQ', tipo: 'BANCO' as const };
+export const SAFE_ACCOUNT_PREFIX = 'Caja fuerte';
+/** Método de pago → a qué cuenta llega el dinero. */
+export const FINANCIAL_ROUTES: { metodo: 'EFECTIVO' | 'TARJETA' | 'TRANSFERENCIA'; cuenta: 'CAJA_FUERTE' | 'BANCO' }[] = [
+  { metodo: 'EFECTIVO', cuenta: 'CAJA_FUERTE' },
+  { metodo: 'TARJETA', cuenta: 'BANCO' },
+  { metodo: 'TRANSFERENCIA', cuenta: 'BANCO' },
+];
+
+// Se escribe junto a los demás: masters recorre `menus`, y la cafetería lo
+// referencia en su lista. (Declarado aparte para no romper el orden de
+// declaración dentro del arreglo.)
+menus.push(desayunosMenu);
+
 export const basePrices: Record<string, number> = {
   // Café: Café Barista en Antigua lista capuchino Q30 y latte Q29; McDonald's
   // el de 12 oz a Q21. Estos son precios base, antes del factor por sucursal,

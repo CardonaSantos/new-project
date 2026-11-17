@@ -30,12 +30,11 @@ export interface DemoOptions {
 const DEFAULTS: DemoOptions = {
   fases: [...PHASES],
   sucursales: [],
-  // Un mes y volumen moderado, por decisión del dueño: el propósito del demo
-  // es que el cliente vea al sistema registrar con el tiempo, no impresionar
-  // por tonelaje. Menos cantidad, más calidad — y la corrida completa queda
-  // en ~20 minutos en lugar de 50.
-  semanas: 4,
-  tickets: 14,
+  // Tres semanas de una cafetería con ~25 tickets diarios, por decisión del
+  // dueño: que se vea al sistema registrar con el tiempo, con calidad antes
+  // que tonelaje.
+  semanas: 3,
+  tickets: 25,
   reset: false,
   simular: false,
 };
@@ -74,8 +73,11 @@ export function parseOptions(argv: string[]): DemoOptions {
         break;
       }
       case 'reset':
-        options.reset = value !== 'false';
-        break;
+        // La semilla ya no borra nada: corre sobre una base recién preparada.
+        throw Error(
+          '--reset ya no existe. Prepare la base con "npx prisma migrate reset" y ' +
+            '"npm run seed:initial", y luego corra "npm run seed:demo" sin opciones.',
+        );
       case 'simular':
       case 'dry-run':
         options.simular = value !== 'false';
@@ -188,16 +190,13 @@ export const WEEKDAY_WEIGHT: Record<number, number> = {
   6: 1.3, // sábado
 };
 
-/** Share of a day's tickets per opening hour, by branch profile. */
-export const HOUR_SHAPE: Record<string, Record<number, number>> = {
-  // Morning bread and coffee, a second smaller afternoon visit.
-  REPOSTERIA: { 7: 0.08, 8: 0.12, 9: 0.11, 10: 0.09, 11: 0.07, 12: 0.07, 13: 0.06, 14: 0.05, 15: 0.08, 16: 0.11, 17: 0.1, 18: 0.06 },
-  // Commuter rush, then laptops all afternoon.
-  CAFETERIA: { 7: 0.11, 8: 0.14, 9: 0.1, 10: 0.07, 11: 0.06, 12: 0.07, 13: 0.07, 14: 0.06, 15: 0.07, 16: 0.08, 17: 0.09, 18: 0.08 },
-  // Lunch and dinner, nothing in between.
-  RESTAURANTE: { 12: 0.16, 13: 0.19, 14: 0.12, 15: 0.04, 16: 0.03, 17: 0.04, 18: 0.1, 19: 0.16, 20: 0.12, 21: 0.04 },
-  // Lunch peak and a long evening.
-  RAPIDA: { 11: 0.07, 12: 0.15, 13: 0.15, 14: 0.08, 15: 0.05, 16: 0.05, 17: 0.08, 18: 0.12, 19: 0.13, 20: 0.08, 21: 0.04 },
+/**
+ * Peso de cada hora local en los tickets de un día de cafetería: el desayuno
+ * de las ocho, el bajón del mediodía, la tarde de café de las cuatro.
+ */
+export const CAFE_HOURS: Record<number, number> = {
+  7: 0.08, 8: 0.13, 9: 0.12, 10: 0.1, 11: 0.07, 12: 0.06,
+  13: 0.06, 14: 0.06, 15: 0.08, 16: 0.1, 17: 0.08, 18: 0.06,
 };
 
 /** Tickets for a given day, rounded, never below one. */

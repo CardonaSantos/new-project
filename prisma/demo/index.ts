@@ -1,16 +1,16 @@
 /**
- * Entry point for the demonstration seed.
+ * Entry point for the demonstration seed: Café Pepita de Oro, Antigua
+ * Guatemala, three weeks of operation in the PRINCIPAL branch.
  *
+ *   npx prisma migrate reset
+ *   npm run seed:initial
  *   npm run seed:demo
- *   npm run seed:demo -- --fase=historia --sucursal=rapida
- *   npm run seed:demo -- --semanas=2 --tickets=10
- *   npm run seed:demo -- --reset
+ *   npm run seed:demo -- --semanas=1 --tickets=8     (prueba corta)
  *   npm run seed:demo -- --simular
  *
  * Requires DEMO_SEED_ALLOW=yes and DEMO_SEED_PASSWORD on the machine being
- * seeded. Run "npm run seed:initial" first: this phase needs the units,
- * conversions and operational roles that one registers, and refuses to invent
- * them.
+ * seeded. Runs on a freshly initialised database only, and never deletes
+ * anything: it refuses if the catalog already exists.
  *
  * The transactional phases drive the application's own services through a
  * standalone Nest context, so what the demo shows is what the system
@@ -41,17 +41,14 @@ import { PurchaseReceiptsService } from '../../src/modules/purchases/application
 import { PurchaseInvoicesService } from '../../src/modules/purchases/application/purchase-invoices.service.js';
 import { PurchasePaymentsService } from '../../src/modules/purchases/application/purchase-payments.service.js';
 import { SelfServiceService } from '../../src/modules/self-service/application/self-service.service.js';
-import { ReservationsService } from '../../src/modules/reservations/application/reservations.service.js';
-import { SupplyService } from '../../src/modules/supply/application/supply.service.js';
 import { InventoryInternalConsumptionService } from '../../src/modules/inventory/application/inventory-internal-consumption.service.js';
 import { InventoryOperationsService } from '../../src/modules/inventory/application/inventory-operations.service.js';
-import { assertAllowed, parseOptions, progress, DEMO_PREFIX } from './runtime.js';
+import { assertAllowed, parseOptions, progress } from './runtime.js';
 import { validateDemoData } from './validate.js';
 import { writeMasters } from './masters.js';
 import { restockBranch, stockBranches } from './purchases.js';
 import { asPrincipal, runHistory } from './history.js';
 import { auditDates, marker, shiftSince } from './backdate.js';
-import { resetDemo } from './reset.js';
 import { coverage, coverageReport } from './coverage.js';
 
 async function main(): Promise<void> {
@@ -72,7 +69,7 @@ async function main(): Promise<void> {
   if (options.simular) {
     process.stdout.write(
       `Simulación: ${options.fases.join(', ')} sobre ` +
-        `${options.sucursales.length ? options.sucursales.join(', ') : 'las 4 sucursales'}, ` +
+        `${options.sucursales.length ? options.sucursales.join(', ') : 'la cafetería'}, ` +
         `${options.semanas} semanas, ~${options.tickets} tickets/día.\n` +
         'No se escribió nada.\n',
     );
@@ -85,10 +82,14 @@ async function main(): Promise<void> {
   const db = app.get(PrismaService);
 
   try {
-    if (options.reset) {
-      progress('maestros', 'borrando lo que creó el demo');
-      const removed = await resetDemo(db);
-      progress('maestros', `${removed} filas borradas`);
+    // La semilla escribe el catálogo con los códigos del negocio, sin marcas de
+    // demo, así que no tiene cómo distinguir lo suyo de lo ajeno: corre solo
+    // sobre una base recién preparada, y nunca borra nada.
+    if (options.fases.includes('maestros') && (await db.producto.count()) > 0) {
+      throw Error(
+        'La base ya tiene catálogo. La semilla de demostración corre sobre una base recién preparada:\n' +
+          '  npx prisma migrate reset\n  npm run seed:initial\n  npm run seed:demo',
+      );
     }
 
     // The business owner does the buying and signs the closings; the branch
@@ -109,7 +110,17 @@ async function main(): Promise<void> {
     let ids = null as Awaited<ReturnType<typeof writeMasters>> | null;
 
     if (options.fases.includes('maestros')) {
+      // Desde que la semilla inicial creó la empresa: la instalación entera y
+      // los maestros se fechan juntos, diez días antes de que empiece la
+      // operación, como un negocio que abrió, configuró y después vendió.
+      const company = await db.empresaConfiguracion.findFirst({ select: { creadoEn: true } });
       ids = await writeMasters(db, options, process.env.DEMO_SEED_PASSWORD!);
+      if (company) {
+        const setupFrom = new Date(company.creadoEn.getTime() - 5000);
+        const opened = options.semanas * 7 + 10;
+        const moved = await shiftSince(db, setupFrom, opened, 0, { dates: true });
+        progress('maestros', `configuración fechada ${opened} días atrás (${moved} columnas)`);
+      }
     } else {
       // Later phases need the id maps, and rebuilding them is just the masters
       // phase again: upserts, so it costs little and keeps them honest.
@@ -126,7 +137,7 @@ async function main(): Promise<void> {
       for (const [branchCode, tableIds] of ids!.tables) {
         const managerId = ids!.staff.get(branchCode)?.get('ADMIN_SUCURSAL');
         if (!managerId || !tableIds.length) continue;
-        const manager = asPrincipal(managerId, `gerente.${branchCode.toLowerCase()}@demo.local`);
+        const manager = asPrincipal(managerId, 'gerente@demo.local');
         const issued: { mesaId: string; token: string }[] = [];
         for (const mesaId of tableIds) {
           const qr = await selfService.issueTableQr(manager, mesaId);
@@ -156,7 +167,7 @@ async function main(): Promise<void> {
       // Dentro de la marca: el QR queda fechado con la apertura, antes del mes.
       await issueQr();
       await stockBranches(db, purchaseServices(), admin, ids, options);
-      const moved = await shiftSince(db, beforeStock, options.semanas * 7 + 2);
+      const moved = await shiftSince(db, beforeStock, options.semanas * 7 + 2, 0, { dates: true });
       progress('compras', `abastecimiento fechado ${options.semanas * 7 + 2} días atrás (${moved} columnas)`);
     }
 
@@ -176,8 +187,6 @@ async function main(): Promise<void> {
           delivery: app.get(DeliveryService) as never,
           closing: app.get(FinanceClosingService) as never,
           selfService: app.get(SelfServiceService) as never,
-          reservations: app.get(ReservationsService) as never,
-          supply: app.get(SupplyService) as never,
           consumption: app.get(InventoryInternalConsumptionService) as never,
           inventoryOps: app.get(InventoryOperationsService) as never,
           bank: app.get(FinanceBankService) as never,
@@ -219,10 +228,12 @@ async function main(): Promise<void> {
     }
 
     process.stdout.write(
-      `\nListo. Usuarios de demostración: gerente|cajero|mesero|cocina|almacen` +
-        `.<sucursal>@demo.local, con la contraseña de DEMO_SEED_PASSWORD.\n` +
-        `Sucursales: ${DEMO_PREFIX}REPOSTERIA, ${DEMO_PREFIX}CAFETERIA, ` +
-        `${DEMO_PREFIX}RESTAURANTE, ${DEMO_PREFIX}RAPIDA.\n`,
+      `\nListo: Café Pepita de Oro, Antigua Guatemala, ${options.semanas * 7} días de operación.\n` +
+        `Usuarios, con la contraseña de DEMO_SEED_PASSWORD:\n` +
+        `  gerente@demo.local  (Lucía Morales, gerente)\n` +
+        `  cajero@demo.local   (Diego Ajú, cajero)\n` +
+        `  barista@demo.local  (Andrea Xocop, barista)\n` +
+        `El dueño es el administrador de la semilla inicial.\n`,
     );
   } finally {
     await app.close();

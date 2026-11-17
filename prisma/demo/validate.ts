@@ -7,7 +7,7 @@
  * enforces it — and failing early beats failing at insert time — or because it
  * caught a real mistake while this data was being written.
  */
-import { articles, INTERNAL_USE, type DemoArticle } from './articles.js';
+import { articles, baseQty, INTERNAL_USE, KITCHEN_UNITS, type DemoArticle, type KitchenUnitCode } from './articles.js';
 import { products, categories, modifierGroups } from './products.js';
 import { branches, menus, basePrices } from './branches.js';
 import { packagingRules, suppliers } from './supply.js';
@@ -32,6 +32,18 @@ export function validateDemoData(): string[] {
   const sku = new Map(variants.map((v) => [v.sku, v]));
   const groups = new Map(modifierGroups.map((g) => [g.codigo, g]));
   const menuByCode = new Map(menus.map((m) => [m.codigo, m]));
+
+  // Una medida de cocina solo se convierte dentro de su dimensión: dos
+  // cucharadas (volumen) de un artículo que se lleva en gramos no tienen
+  // conversión, y el sistema rechazaría la receta al producir o vender.
+  const unitFits = (where: string, articulo: string, unidad?: KitchenUnitCode) => {
+    if (!unidad) return;
+    const unit = KITCHEN_UNITS.find((u) => u.codigo === unidad);
+    const article = art.get(articulo);
+    if (!unit) fail.push(`${where}: unidad de cocina inexistente ${unidad}`);
+    else if (article && unit.base !== article.unidad)
+      fail.push(`${where}: ${unidad} es de ${unit.base} pero ${articulo} se lleva en ${article.unidad}`);
+  };
 
   const duplicates = (xs: string[]) => [...new Set(xs.filter((x, i) => xs.indexOf(x) !== i))];
   const unique: [string, string[]][] = [
@@ -92,6 +104,7 @@ export function validateDemoData(): string[] {
       if (seen.has(c.articulo)) fail.push(`receta ${id} repite el artículo ${c.articulo}`);
       seen.add(c.articulo);
       if (!(c.cantidad > 0)) fail.push(`receta ${id}: cantidad inválida en ${c.articulo}`);
+      unitFits(`receta ${id}`, c.articulo, c.unidad);
       if (c.merma !== undefined && (c.merma < 0 || c.merma >= 100))
         fail.push(`receta ${id}: merma fuera de rango en ${c.articulo}`);
     }
@@ -120,6 +133,7 @@ export function validateDemoData(): string[] {
       if (!c) continue;
       if (!art.has(c.articulo)) fail.push(`modificador ${o.codigo} usa artículo inexistente ${c.articulo}`);
       if (!(c.cantidad > 0)) fail.push(`modificador ${o.codigo}: cantidad inválida`);
+      unitFits(`modificador ${o.codigo}`, c.articulo, c.unidad);
       if (c.efecto === 'SUSTITUIR') {
         if (!c.sustituye) fail.push(`modificador ${o.codigo}: SUSTITUIR sin artículo sustituido`);
         else if (!art.has(c.sustituye)) fail.push(`modificador ${o.codigo} sustituye artículo inexistente`);
@@ -256,7 +270,7 @@ export function derivedCosts(): Map<string, number> {
     for (const r of productionRecipes) {
       let total = 0;
       for (const c of r.componentes)
-        total += (costs.get(c.articulo) ?? 0) * c.cantidad * (1 + (c.merma ?? 0) / 100);
+        total += (costs.get(c.articulo) ?? 0) * baseQty(c) * (1 + (c.merma ?? 0) / 100);
       costs.set(r.resultado, total / r.rendimiento);
     }
   }

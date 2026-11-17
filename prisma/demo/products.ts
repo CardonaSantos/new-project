@@ -1,25 +1,22 @@
 /**
- * Categories, products and variants for the demo catalog.
+ * Catálogo de Café Pepita de Oro: categorías, toppings y productos.
  *
- * The catalog is global in this schema (Producto.codigo and VarianteProducto.sku
- * are unique database-wide), so there is one coherent universe here covering
- * all four giros. What makes a branch look like a repostería or a taquería is
- * the menu assigned to it and the prices it carries, not a separate catalog.
- *
- * Products overlap on purpose: an americano is sold in all four branches at
- * four different prices, which is the clearest way to show a central catalog
- * with local pricing.
+ * Los precios viven en branches.ts (`basePrices`), por variante. Lo que cada
+ * variante consume vive en recipes.ts; aquí solo qué se vende y con qué
+ * opciones. Un producto INVENTARIABLE se vende tal cual de la vitrina y
+ * descuenta su artículo; uno PREPARADO pasa por barra o cocina con su receta.
  */
+import type { KitchenUnitCode } from './articles.js';
 
 export type ProductKind = 'PREPARADO' | 'INVENTARIABLE' | 'SERVICIO';
 
 export interface DemoVariant {
-  /** Globally unique SKU; also how recipes and prices point at this variant. */
+  /** SKU único; también es como recetas y precios apuntan a la variante. */
   sku: string;
   nombre: string;
-  /** Required for INVENTARIABLE: the stock article sold directly. */
+  /** Obligatorio en INVENTARIABLE: el artículo que se vende directo. */
   articulo?: string;
-  /** Modifier groups offered on this variant. */
+  /** Grupos de toppings ofrecidos en esta variante. */
   modificadores?: string[];
 }
 
@@ -35,39 +32,27 @@ export interface DemoProduct {
 export interface DemoCategory {
   codigo: string;
   nombre: string;
-  /** Preparation station this category routes to, per branch config. */
-  estacion: 'BARRA' | 'COCINA' | 'REPOSTERIA' | 'NINGUNA';
+  /** Estación a la que la categoría se rutea en la sucursal. */
+  estacion: 'BARRA' | 'COCINA' | 'NINGUNA';
 }
 
 export const categories: DemoCategory[] = [
-  { codigo: 'CAT-CAFE', nombre: 'Café', estacion: 'BARRA' },
-  { codigo: 'CAT-BEBIDAS-FRIAS', nombre: 'Bebidas frías', estacion: 'BARRA' },
-  { codigo: 'CAT-INFUSIONES', nombre: 'Infusiones', estacion: 'BARRA' },
+  { codigo: 'CAT-CAFE-CALIENTE', nombre: 'Café caliente', estacion: 'BARRA' },
+  { codigo: 'CAT-CAFE-FRIO', nombre: 'Café frío', estacion: 'BARRA' },
+  { codigo: 'CAT-SIN-CAFE', nombre: 'Bebidas sin café', estacion: 'BARRA' },
+  { codigo: 'CAT-DESAYUNOS', nombre: 'Desayunos', estacion: 'COCINA' },
+  { codigo: 'CAT-PANADERIA', nombre: 'Pan y repostería', estacion: 'BARRA' },
   { codigo: 'CAT-EMBOTELLADAS', nombre: 'Bebidas embotelladas', estacion: 'NINGUNA' },
-  { codigo: 'CAT-PASTELERIA', nombre: 'Pastelería', estacion: 'REPOSTERIA' },
-  { codigo: 'CAT-PANADERIA', nombre: 'Panadería', estacion: 'REPOSTERIA' },
-  { codigo: 'CAT-PASTELES-ENTEROS', nombre: 'Pasteles enteros', estacion: 'NINGUNA' },
-  { codigo: 'CAT-PLATOS-FUERTES', nombre: 'Platos fuertes', estacion: 'COCINA' },
-  { codigo: 'CAT-ENTRADAS', nombre: 'Entradas y ensaladas', estacion: 'COCINA' },
-  { codigo: 'CAT-HAMBURGUESAS', nombre: 'Hamburguesas', estacion: 'COCINA' },
-  { codigo: 'CAT-ACOMPANAMIENTOS', nombre: 'Acompañamientos', estacion: 'COCINA' },
   { codigo: 'CAT-SERVICIOS', nombre: 'Servicios', estacion: 'NINGUNA' },
 ];
 
-/**
- * What an option does to the consumption of the line it's attached to.
- *
- * Absent means the option has no inventory effect at all and is created with
- * zero components — a cooking instruction, not a change to what's used. Every
- * effect carries a quantity, RESTAR included: consumption subtracts that
- * amount from what the recipe asked for, clamped at zero.
- */
 export interface DemoModifierComponent {
   articulo: string;
-  /** In the article's own base unit. */
+  /** En la unidad base del artículo, o en `unidad` si se da. */
   cantidad: number;
+  unidad?: KitchenUnitCode;
   efecto: 'SUMAR' | 'RESTAR' | 'SUSTITUIR';
-  /** Required by SUSTITUIR, and must differ from `articulo`. */
+  /** Obligatorio en SUSTITUIR, y distinto de `articulo`. */
   sustituye?: string;
 }
 
@@ -86,7 +71,6 @@ export interface DemoModifierGroup {
   opciones: DemoModifierOption[];
 }
 
-/** Shared modifier groups, attached per variant below. */
 export const modifierGroups: DemoModifierGroup[] = [
   {
     codigo: 'MOD-LECHE',
@@ -94,30 +78,43 @@ export const modifierGroups: DemoModifierGroup[] = [
     minimo: 0,
     maximo: 1,
     opciones: [
-      // SUSTITUIR drops the component the recipe declares and adds this one, so
-      // what lands in inventory is almond milk instead of whole milk.
-      { codigo: 'MOD-LECHE-ALMENDRA', nombre: 'Bebida de almendra', precio: 6.0, componente: { articulo: 'ING-LECHE-ALMENDRA', cantidad: 180, efecto: 'SUSTITUIR', sustituye: 'ING-LECHE' } },
-      { codigo: 'MOD-LECHE-DESLACT', nombre: 'Leche deslactosada', precio: 4.0, componente: { articulo: 'ING-LECHE-DESLACT', cantidad: 180, efecto: 'SUSTITUIR', sustituye: 'ING-LECHE' } },
+      // SUSTITUIR quita la leche entera de la receta y pone esta en su lugar.
+      // La cantidad es una sola para todos los tamaños —el sistema no la
+      // escala—, así que va la de un vaso mediano.
+      { codigo: 'MOD-LECHE-DESLACT', nombre: 'Leche deslactosada', precio: 0, componente: { articulo: 'LAC-LECHE-DESLACT', cantidad: 240, efecto: 'SUSTITUIR', sustituye: 'LAC-LECHE-ENTERA' } },
+      { codigo: 'MOD-LECHE-ALMENDRA', nombre: 'Bebida de almendra', precio: 6, componente: { articulo: 'LAC-BEBIDA-ALMENDRA', cantidad: 240, efecto: 'SUSTITUIR', sustituye: 'LAC-LECHE-ENTERA' } },
+      { codigo: 'MOD-LECHE-AVENA', nombre: 'Bebida de avena', precio: 6, componente: { articulo: 'LAC-BEBIDA-AVENA', cantidad: 240, efecto: 'SUSTITUIR', sustituye: 'LAC-LECHE-ENTERA' } },
     ],
   },
   {
-    codigo: 'MOD-CAFE-EXTRA',
-    nombre: 'Intensidad',
+    codigo: 'MOD-SHOT',
+    nombre: 'Shot extra',
     minimo: 0,
     maximo: 2,
     opciones: [
-      { codigo: 'MOD-SHOT-EXTRA', nombre: 'Shot extra', precio: 7.0, componente: { articulo: 'ING-CAFE-GRANO', cantidad: 18, efecto: 'SUMAR' } },
-      { codigo: 'MOD-DESCAFEINADO', nombre: 'Descafeinado', precio: 3.0, componente: { articulo: 'ING-CAFE-DESCAF', cantidad: 18, efecto: 'SUSTITUIR', sustituye: 'ING-CAFE-GRANO' } },
+      { codigo: 'MOD-SHOT-EXTRA', nombre: 'Shot extra de espresso', precio: 6, componente: { articulo: 'CAF-GRANO', cantidad: 9, efecto: 'SUMAR' } },
     ],
   },
   {
-    codigo: 'MOD-JARABES',
+    codigo: 'MOD-JARABE',
     nombre: 'Jarabes',
     minimo: 0,
     maximo: 2,
     opciones: [
-      { codigo: 'MOD-JARABE-VAINILLA', nombre: 'Jarabe de vainilla', precio: 5.0, componente: { articulo: 'PRE-JARABE-VAINILLA', cantidad: 20, efecto: 'SUMAR' } },
-      { codigo: 'MOD-JARABE-CARAMELO', nombre: 'Jarabe de caramelo', precio: 5.0, componente: { articulo: 'PRE-JARABE-CARAMELO', cantidad: 20, efecto: 'SUMAR' } },
+      { codigo: 'MOD-JARABE-VAINILLA', nombre: 'Vainilla de la casa', precio: 5, componente: { articulo: 'PRE-JARABE-VAINILLA', cantidad: 1, unidad: 'CDA', efecto: 'SUMAR' } },
+      { codigo: 'MOD-JARABE-CARAMELO', nombre: 'Caramelo', precio: 5, componente: { articulo: 'SEC-JARABE-CARAMELO', cantidad: 1, unidad: 'CDA', efecto: 'SUMAR' } },
+      { codigo: 'MOD-JARABE-AVELLANA', nombre: 'Avellana', precio: 5, componente: { articulo: 'SEC-JARABE-AVELLANA', cantidad: 1, unidad: 'CDA', efecto: 'SUMAR' } },
+    ],
+  },
+  {
+    codigo: 'MOD-TOPPING',
+    nombre: 'Toppings',
+    minimo: 0,
+    maximo: 3,
+    opciones: [
+      { codigo: 'MOD-TOP-CREMA', nombre: 'Crema batida', precio: 5, componente: { articulo: 'LAC-CREMA-BATIR', cantidad: 2, unidad: 'CDA', efecto: 'SUMAR' } },
+      { codigo: 'MOD-TOP-CANELA', nombre: 'Canela espolvoreada', precio: 0, componente: { articulo: 'SEC-CANELA-MOLIDA', cantidad: 0.5, efecto: 'SUMAR' } },
+      { codigo: 'MOD-TOP-CHISPAS', nombre: 'Chispas de chocolate', precio: 4, componente: { articulo: 'SEC-CHISPAS-CHOCOLATE', cantidad: 10, efecto: 'SUMAR' } },
     ],
   },
   {
@@ -126,288 +123,224 @@ export const modifierGroups: DemoModifierGroup[] = [
     minimo: 0,
     maximo: 1,
     opciones: [
-      { codigo: 'MOD-SIN-AZUCAR', nombre: 'Sin azúcar', precio: 0, componente: { articulo: 'ING-AZUCAR', cantidad: 8, efecto: 'RESTAR' } },
+      { codigo: 'MOD-END-AZUCAR', nombre: 'Azúcar', precio: 0, componente: { articulo: 'SEC-AZUCAR-SOBRE', cantidad: 2, efecto: 'SUMAR' } },
+      { codigo: 'MOD-END-STEVIA', nombre: 'Stevia', precio: 0, componente: { articulo: 'SEC-STEVIA-SOBRE', cantidad: 1, efecto: 'SUMAR' } },
+      { codigo: 'MOD-END-MIEL', nombre: 'Miel de abeja', precio: 3, componente: { articulo: 'SEC-MIEL', cantidad: 1, unidad: 'CDA', efecto: 'SUMAR' } },
     ],
   },
   {
-    codigo: 'MOD-HAMBURGUESA-EXTRAS',
+    codigo: 'MOD-HUEVOS',
+    nombre: 'Huevos al gusto',
+    minimo: 1,
+    maximo: 1,
+    opciones: [
+      // Elección obligatoria que le dice a la cocina cómo prepararlos; solo
+      // los rancheros cambian lo que se consume.
+      { codigo: 'MOD-HUEVOS-REVUELTOS', nombre: 'Revueltos', precio: 0 },
+      { codigo: 'MOD-HUEVOS-ESTRELLADOS', nombre: 'Estrellados', precio: 0 },
+      { codigo: 'MOD-HUEVOS-RANCHEROS', nombre: 'Rancheros', precio: 0, componente: { articulo: 'VER-TOMATE', cantidad: 60, efecto: 'SUMAR' } },
+    ],
+  },
+  {
+    codigo: 'MOD-PAN',
+    nombre: 'Pan o tortillas',
+    minimo: 1,
+    maximo: 1,
+    opciones: [
+      { codigo: 'MOD-PAN-FRANCES', nombre: 'Pan francés', precio: 0, componente: { articulo: 'PAN-FRANCES', cantidad: 2, efecto: 'SUMAR' } },
+      { codigo: 'MOD-PAN-TORTILLAS', nombre: 'Tortillas', precio: 0, componente: { articulo: 'PAN-TORTILLA', cantidad: 3, efecto: 'SUMAR' } },
+    ],
+  },
+  {
+    codigo: 'MOD-EXTRAS',
     nombre: 'Extras',
     minimo: 0,
     maximo: 3,
     opciones: [
-      { codigo: 'MOD-EXTRA-QUESO', nombre: 'Queso extra', precio: 8.0, componente: { articulo: 'ING-QUESO-AMARILLO', cantidad: 1, efecto: 'SUMAR' } },
-      { codigo: 'MOD-EXTRA-TOCINO', nombre: 'Tocino extra', precio: 12.0, componente: { articulo: 'ING-TOCINO', cantidad: 30, efecto: 'SUMAR' } },
-      { codigo: 'MOD-SIN-CEBOLLA', nombre: 'Sin cebolla', precio: 0, componente: { articulo: 'ING-CEBOLLA', cantidad: 20, efecto: 'RESTAR' } },
-    ],
-  },
-  {
-    codigo: 'MOD-TERMINO',
-    nombre: 'Término de cocción',
-    minimo: 1,
-    maximo: 1,
-    opciones: [
-      // Required single pick, and no components: it tells the kitchen how to
-      // cook the cut, it doesn't change what the cut consumes.
-      { codigo: 'MOD-TERMINO-MEDIO', nombre: 'Término medio', precio: 0 },
-      { codigo: 'MOD-TERMINO-TRES-CUARTOS', nombre: 'Tres cuartos', precio: 0 },
-      { codigo: 'MOD-TERMINO-BIEN-COCIDO', nombre: 'Bien cocido', precio: 0 },
+      { codigo: 'MOD-EXTRA-AGUACATE', nombre: 'Aguacate', precio: 8, componente: { articulo: 'VER-AGUACATE', cantidad: 0.5, efecto: 'SUMAR' } },
+      { codigo: 'MOD-EXTRA-TOCINO', nombre: 'Tocino', precio: 10, componente: { articulo: 'CAR-TOCINO', cantidad: 2, efecto: 'SUMAR' } },
+      { codigo: 'MOD-EXTRA-QUESO', nombre: 'Queso fresco extra', precio: 6, componente: { articulo: 'LAC-QUESO-FRESCO', cantidad: 40, efecto: 'SUMAR' } },
+      { codigo: 'MOD-EXTRA-HUEVO', nombre: 'Huevo extra', precio: 6, componente: { articulo: 'LAC-HUEVO', cantidad: 1, efecto: 'SUMAR' } },
     ],
   },
 ];
 
-const cafeMods = ['MOD-LECHE', 'MOD-CAFE-EXTRA', 'MOD-JARABES', 'MOD-ENDULZANTE'];
+/** Lo que una bebida con leche ofrece. */
+const conLeche = ['MOD-LECHE', 'MOD-SHOT', 'MOD-JARABE', 'MOD-TOPPING', 'MOD-ENDULZANTE'];
 
 export const products: DemoProduct[] = [
-  // --- Café -------------------------------------------------------------
+  // Café caliente
   {
-    codigo: 'PRD-ESPRESSO', nombre: 'Espresso', tipo: 'PREPARADO', categoria: 'CAT-CAFE',
-    descripcion: 'Shot de café arábica recién molido.',
+    codigo: 'P-ESPRESSO', nombre: 'Espresso', tipo: 'PREPARADO', categoria: 'CAT-CAFE-CALIENTE',
+    descripcion: 'Café Antigua de tueste espresso, extraído al momento',
     variantes: [
-      { sku: 'SKU-ESPRESSO-S', nombre: 'Sencillo', modificadores: ['MOD-CAFE-EXTRA'] },
-      { sku: 'SKU-ESPRESSO-D', nombre: 'Doble', modificadores: ['MOD-CAFE-EXTRA'] },
+      { sku: 'SKU-ESPRESSO-SENCILLO', nombre: 'Sencillo', modificadores: ['MOD-ENDULZANTE'] },
+      { sku: 'SKU-ESPRESSO-DOBLE', nombre: 'Doble', modificadores: ['MOD-ENDULZANTE'] },
     ],
   },
   {
-    codigo: 'PRD-AMERICANO', nombre: 'Americano', tipo: 'PREPARADO', categoria: 'CAT-CAFE',
+    codigo: 'P-AMERICANO', nombre: 'Americano', tipo: 'PREPARADO', categoria: 'CAT-CAFE-CALIENTE',
     variantes: [
-      { sku: 'SKU-AMERICANO-12', nombre: '12 oz', modificadores: ['MOD-CAFE-EXTRA', 'MOD-ENDULZANTE'] },
-      { sku: 'SKU-AMERICANO-16', nombre: '16 oz', modificadores: ['MOD-CAFE-EXTRA', 'MOD-ENDULZANTE'] },
+      { sku: 'SKU-AMERICANO-8', nombre: '8 oz', modificadores: ['MOD-SHOT', 'MOD-ENDULZANTE'] },
+      { sku: 'SKU-AMERICANO-12', nombre: '12 oz', modificadores: ['MOD-SHOT', 'MOD-ENDULZANTE'] },
     ],
   },
   {
-    codigo: 'PRD-CAPUCHINO', nombre: 'Capuchino', tipo: 'PREPARADO', categoria: 'CAT-CAFE',
+    codigo: 'P-PICHEL', nombre: 'Café de pichel', tipo: 'PREPARADO', categoria: 'CAT-CAFE-CALIENTE',
+    descripcion: 'Café filtrado de la casa, como se sirve en Antigua',
     variantes: [
-      { sku: 'SKU-CAPUCHINO-12', nombre: '12 oz', modificadores: cafeMods },
-      { sku: 'SKU-CAPUCHINO-16', nombre: '16 oz', modificadores: cafeMods },
+      { sku: 'SKU-PICHEL-8', nombre: '8 oz', modificadores: ['MOD-ENDULZANTE'] },
+      { sku: 'SKU-PICHEL-12', nombre: '12 oz', modificadores: ['MOD-ENDULZANTE'] },
     ],
   },
   {
-    codigo: 'PRD-LATTE', nombre: 'Latte', tipo: 'PREPARADO', categoria: 'CAT-CAFE',
+    codigo: 'P-CAFE-LECHE', nombre: 'Café con leche', tipo: 'PREPARADO', categoria: 'CAT-CAFE-CALIENTE',
+    variantes: [{ sku: 'SKU-CAFE-LECHE-12', nombre: '12 oz', modificadores: ['MOD-LECHE', 'MOD-ENDULZANTE'] }],
+  },
+  {
+    codigo: 'P-CAPUCHINO', nombre: 'Capuchino', tipo: 'PREPARADO', categoria: 'CAT-CAFE-CALIENTE',
     variantes: [
-      { sku: 'SKU-LATTE-12', nombre: '12 oz', modificadores: cafeMods },
-      { sku: 'SKU-LATTE-16', nombre: '16 oz', modificadores: cafeMods },
+      { sku: 'SKU-CAPUCHINO-8', nombre: '8 oz', modificadores: conLeche },
+      { sku: 'SKU-CAPUCHINO-12', nombre: '12 oz', modificadores: conLeche },
     ],
   },
   {
-    codigo: 'PRD-MOCHA', nombre: 'Mocha', tipo: 'PREPARADO', categoria: 'CAT-CAFE',
+    codigo: 'P-LATTE', nombre: 'Latte', tipo: 'PREPARADO', categoria: 'CAT-CAFE-CALIENTE',
     variantes: [
-      { sku: 'SKU-MOCHA-12', nombre: '12 oz', modificadores: cafeMods },
-      { sku: 'SKU-MOCHA-16', nombre: '16 oz', modificadores: cafeMods },
+      { sku: 'SKU-LATTE-12', nombre: '12 oz', modificadores: conLeche },
+      { sku: 'SKU-LATTE-16', nombre: '16 oz', modificadores: conLeche },
     ],
+  },
+  {
+    codigo: 'P-MOCHA', nombre: 'Mocha', tipo: 'PREPARADO', categoria: 'CAT-CAFE-CALIENTE',
+    variantes: [
+      { sku: 'SKU-MOCHA-12', nombre: '12 oz', modificadores: ['MOD-LECHE', 'MOD-SHOT', 'MOD-TOPPING'] },
+      { sku: 'SKU-MOCHA-16', nombre: '16 oz', modificadores: ['MOD-LECHE', 'MOD-SHOT', 'MOD-TOPPING'] },
+    ],
+  },
+  {
+    codigo: 'P-BOMBON', nombre: 'Café bombón', tipo: 'PREPARADO', categoria: 'CAT-CAFE-CALIENTE',
+    descripcion: 'Espresso doble sobre leche condensada',
+    variantes: [{ sku: 'SKU-BOMBON-8', nombre: '8 oz' }],
+  },
+  {
+    codigo: 'P-CHOCOLATE', nombre: 'Chocolate caliente de tablilla', tipo: 'PREPARADO', categoria: 'CAT-CAFE-CALIENTE',
+    descripcion: 'Chocolate artesanal de tablilla batido con leche',
+    variantes: [
+      { sku: 'SKU-CHOCOLATE-8', nombre: '8 oz', modificadores: ['MOD-LECHE', 'MOD-TOPPING'] },
+      { sku: 'SKU-CHOCOLATE-12', nombre: '12 oz', modificadores: ['MOD-LECHE', 'MOD-TOPPING'] },
+    ],
+  },
+  {
+    codigo: 'P-CHAI', nombre: 'Chai latte', tipo: 'PREPARADO', categoria: 'CAT-CAFE-CALIENTE',
+    variantes: [{ sku: 'SKU-CHAI-12', nombre: '12 oz', modificadores: ['MOD-LECHE', 'MOD-ENDULZANTE'] }],
+  },
+  {
+    codigo: 'P-TE', nombre: 'Té o infusión', tipo: 'PREPARADO', categoria: 'CAT-CAFE-CALIENTE',
+    descripcion: 'Manzanilla, limón o té negro',
+    variantes: [{ sku: 'SKU-TE-12', nombre: '12 oz', modificadores: ['MOD-ENDULZANTE'] }],
   },
 
-  // --- Bebidas frías ----------------------------------------------------
+  // Café frío
   {
-    codigo: 'PRD-FRAPPE-CAFE', nombre: 'Frappé de café', tipo: 'PREPARADO', categoria: 'CAT-BEBIDAS-FRIAS',
+    codigo: 'P-COLD-BREW', nombre: 'Cold brew', tipo: 'PREPARADO', categoria: 'CAT-CAFE-FRIO',
+    descripcion: 'Café Antigua infusionado en frío 16 horas',
     variantes: [
-      { sku: 'SKU-FRAPPE-CAFE-16', nombre: '16 oz', modificadores: ['MOD-LECHE', 'MOD-JARABES', 'MOD-ENDULZANTE'] },
+      { sku: 'SKU-COLD-BREW-12', nombre: '12 oz', modificadores: ['MOD-JARABE', 'MOD-ENDULZANTE'] },
+      { sku: 'SKU-COLD-BREW-16', nombre: '16 oz', modificadores: ['MOD-JARABE', 'MOD-ENDULZANTE'] },
     ],
   },
   {
-    codigo: 'PRD-REFRESCO-NATURAL', nombre: 'Refresco natural', tipo: 'PREPARADO',
-    categoria: 'CAT-BEBIDAS-FRIAS',
-    descripcion: 'De jamaica o de horchata, preparados en casa.',
+    codigo: 'P-LATTE-FRIO', nombre: 'Latte frío', tipo: 'PREPARADO', categoria: 'CAT-CAFE-FRIO',
+    variantes: [{ sku: 'SKU-LATTE-FRIO-16', nombre: '16 oz', modificadores: ['MOD-LECHE', 'MOD-SHOT', 'MOD-JARABE', 'MOD-ENDULZANTE'] }],
+  },
+  {
+    codigo: 'P-FRAPPE', nombre: 'Frappé de café', tipo: 'PREPARADO', categoria: 'CAT-CAFE-FRIO',
+    variantes: [{ sku: 'SKU-FRAPPE-16', nombre: '16 oz', modificadores: ['MOD-LECHE', 'MOD-JARABE', 'MOD-TOPPING'] }],
+  },
+
+  // Sin café
+  {
+    codigo: 'P-LIMONADA', nombre: 'Limonada con hierbabuena', tipo: 'PREPARADO', categoria: 'CAT-SIN-CAFE',
+    variantes: [{ sku: 'SKU-LIMONADA-16', nombre: '16 oz' }],
+  },
+  {
+    codigo: 'P-LICUADO', nombre: 'Licuado', tipo: 'PREPARADO', categoria: 'CAT-SIN-CAFE',
     variantes: [
-      { sku: 'SKU-JAMAICA-16', nombre: 'Jamaica 16 oz', modificadores: ['MOD-ENDULZANTE'] },
-      { sku: 'SKU-HORCHATA-16', nombre: 'Horchata 16 oz', modificadores: ['MOD-ENDULZANTE'] },
+      { sku: 'SKU-LICUADO-BANANO', nombre: 'Banano 16 oz', modificadores: ['MOD-LECHE'] },
+      { sku: 'SKU-LICUADO-FRESA', nombre: 'Fresa 16 oz', modificadores: ['MOD-LECHE'] },
     ],
   },
   {
-    codigo: 'PRD-LICUADO', nombre: 'Licuado', tipo: 'PREPARADO', categoria: 'CAT-BEBIDAS-FRIAS',
-    variantes: [
-      { sku: 'SKU-LICUADO-BANANO', nombre: 'De banano', modificadores: ['MOD-LECHE', 'MOD-ENDULZANTE'] },
-      { sku: 'SKU-LICUADO-FRESA', nombre: 'De fresa', modificadores: ['MOD-LECHE', 'MOD-ENDULZANTE'] },
-    ],
-  },
-  {
-    codigo: 'PRD-LIMONADA', nombre: 'Limonada natural', tipo: 'PREPARADO', categoria: 'CAT-BEBIDAS-FRIAS',
-    variantes: [
-      { sku: 'SKU-LIMONADA-16', nombre: '16 oz', modificadores: ['MOD-ENDULZANTE'] },
-    ],
+    codigo: 'P-ATOL', nombre: 'Atol de elote', tipo: 'PREPARADO', categoria: 'CAT-SIN-CAFE',
+    descripcion: 'Hecho en casa cada mañana, con canela',
+    variantes: [{ sku: 'SKU-ATOL-12', nombre: '12 oz', modificadores: ['MOD-TOPPING'] }],
   },
 
-  // --- Infusiones -------------------------------------------------------
+  // Desayunos, todo el día
   {
-    codigo: 'PRD-TE-NEGRO', nombre: 'Té negro', tipo: 'PREPARADO', categoria: 'CAT-INFUSIONES',
-    variantes: [
-      { sku: 'SKU-TE-NEGRO-12', nombre: '12 oz', modificadores: ['MOD-ENDULZANTE'] },
-    ],
+    codigo: 'P-DESAYUNO-CHAPIN', nombre: 'Desayuno chapín', tipo: 'PREPARADO', categoria: 'CAT-DESAYUNOS',
+    descripcion: 'Huevos al gusto, frijoles volteados, plátanos fritos, crema, queso fresco y café de pichel',
+    variantes: [{ sku: 'SKU-DESAYUNO-CHAPIN', nombre: 'Plato', modificadores: ['MOD-HUEVOS', 'MOD-PAN', 'MOD-EXTRAS'] }],
   },
   {
-    codigo: 'PRD-CHOCOLATE-CALIENTE', nombre: 'Chocolate caliente', tipo: 'PREPARADO', categoria: 'CAT-INFUSIONES',
-    variantes: [
-      { sku: 'SKU-CHOCOLATE-12', nombre: '12 oz', modificadores: ['MOD-LECHE', 'MOD-ENDULZANTE'] },
-    ],
-  },
-
-  // --- Bebidas embotelladas: venta directa de stock ---------------------
-  {
-    codigo: 'PRD-AGUA', nombre: 'Agua pura', tipo: 'INVENTARIABLE', categoria: 'CAT-EMBOTELLADAS',
-    variantes: [{ sku: 'SKU-AGUA-600', nombre: 'Botella 600 ml', articulo: 'BEB-AGUA-600' }],
+    codigo: 'P-PANQUEQUES', nombre: 'Panqueques con miel y fresas', tipo: 'PREPARADO', categoria: 'CAT-DESAYUNOS',
+    variantes: [{ sku: 'SKU-PANQUEQUES', nombre: 'Orden de 3', modificadores: ['MOD-EXTRAS'] }],
   },
   {
-    codigo: 'PRD-REFRESCO', nombre: 'Refresco', tipo: 'INVENTARIABLE', categoria: 'CAT-EMBOTELLADAS',
-    variantes: [{ sku: 'SKU-REFRESCO-355', nombre: 'Lata 355 ml', articulo: 'BEB-REFRESCO-355' }],
+    codigo: 'P-TOSTADA-AGUACATE', nombre: 'Tostada de aguacate', tipo: 'PREPARADO', categoria: 'CAT-DESAYUNOS',
+    descripcion: 'Pan de masa madre, aguacate, tomate y huevo',
+    variantes: [{ sku: 'SKU-TOSTADA-AGUACATE', nombre: 'Plato', modificadores: ['MOD-HUEVOS', 'MOD-EXTRAS'] }],
   },
   {
-    codigo: 'PRD-JUGO', nombre: 'Jugo natural', tipo: 'INVENTARIABLE', categoria: 'CAT-EMBOTELLADAS',
-    variantes: [{ sku: 'SKU-JUGO-500', nombre: 'Botella 500 ml', articulo: 'BEB-JUGO-500' }],
-  },
-  {
-    codigo: 'PRD-CERVEZA', nombre: 'Cerveza nacional', tipo: 'INVENTARIABLE', categoria: 'CAT-EMBOTELLADAS',
-    variantes: [{ sku: 'SKU-CERVEZA-355', nombre: 'Botella 355 ml', articulo: 'BEB-CERVEZA-355' }],
+    codigo: 'P-SANDWICH-CROISSANT', nombre: 'Sándwich de jamón y queso en croissant', tipo: 'PREPARADO', categoria: 'CAT-DESAYUNOS',
+    variantes: [{ sku: 'SKU-SANDWICH-CROISSANT', nombre: 'Unidad', modificadores: ['MOD-EXTRAS'] }],
   },
 
-  // --- Pastelería por rebanada -----------------------------------------
+  // Vitrina: se vende tal cual y descuenta su artículo.
   {
-    codigo: 'PRD-REBANADA-CHOCOLATE', nombre: 'Rebanada de pastel de chocolate', tipo: 'PREPARADO',
-    categoria: 'CAT-PASTELERIA',
-    variantes: [{ sku: 'SKU-REBANADA-CHOCOLATE', nombre: 'Porción' }],
+    codigo: 'P-CROISSANT', nombre: 'Croissant de mantequilla', tipo: 'INVENTARIABLE', categoria: 'CAT-PANADERIA',
+    variantes: [{ sku: 'SKU-CROISSANT', nombre: 'Unidad', articulo: 'PAN-CROISSANT' }],
   },
   {
-    codigo: 'PRD-REBANADA-FRESA', nombre: 'Rebanada de pastel de fresa', tipo: 'PREPARADO',
-    categoria: 'CAT-PASTELERIA',
-    variantes: [{ sku: 'SKU-REBANADA-FRESA', nombre: 'Porción' }],
+    codigo: 'P-PAN-BANANO', nombre: 'Pan de banano', tipo: 'INVENTARIABLE', categoria: 'CAT-PANADERIA',
+    descripcion: 'Horneado en casa',
+    variantes: [{ sku: 'SKU-PAN-BANANO', nombre: 'Rebanada', articulo: 'PRE-PAN-BANANO' }],
   },
   {
-    codigo: 'PRD-TRES-LECHES', nombre: 'Pastel de tres leches', tipo: 'PREPARADO',
-    categoria: 'CAT-PASTELERIA',
-    variantes: [{ sku: 'SKU-TRES-LECHES', nombre: 'Porción' }],
+    codigo: 'P-RELLENITO', nombre: 'Rellenito de plátano', tipo: 'INVENTARIABLE', categoria: 'CAT-PANADERIA',
+    descripcion: 'Plátano relleno de frijol con chocolate, hecho en casa',
+    variantes: [{ sku: 'SKU-RELLENITO', nombre: 'Unidad', articulo: 'PRE-RELLENITO' }],
   },
   {
-    codigo: 'PRD-CHEESECAKE', nombre: 'Cheesecake', tipo: 'PREPARADO', categoria: 'CAT-PASTELERIA',
-    variantes: [{ sku: 'SKU-CHEESECAKE', nombre: 'Porción' }],
+    codigo: 'P-CHAMPURRADA', nombre: 'Champurrada', tipo: 'INVENTARIABLE', categoria: 'CAT-PANADERIA',
+    variantes: [{ sku: 'SKU-CHAMPURRADA', nombre: 'Unidad', articulo: 'PAN-CHAMPURRADA' }],
   },
   {
-    codigo: 'PRD-BROWNIE', nombre: 'Brownie', tipo: 'PREPARADO', categoria: 'CAT-PASTELERIA',
-    variantes: [{ sku: 'SKU-BROWNIE', nombre: 'Porción' }],
+    codigo: 'P-CHEESECAKE', nombre: 'Cheesecake de fresa', tipo: 'INVENTARIABLE', categoria: 'CAT-PANADERIA',
+    variantes: [{ sku: 'SKU-CHEESECAKE', nombre: 'Porción', articulo: 'POS-CHEESECAKE' }],
   },
   {
-    codigo: 'PRD-TARTA-FRESA', nombre: 'Tartaleta de fresa', tipo: 'PREPARADO', categoria: 'CAT-PASTELERIA',
-    variantes: [{ sku: 'SKU-TARTA-FRESA', nombre: 'Unidad' }],
-  },
-
-  // --- Panadería --------------------------------------------------------
-  {
-    codigo: 'PRD-CROISSANT', nombre: 'Croissant', tipo: 'PREPARADO', categoria: 'CAT-PANADERIA',
-    variantes: [
-      { sku: 'SKU-CROISSANT', nombre: 'Simple' },
-      { sku: 'SKU-CROISSANT-ALMENDRA', nombre: 'De almendra' },
-    ],
-  },
-  {
-    codigo: 'PRD-GALLETA', nombre: 'Galleta de chocolate', tipo: 'PREPARADO', categoria: 'CAT-PANADERIA',
-    variantes: [{ sku: 'SKU-GALLETA', nombre: 'Unidad' }],
-  },
-  {
-    codigo: 'PRD-CHAMPURRADA', nombre: 'Champurrada', tipo: 'PREPARADO', categoria: 'CAT-PANADERIA',
-    variantes: [{ sku: 'SKU-CHAMPURRADA', nombre: 'Unidad' }],
+    codigo: 'P-TRES-LECHES', nombre: 'Pastel de tres leches', tipo: 'INVENTARIABLE', categoria: 'CAT-PANADERIA',
+    variantes: [{ sku: 'SKU-TRES-LECHES', nombre: 'Porción', articulo: 'POS-TRES-LECHES' }],
   },
 
-  // --- Pasteles enteros: producidos a stock, venta directa --------------
+  // Embotelladas
   {
-    codigo: 'PRD-PASTEL-CHOCOLATE', nombre: 'Pastel de chocolate entero', tipo: 'INVENTARIABLE',
-    categoria: 'CAT-PASTELES-ENTEROS',
-    descripcion: 'Producido por lote y vendido por unidad desde existencias.',
-    variantes: [{ sku: 'SKU-PASTEL-CHOCOLATE', nombre: '20 porciones', articulo: 'PT-PASTEL-CHOCOLATE' }],
+    codigo: 'P-AGUA-PURA', nombre: 'Agua pura', tipo: 'INVENTARIABLE', categoria: 'CAT-EMBOTELLADAS',
+    variantes: [{ sku: 'SKU-AGUA-PURA', nombre: '600 ml', articulo: 'BEB-AGUA-PURA' }],
   },
   {
-    codigo: 'PRD-PASTEL-FRESA', nombre: 'Pastel de fresa entero', tipo: 'INVENTARIABLE',
-    categoria: 'CAT-PASTELES-ENTEROS',
-    variantes: [{ sku: 'SKU-PASTEL-FRESA', nombre: '20 porciones', articulo: 'PT-PASTEL-FRESA' }],
+    codigo: 'P-AGUA-MINERAL', nombre: 'Agua mineral', tipo: 'INVENTARIABLE', categoria: 'CAT-EMBOTELLADAS',
+    variantes: [{ sku: 'SKU-AGUA-MINERAL', nombre: '355 ml', articulo: 'BEB-AGUA-MINERAL' }],
   },
 
-  // --- Platos fuertes ---------------------------------------------------
+  // El cargo de envío: un producto de servicio, sin inventario.
   {
-    codigo: 'PRD-LOMO-PLANCHA', nombre: 'Lomo a la plancha', tipo: 'PREPARADO', categoria: 'CAT-PLATOS-FUERTES',
-    variantes: [{ sku: 'SKU-LOMO-PLANCHA', nombre: 'Porción', modificadores: ['MOD-TERMINO'] }],
-  },
-  {
-    codigo: 'PRD-POLLO-PLANCHA', nombre: 'Pollo a la plancha', tipo: 'PREPARADO', categoria: 'CAT-PLATOS-FUERTES',
-    variantes: [{ sku: 'SKU-POLLO-PLANCHA', nombre: 'Porción' }],
-  },
-  {
-    codigo: 'PRD-PESCADO', nombre: 'Filete de pescado', tipo: 'PREPARADO', categoria: 'CAT-PLATOS-FUERTES',
-    variantes: [{ sku: 'SKU-PESCADO', nombre: 'Porción' }],
-  },
-  {
-    codigo: 'PRD-CAMARONES', nombre: 'Camarones al ajillo', tipo: 'PREPARADO', categoria: 'CAT-PLATOS-FUERTES',
-    variantes: [{ sku: 'SKU-CAMARONES', nombre: 'Porción' }],
-  },
-  {
-    codigo: 'PRD-PASTA-BOLOGNESA', nombre: 'Pasta bolognesa', tipo: 'PREPARADO', categoria: 'CAT-PLATOS-FUERTES',
-    variantes: [{ sku: 'SKU-PASTA-BOLOGNESA', nombre: 'Porción' }],
-  },
-
-  // --- Entradas y ensaladas ---------------------------------------------
-  {
-    codigo: 'PRD-ENSALADA-CESAR', nombre: 'Ensalada césar', tipo: 'PREPARADO', categoria: 'CAT-ENTRADAS',
-    variantes: [
-      { sku: 'SKU-CESAR', nombre: 'Clásica' },
-      { sku: 'SKU-CESAR-POLLO', nombre: 'Con pollo' },
-    ],
-  },
-  {
-    codigo: 'PRD-SOPA-POLLO', nombre: 'Sopa de pollo', tipo: 'PREPARADO', categoria: 'CAT-ENTRADAS',
-    variantes: [{ sku: 'SKU-SOPA-POLLO', nombre: 'Tazón' }],
-  },
-
-  // --- Hamburguesas -----------------------------------------------------
-  {
-    codigo: 'PRD-HAMBURGUESA', nombre: 'Hamburguesa', tipo: 'PREPARADO', categoria: 'CAT-HAMBURGUESAS',
-    variantes: [
-      { sku: 'SKU-HAMBURGUESA-CLASICA', nombre: 'Clásica', modificadores: ['MOD-HAMBURGUESA-EXTRAS'] },
-      { sku: 'SKU-HAMBURGUESA-QUESO', nombre: 'Con queso', modificadores: ['MOD-HAMBURGUESA-EXTRAS'] },
-      { sku: 'SKU-HAMBURGUESA-DOBLE', nombre: 'Doble carne', modificadores: ['MOD-HAMBURGUESA-EXTRAS'] },
-    ],
-  },
-  {
-    codigo: 'PRD-TACOS', nombre: 'Tacos de carne', tipo: 'PREPARADO', categoria: 'CAT-HAMBURGUESAS',
-    variantes: [{ sku: 'SKU-TACOS-3', nombre: 'Orden de 3' }],
-  },
-
-  // --- Acompañamientos --------------------------------------------------
-  {
-    codigo: 'PRD-PAPAS', nombre: 'Papas fritas', tipo: 'PREPARADO', categoria: 'CAT-ACOMPANAMIENTOS',
-    variantes: [
-      { sku: 'SKU-PAPAS-CHICA', nombre: 'Chica' },
-      { sku: 'SKU-PAPAS-GRANDE', nombre: 'Grande' },
-    ],
-  },
-  {
-    codigo: 'PRD-ARROZ', nombre: 'Arroz blanco', tipo: 'PREPARADO', categoria: 'CAT-ACOMPANAMIENTOS',
-    variantes: [{ sku: 'SKU-ARROZ', nombre: 'Porción' }],
-  },
-  {
-    codigo: 'PRD-FRIJOLES', nombre: 'Frijoles volteados', tipo: 'PREPARADO', categoria: 'CAT-ACOMPANAMIENTOS',
-    variantes: [{ sku: 'SKU-FRIJOLES', nombre: 'Porción' }],
-  },
-
-  // --- Servicios: sin inventario ni receta ------------------------------
-  {
-    codigo: 'PRD-SERVICIO-DOMICILIO', nombre: 'Servicio a domicilio', tipo: 'SERVICIO',
-    categoria: 'CAT-SERVICIOS',
-    variantes: [{ sku: 'SKU-SERVICIO-DOMICILIO', nombre: 'Envío' }],
-  },
-  {
-    codigo: 'PRD-DESCORCHE', nombre: 'Descorche', tipo: 'SERVICIO', categoria: 'CAT-SERVICIOS',
-    variantes: [{ sku: 'SKU-DESCORCHE', nombre: 'Por botella' }],
+    codigo: 'P-SERVICIO-DOMICILIO', nombre: 'Servicio a domicilio', tipo: 'SERVICIO', categoria: 'CAT-SERVICIOS',
+    variantes: [{ sku: 'SKU-SERVICIO-DOMICILIO', nombre: 'Envío en Antigua' }],
   },
 ];
 
-/**
- * Precios de modificador por sucursal, como los deja la pantalla de extras:
- * el mismo jarabe cuesta un quetzal más en zona 10 que en zona 1, igual que
- * los precios de variante. Solo las opciones con cobro y solo donde el precio
- * difiere del general; el resto usa el incremento del catálogo.
- */
-export const modifierBranchPrices: { sucursal: string; opcion: string; importe: number }[] = [
-  { sucursal: 'CAFETERIA', opcion: 'MOD-JARABE-VAINILLA', importe: 6 },
-  { sucursal: 'CAFETERIA', opcion: 'MOD-JARABE-CARAMELO', importe: 6 },
-  { sucursal: 'CAFETERIA', opcion: 'MOD-SHOT-EXTRA', importe: 8 },
-  { sucursal: 'CAFETERIA', opcion: 'MOD-LECHE-ALMENDRA', importe: 7 },
-  { sucursal: 'REPOSTERIA', opcion: 'MOD-JARABE-VAINILLA', importe: 5 },
-  { sucursal: 'RESTAURANTE', opcion: 'MOD-SHOT-EXTRA', importe: 8 },
-  { sucursal: 'RAPIDA', opcion: 'MOD-EXTRA-QUESO', importe: 7 },
-  { sucursal: 'RAPIDA', opcion: 'MOD-EXTRA-TOCINO', importe: 11 },
-];
+/** Una sola sucursal: los toppings cobran su precio base, sin excepciones. */
+export const modifierBranchPrices: { sucursal: string; opcion: string; importe: number }[] = [];

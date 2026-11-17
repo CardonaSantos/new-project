@@ -9,23 +9,25 @@
  * real services in the later phases, so the numbers the demo shows are the
  * numbers the system produces.
  *
- * Codes carry the DEMO- prefix, which is how the reset finds its own rows.
- * Categories and modifier groups have no code column in this schema, so those
- * are matched by name instead of being renamed to carry a marker: a category
- * called "DEMO · Café" on screen would ruin the demo it exists for.
+ * Codes are the business's own, with no demo prefix: the seed runs on a
+ * freshly initialised database and refuses otherwise (index.ts), so it never
+ * needs a marker to find its rows. The café lives in the PRINCIPAL branch the
+ * initial seed creates, reusing its warehouse, location, register, room and
+ * kitchen station by code and name.
  */
 import { argon2id, hash } from 'argon2';
 import type { PrismaClient } from '../../src/generated/prisma/client.js';
-import { articles } from './articles.js';
+import { articles, KITCHEN_UNITS, type KitchenUnitCode } from './articles.js';
 import { categories, modifierBranchPrices, modifierGroups, products } from './products.js';
 import { productionRecipes, saleRecipes } from './recipes.js';
 import { BANK_ACCOUNT, FINANCIAL_ROUTES, SAFE_ACCOUNT_PREFIX, basePrices, branches, devices, menus, variantPauses } from './branches.js';
 import { packagingRules, suppliers } from './supply.js';
-import { DEMO_PREFIX, progress, type DemoOptions } from './runtime.js';
-import { DEMO_CUSTOMER_MARK, customers } from './customers.js';
+import { progress, type DemoOptions } from './runtime.js';
+import { customers } from './customers.js';
 
 type Db = PrismaClient;
-export const code = (raw: string): string => DEMO_PREFIX + raw;
+/** El código tal como lo ve el negocio. Se conserva la función como punto único. */
+export const code = (raw: string): string => raw;
 
 /** Ids resolved while writing, so later phases don't re-query by code. */
 export interface MasterIds {
@@ -156,7 +158,8 @@ async function writeFinance(db: Db, branchIds: Map<string, string>): Promise<Map
         data: { sucursalId, nombre: BANK_ACCOUNT.nombre, tipo: BANK_ACCOUNT.tipo, moneda: 'GTQ', activa: true },
       }));
     accounts.set(`BANCO:${branchCode}`, bank.id);
-    const name = `${SAFE_ACCOUNT_PREFIX} ${branchCode}`;
+    // Una sola sucursal: la caja fuerte no necesita apellido.
+    const name = branchIds.size === 1 ? SAFE_ACCOUNT_PREFIX : `${SAFE_ACCOUNT_PREFIX} ${branchCode}`;
     const safe =
       (await db.cuentaFinanciera.findFirst({ where: { nombre: name, sucursalId } })) ??
       (await db.cuentaFinanciera.create({
@@ -185,14 +188,14 @@ async function writeCustomers(db: Db, branchIds: Map<string, string>): Promise<M
   const byBranch = new Map<string, string[]>();
   for (const customer of customers) {
     const found = await db.cliente.findFirst({
-      where: { nombre: customer.nombre, notas: DEMO_CUSTOMER_MARK },
+      where: { nombre: customer.nombre, telefono: customer.telefono },
     });
     const row =
       found ??
       (await db.cliente.create({
         data: {
           nombre: customer.nombre, nit: customer.nit ?? null, telefono: customer.telefono,
-          email: customer.email ?? null, notas: DEMO_CUSTOMER_MARK, activo: true,
+          email: customer.email ?? null, notas: customer.notas ?? null, activo: true,
         },
       }));
     for (const [index, address] of customer.direcciones.entries()) {
@@ -234,7 +237,6 @@ async function writeCustomers(db: Db, branchIds: Map<string, string>): Promise<M
  */
 const CHANNELS = [
   { codigo: 'PEDIDOSYA', nombre: 'PedidosYa' },
-  { codigo: 'UBEREATS', nombre: 'Uber Eats' },
   { codigo: 'HUGO', nombre: 'Hugo App' },
 ] as const;
 
@@ -251,7 +253,7 @@ async function writeChannels(db: Db): Promise<Map<string, string>> {
   return ids;
 }
 
-/** Units come from the initial seed; the demo refuses to invent them. */
+/** Las unidades base vienen de la semilla inicial; aquí se suman las medidas de cocina. */
 async function loadUnits(db: Db): Promise<Map<string, string>> {
   const rows = await db.unidadMedida.findMany({ select: { id: true, codigo: true } });
   const units = new Map(rows.map((u) => [u.codigo, u.id]));
@@ -260,6 +262,22 @@ async function loadUnits(db: Db): Promise<Map<string, string>> {
       throw Error(
         `Falta la unidad ${needed}: ejecute primero "npm run seed:initial", que registra las unidades y sus conversiones.`,
       );
+  }
+  // Las medidas de cocina, como las crea la pantalla «Unidades y
+  // conversiones»: la unidad y su conversión a la base de su dimensión.
+  for (const unit of KITCHEN_UNITS) {
+    const row = await db.unidadMedida.upsert({
+      where: { codigo: unit.codigo },
+      update: { nombre: unit.nombre, dimension: unit.dimension, esBase: false },
+      create: { codigo: unit.codigo, nombre: unit.nombre, dimension: unit.dimension, esBase: false },
+    });
+    units.set(unit.codigo, row.id);
+    const base = units.get(unit.base)!;
+    await db.conversionUnidad.upsert({
+      where: { unidadOrigenId_unidadDestinoId: { unidadOrigenId: row.id, unidadDestinoId: base } },
+      update: { factor: unit.factor },
+      create: { unidadOrigenId: row.id, unidadDestinoId: base, factor: unit.factor },
+    });
   }
   return units;
 }
@@ -342,13 +360,14 @@ async function writeModifiers(
       const component = option.componente;
       if (!component) continue;
       const article = articles.find((a) => a.codigo === component.articulo)!;
+      // En la unidad con que se escribió la opción («1 cucharada de jarabe»).
       await db.modificadorComponente.create({
         data: {
           modificadorId: optionRow.id,
           articuloId: articleIds.get(component.articulo)!,
           efecto: component.efecto,
           cantidad: component.cantidad,
-          unidadId: units.get(article.unidad)!,
+          unidadId: units.get(component.unidad ?? article.unidad)!,
           sustituyeArticuloId: component.sustituye ? articleIds.get(component.sustituye)! : null,
         },
       });
@@ -440,7 +459,7 @@ async function writeRecipes(
 ): Promise<void> {
   const writeVersion = async (
     recipeId: string,
-    components: { articulo: string; cantidad: number; merma?: number }[],
+    components: { articulo: string; cantidad: number; unidad?: KitchenUnitCode; merma?: number }[],
     yieldAmount: number,
     yieldUnit: string,
     shelfLife: number | null,
@@ -476,7 +495,7 @@ async function writeRecipes(
           recetaVersionId: version.id,
           articuloId: articleIds.get(component.articulo)!,
           cantidad: component.cantidad,
-          unidadId: units.get(article.unidad)!,
+          unidadId: units.get(component.unidad ?? article.unidad)!,
           mermaPorcentaje: component.merma ?? 0,
         },
       });
@@ -793,11 +812,9 @@ async function writeSuppliers(
 /** One account per operational role per branch, so the demo can be shown from
  * each point of view instead of everything through the administrator. */
 const STAFF = [
-  { rol: 'ADMIN_SUCURSAL', usuario: 'gerente', nombre: 'Gerente' },
-  { rol: 'CAJERO', usuario: 'cajero', nombre: 'Cajero' },
-  { rol: 'MESERO', usuario: 'mesero', nombre: 'Mesero' },
-  { rol: 'COCINA', usuario: 'cocina', nombre: 'Cocina' },
-  { rol: 'ALMACEN', usuario: 'almacen', nombre: 'Almacén' },
+  { rol: 'ADMIN_SUCURSAL', usuario: 'gerente', nombre: 'Lucía Morales' },
+  { rol: 'CAJERO', usuario: 'cajero', nombre: 'Diego Ajú' },
+  { rol: 'COCINA', usuario: 'barista', nombre: 'Andrea Xocop' },
 ] as const;
 
 async function writeStaff(
@@ -815,7 +832,7 @@ async function writeStaff(
       const role = await db.rol.findUnique({ where: { codigo: member.rol } });
       if (!role)
         throw Error(`Falta el rol ${member.rol}: ejecute primero "npm run seed:initial", que crea los roles operativos.`);
-      const email = `${member.usuario}.${branch.codigo.toLowerCase()}@demo.local`;
+      const email = `${member.usuario}@demo.local`;
       const existing = await db.usuario.findUnique({ where: { email } });
       const user = existing
         ? await db.usuario.update({
@@ -827,7 +844,7 @@ async function writeStaff(
         : await db.usuario.create({
             data: {
               email,
-              nombre: `${member.nombre} ${branch.nombre}`,
+              nombre: member.nombre,
               hashContrasena: hashed,
               debeCambiarContrasena: false,
               perfil: { create: {} },
@@ -845,9 +862,24 @@ async function writeStaff(
   return staff;
 }
 
+/** La empresa, como se configura en la pantalla Empresa: nombre, NIT y color de marca. */
+const COMPANY = {
+  nombreComercial: 'Café Pepita de Oro',
+  razonSocial: 'Pepita de Oro, Sociedad Anónima',
+  nit: '10871042-4',
+  colorPrimario: '#6F4E37',
+};
+
+async function writeCompany(db: Db): Promise<void> {
+  const company = await db.empresaConfiguracion.findFirst();
+  if (!company) throw Error('Falta la empresa: ejecute primero "npm run seed:initial".');
+  await db.empresaConfiguracion.update({ where: { id: company.id }, data: COMPANY });
+}
+
 export async function writeMasters(db: Db, options: DemoOptions, password: string): Promise<MasterIds> {
   const now = new Date();
   const units = await loadUnits(db);
+  await writeCompany(db);
 
   progress('maestros', `categorías y ${articles.length} artículos de inventario`);
   const categoryIds = await writeCategories(db);
@@ -875,7 +907,7 @@ export async function writeMasters(db: Db, options: DemoOptions, password: strin
   progress('maestros', `${suppliers.length} proveedores y sus presentaciones`);
   const supplierData = await writeSuppliers(db, units, articleIds);
 
-  progress('maestros', `usuarios por rol (${STAFF.length} por sucursal)`);
+  progress('maestros', `${STAFF.length} usuarios: ${STAFF.map((m) => m.nombre).join(', ')}`);
   const staff = await writeStaff(db, branchData.branches, password);
   const channels = await writeChannels(db);
 

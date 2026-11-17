@@ -42,10 +42,10 @@ export interface TreasuryServices {
 const BILLS = [
   { dia: 2, clave: 'EEGSA', descripcion: 'Energía eléctrica EEGSA', monto: [900, 1600] },
   { dia: 3, clave: 'TIGO', descripcion: 'Internet y telefonía Tigo Business', monto: [420, 520] },
-  { dia: 5, clave: 'EMPAGUA', descripcion: 'Agua potable EMPAGUA', monto: [150, 260] },
+  { dia: 5, clave: 'AGUA', descripcion: 'Agua potable municipal, Antigua Guatemala', monto: [120, 200] },
 ] as const;
 /** Donde el gerente registra dos veces la misma factura, y el día que finanzas lo anula. */
-const DUPLICATE = { sucursal: 'CAFETERIA', clave: 'TIGO', anulaEnDia: 4 } as const;
+const DUPLICATE = { sucursal: 'PRINCIPAL', clave: 'TIGO', anulaEnDia: 4 } as const;
 
 const ZONE = 'America/Guatemala';
 

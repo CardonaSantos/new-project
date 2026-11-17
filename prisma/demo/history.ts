@@ -1,27 +1,30 @@
 /**
- * Eight weeks of operation, driven through the real services.
+ * Three weeks of Café Pepita de Oro, driven through the real services.
  *
  * Every ticket here is created, sent to the kitchen, prepared, charged and
  * closed by the same code the app calls, so the stock it consumed, the cost
  * layers it drew from and the margin it produced are the system's own
  * arithmetic. That is the whole reason this phase is slow.
  *
- * Each simulated day is written at today's clock and then moved back as a
- * unit, which keeps the order of events inside the day intact — see
- * backdate.ts for why the clock cannot simply be told what to say.
+ * Each stretch of a simulated day — the delivery, the morning production,
+ * the opening, every ticket, the closing — is written at today's clock and
+ * then moved back to its local hour, so a day reads like a day: tickets from
+ * seven to a quarter to seven, in order. See backdate.ts for why the clock
+ * cannot simply be told what to say.
  *
  * Resuming needs no state file: a day whose CierreOperativo exists is a day
  * already lived, so the phase skips it.
  */
 import type { PrismaClient } from '../../src/generated/prisma/client.js';
 import type { Principal } from '../../src/modules/auth/application/auth.service.js';
-import { articles } from './articles.js';
+import { articles, baseQty } from './articles.js';
 import { modifierGroups, products } from './products.js';
 import { branches, menus } from './branches.js';
 import { productionRecipes, saleRecipes } from './recipes.js';
-import { shiftSince } from './backdate.js';
+import { localDay, localInstant, shiftSince } from './backdate.js';
 import {
   batchChance,
+  CAFE_HOURS,
   formatDay,
   operationalDays,
   progress,
@@ -32,9 +35,6 @@ import {
 import type { MasterIds } from './masters.js';
 import {
   internalConsumption,
-  pastryRequisition,
-  reservationsOfDay,
-  upcomingReservations,
   weeklyCount,
   type CustomerRef,
   type OperationsServices,
@@ -151,6 +151,9 @@ async function sellablesFor(db: Db, branchCode: string, ids: MasterIds): Promise
  * forma del ticket cambia aquí, la estimación la sigue sola, en lugar de
  * quedar como dos copias de los mismos números que divergen en silencio.
  */
+/** El producto de servicio que cobra el envío. */
+export const DELIVERY_FEE_SKU = 'SKU-SERVICIO-DOMICILIO';
+
 const LINE_COUNT_WEIGHTS = [[1, 32], [2, 34], [3, 20], [4, 9], [5, 5]] as const;
 const LINE_UNIT_WEIGHTS = [[1, 78], [2, 16], [3, 6]] as const;
 const OPTIONAL_MODIFIER_CHANCE = 0.22;
@@ -171,8 +174,11 @@ const MEAN_UNITS = mean(LINE_UNIT_WEIGHTS);
 export function composeTicket(sellables: Sellable[], rng: Rng, modality: string) {
   const lineCount = rng.weighted(LINE_COUNT_WEIGHTS);
   const chosen: { sellable: Sellable; units: number; mods: string[] }[] = [];
+  // El cargo de domicilio está en la carta para tener precio, pero nadie lo
+  // pide: lo agrega la orden a domicilio, abajo.
+  const pool = sellables.filter((s) => s.sku !== DELIVERY_FEE_SKU);
   for (let i = 0; i < lineCount; i++) {
-    const sellable = rng.weighted(sellables.map((s) => [s, s.weight] as const));
+    const sellable = rng.weighted(pool.map((s) => [s, s.weight] as const));
     if (chosen.some((c) => c.sellable.sku === sellable.sku)) continue;
     const mods: string[] = [];
     for (const groupCode of sellable.modifierGroups) {
@@ -188,7 +194,7 @@ export function composeTicket(sellables: Sellable[], rng: Rng, modality: string)
       mods,
     });
   }
-  if (!chosen.length) chosen.push({ sellable: rng.pick(sellables), units: 1, mods: [] });
+  if (!chosen.length) chosen.push({ sellable: rng.pick(pool), units: 1, mods: [] });
   // Delivery adds its own fee line, which is where the service product earns
   // its place in the catalog.
   return { lines: chosen, needsFee: modality === 'DELIVERY' };
@@ -310,7 +316,7 @@ async function runProduction(
       const lines = tickets * MEAN_LINES * (item.weight / totalWeight);
       const units = lines * MEAN_UNITS;
       for (const component of saleRecipes.find((r) => r.sku === item.sku)?.componentes ?? []) {
-        add(component.articulo, units * component.cantidad * (1 + (component.merma ?? 0) / 100));
+        add(component.articulo, units * baseQty(component) * (1 + (component.merma ?? 0) / 100));
       }
       const variant = products.flatMap((p) => p.variantes).find((v) => v.sku === item.sku);
       if (variant?.articulo) add(variant.articulo, units);
@@ -321,7 +327,7 @@ async function runProduction(
           if (!option.componente) continue;
           add(
             option.componente.articulo,
-            lines * (groupChance / group.opciones.length) * option.componente.cantidad,
+            lines * (groupChance / group.opciones.length) * baseQty(option.componente),
           );
         }
       }
@@ -354,7 +360,11 @@ async function runProduction(
     const recipe = productionRecipes.find((r) => r.resultado === articleCode)!;
     const shelfLife = recipe.vidaUtilDias ?? 30;
     const have = onHand.get(ids.articles.get(articleCode)!) ?? 0;
-    const demand = (need.get(articleCode) ?? 0) + (counter.get(articleCode) ?? 0);
+    // Lo que dura una semana o más no se echa a perder en el estante: un
+    // jarabe o un cold brew se planifican con doble cobertura, y un día de
+    // muchas limonadas no deja la barra sin jarabe a media tarde.
+    const cover = shelfLife >= 7 ? 2 : 1;
+    const demand = (need.get(articleCode) ?? 0) + (counter.get(articleCode) ?? 0) * cover;
     // El dado hornea por adelantado, pero solo cuando queda menos de dos días
     // de cobertura. Sin esa condición, una preparación de vida corta se hacía
     // casi a diario aunque el estante estuviera lleno —max(tanda, faltante)
@@ -371,13 +381,18 @@ async function runProduction(
     // Nadie enciende el horno por treinta mililitros: si se produce, al menos
     // media tanda.
     make = Math.max(make, recipe.rendimiento * 0.5);
+    // Lo que sale por pieza se hace por tanda entera: un pan de banano se
+    // hornea completo y los rellenitos salen por docena, no 7.3 rebanadas.
+    if (articles.find((a) => a.codigo === articleCode)?.unidad === 'UND') {
+      make = Math.ceil(make / recipe.rendimiento) * recipe.rendimiento;
+    }
     produce.set(articleCode, make);
     // Lo que esta hornada va a consumir, anotado a quien lo produce — con la
     // cantidad que de verdad se hornea, no la planeada antes de los pisos.
     const batchesOf = make / recipe.rendimiento;
     for (const component of recipe.componentes) {
       if (!productionRecipes.some((r) => r.resultado === component.articulo)) continue;
-      const needs = batchesOf * component.cantidad * (1 + (component.merma ?? 0) / 100);
+      const needs = batchesOf * baseQty(component) * (1 + (component.merma ?? 0) / 100);
       need.set(component.articulo, (need.get(component.articulo) ?? 0) + needs);
     }
   }
@@ -540,7 +555,7 @@ async function runTicket(
       ? line.mods.map((optionCode) => ({ modificadorId: ids.modifierOptions.get(optionCode)! }))
       : undefined,
   }));
-  const fee = sellables.find((s) => s.sku === 'SKU-SERVICIO-DOMICILIO');
+  const fee = sellables.find((s) => s.sku === DELIVERY_FEE_SKU);
   if (needsFee && fee) items.push({ varianteId: fee.variantId, cantidad: '1', modificadores: undefined });
 
   const total =
@@ -814,19 +829,29 @@ async function customersOf(db: Db, clientIds: string[]): Promise<CustomerRef[]> 
   });
 }
 
+/** Lo que sale de la caja chica de una cafetería: [categoría, descripción]. */
+const PETTY_CASH: readonly (readonly [string, string])[] = [
+  ['INSUMOS', 'Hielo de emergencia en la tienda de la esquina'],
+  ['SERVICIOS', 'Recarga de gas propano para la estufa'],
+  ['TRANSPORTE', 'Flete del mercado'],
+  ['MANTENIMIENTO', 'Reparación menor de la licuadora'],
+  ['LIMPIEZA', 'Escobas y trapeadores'],
+  ['INSUMOS', 'Limones y hierbabuena del mercado'],
+];
+
 /**
- * Mueve inicio y fin de las reservas del día con el mismo intervalo que
- * shiftSince —`columna - (días, segundos)`— solo si el reajuste no los alcanzó,
- * es decir, si quedaron después del instante en que corrió.
+ * Los minutos del día (hora local) en que entra cada ticket, en orden: la
+ * curva de una cafetería, con el desayuno de las ocho y la tarde de las
+ * cuatro, entre las 7:00 y las 18:45.
  */
-async function shiftReservations(db: Db, reservationIds: string[], until: Date, days: number, seconds: number): Promise<void> {
-  const delta = days * 86400000 + seconds * 1000;
-  for (const id of reservationIds) {
-    const row = await db.reserva.findUnique({ where: { id }, select: { inicio: true, fin: true } });
-    if (!row) continue;
-    const move = (value: Date) => (value.getTime() > until.getTime() ? new Date(value.getTime() - delta) : value);
-    await db.reserva.update({ where: { id }, data: { inicio: move(row.inicio), fin: move(row.fin) } });
+function ticketTimes(count: number, clock: Rng): number[] {
+  const hours = Object.entries(CAFE_HOURS).map(([h, w]) => [Number(h), w] as const);
+  const times: number[] = [];
+  for (let i = 0; i < count; i++) {
+    const hour = clock.weighted(hours);
+    times.push(hour * 60 + clock.int(0, hour === 18 ? 45 : 59));
   }
+  return times.sort((a, b) => a - b);
 }
 
 /**
@@ -858,7 +883,6 @@ export async function runHistory(
   restock?: (branchCode: string, week: number) => Promise<void>,
 ): Promise<void> {
   const days = operationalDays(options.semanas);
-  const today = new Date();
   let totalSold = 0;
   names = new Map([
     ...[...ids.articles].map(([code, id]) => [id, code] as const),
@@ -880,7 +904,12 @@ export async function runHistory(
       progress('historia', `${branch.codigo}: sin precios, se omite`);
       continue;
     }
+    // Tres personas cubren todo: el cajero atiende mostrador y mesas, la
+    // barista prepara, y la gerente produce, cuenta inventario, despacha
+    // domicilios y paga los servicios.
     const people = ids.staff.get(branch.codigo)!;
+    const cajero = asPrincipal(people.get('CAJERO')!, 'cajero@demo.local');
+    const gerente = asPrincipal(people.get('ADMIN_SUCURSAL')!, 'gerente@demo.local');
     contexts.push({
       branch,
       branchId,
@@ -890,15 +919,14 @@ export async function runHistory(
       clients: await customersOf(db, ids.clients.get(branch.codigo) ?? []),
       registerId: [...(ids.registers.get(branch.codigo)?.values() ?? [])][0],
       staff: {
-        waiter: asPrincipal(people.get('MESERO')!, `mesero.${branch.codigo.toLowerCase()}@demo.local`),
-        cashier: asPrincipal(people.get('CAJERO')!, `cajero.${branch.codigo.toLowerCase()}@demo.local`),
-        cook: asPrincipal(people.get('COCINA')!, `cocina.${branch.codigo.toLowerCase()}@demo.local`),
-        keeper: asPrincipal(people.get('ALMACEN')!, `almacen.${branch.codigo.toLowerCase()}@demo.local`),
-        manager: asPrincipal(people.get('ADMIN_SUCURSAL')!, `gerente.${branch.codigo.toLowerCase()}@demo.local`),
+        waiter: cajero,
+        cashier: cajero,
+        cook: asPrincipal(people.get('COCINA')!, 'barista@demo.local'),
+        keeper: gerente,
+        manager: gerente,
       },
     });
   }
-  const pastry = contexts.find((c) => c.branch.codigo === 'REPOSTERIA');
   // El gasto duplicado espera su reversa al día siguiente, y un asiento que ya
   // salió en un extracto no vuelve a salir en el siguiente.
   const duplicates = new Map<string, string>();
@@ -914,24 +942,47 @@ export async function runHistory(
       });
       if (closed) continue;
 
+      // El reloj del día. Cada tramo de trabajo se fecha a su hora local en
+      // Guatemala: el proveedor a las seis, la producción y la apertura antes
+      // de las siete, cada ticket a su minuto entre las siete y las siete
+      // menos cuarto, la caja chica a media jornada, el cierre por la tarde.
+      // Antes el día entero se movía en bloque y sus veinticinco tickets
+      // quedaban dentro del mismo minuto: un reporte por hora mostraba un pico.
+      const back = (Date.parse(localDay()) - Date.parse(dayKey)) / 86400000;
+      const clock = new Rng(0x71c7 + index * 61);
+      const stamp = (from: Date, minutes: number, dates = false) =>
+        shiftSince(
+          db,
+          from,
+          back,
+          Math.round((from.getTime() - localInstant(dayKey, minutes).getTime()) / 1000) - back * 86400,
+          { dates },
+        );
+
       const mark = new Date();
       // La semana abre comprando lo que falta, como un negocio. Corre aquí, en
-      // la historia, por dos razones: el déficit se mide contra lo que de verdad
-      // quedó tras la semana vendida, y el reajuste del día la fecha en el
-      // primer día de su semana. Va después de la marca a propósito: antes de
-      // ella el reajuste no la alcanzaba y todas las compras semanales quedaban
-      // con la fecha de hoy.
+      // la historia, para que el déficit se mida contra lo que de verdad quedó
+      // tras la semana vendida; el proveedor entrega a primera hora.
       if (restock && index > 0 && index % 7 === 0) {
         await restock(branch.codigo, index / 7 + 1);
+        await stamp(mark, 6 * 60 + clock.int(0, 15));
       }
       const rng = new Rng(0xc0ffee + index * 977 + branch.codigo.length * 31);
       const target = ticketsForDay(options.tickets, day.getUTCDay(), rng);
+      const weekday = day.getUTCDay();
+      // Separado del rng del día: los flujos que no son venta no deben mover la
+      // secuencia de tickets y producción que la simulación validó.
+      const side = new Rng(0x0b5e7 + index * 131 + branch.codigo.length * 17);
+
+      // La producción de la mañana, antes de abrir.
+      const producedAt = new Date();
+      const batches = await runProduction(db, services, staff.keeper, branch.codigo, ids, dayKey, rng, index === 0, target, sellables);
+      await stamp(producedAt, 6 * 60 + 20 + clock.int(0, 10));
 
       // open() devuelve {shiftId}, no {id}. Leerlo como .id dejaba turnoId en
       // undefined en todo lo que viene después: los cobros, el gasto de caja y
-      // el cierre del turno. El cierre fallaba, el turno quedaba abierto, y los
-      // seis días siguientes no podían abrir uno. Los servicios se exponen con
-      // firmas any, así que TypeScript no tenía nada que objetar.
+      // el cierre del turno.
+      const openedAt = new Date();
       let shift: { shiftId: string } | null = null;
       try {
         shift = (await services.cash.open(staff.cashier, {
@@ -945,22 +996,15 @@ export async function runHistory(
         progress('historia', `${branch.codigo} ${dayKey}: no abrió turno, se omite el día`);
         continue;
       }
+      await stamp(openedAt, 6 * 60 + 50 + clock.int(0, 5));
 
-      const weekday = day.getUTCDay();
-      // Separado del rng del día: los flujos nuevos no deben mover la
-      // secuencia de tickets y producción que la simulación validó.
-      const side = new Rng(0x0b5e7 + index * 131 + branch.codigo.length * 17);
-      if (branch.codigo === 'CAFETERIA' && (weekday === 2 || weekday === 5) && pastry) {
-        await pastryRequisition(db, services, ids, staff, pastry.staff, dayKey, side, note).catch((e) =>
-          note('requisición a repostería', e),
-        );
-      }
-
-      const batches = await runProduction(db, services, staff.keeper, branch.codigo, ids, dayKey, rng, index === 0, target, sellables);
-
+      // Cada ticket a su minuto, en orden: el número de orden y la hora
+      // avanzan juntos.
+      const times = ticketTimes(target, clock);
       let sold = 0;
       for (let n = 0; n < target; n++) {
         const key = `DEMO-${branch.codigo}-${dayKey}-${n}`;
+        const at = new Date();
         try {
           if (await runTicket(services, staff, branch.codigo, branchId, shift!.shiftId, sellables, tables, ids, key, rng, { qr, clients }))
             sold++;
@@ -969,37 +1013,46 @@ export async function runHistory(
           // is part of what the demo should show, not a failure of the run.
           note('ticket', error);
         }
+        await stamp(at, times[n]);
       }
 
-      // Las reservas del día en el restaurante: las que llegan se sientan y
-      // su orden se sirve como cualquier ticket de mesa.
-      const moved: string[] = [];
-      let seats = 0;
-      if (branch.codigo === 'RESTAURANTE') {
-        const result = await reservationsOfDay(
-          services, branchId, staff.manager, clients, dayKey, index, weekday, side,
-          (seat) =>
-            runTicket(services, staff, branch.codigo, branchId, shift!.shiftId, sellables, tables, ids,
-              `DEMO-${branch.codigo}-${dayKey}-R${seats++}`, side, { qr, clients, seat })
-              .catch((e) => (note('ticket de reserva', e), false)),
-          note,
-        );
-        moved.push(...result.moved);
-        sold += result.served;
-        if (index === days.length - 1) {
-          await upcomingReservations(services, branchId, staff.manager, clients, side, note);
+      // La caja chica: gas, hielo de emergencia, un flete. Lo registra el
+      // cajero contra su turno, a media jornada. El operationId lo emite el
+      // servicio financiero, atado al actor, la sucursal y la acción.
+      if (rng.chance(0.3)) {
+        const spentAt = new Date();
+        const intent = (await services.finance
+          .issueIntent(staff.cashier, { sucursalId: branchId, accion: 'FIN_EXPENSE_CREATE' })
+          .catch((e: unknown) => (note('intención de gasto', e), null))) as
+          | { operationId: string }
+          | null;
+        if (intent) {
+          const [categoria, descripcion] = rng.pick(PETTY_CASH);
+          await services.finance
+            .createExpense(staff.cashier, {
+              sucursalId: branchId,
+              origen: 'CAJA',
+              turnoId: shift!.shiftId,
+              categoria,
+              descripcion,
+              // Acotado a lo que cabe en la caja: el fondo inicial son Q500.
+              monto: money(rng.int(25, 150)),
+              operationId: intent.operationId,
+            })
+            .catch((e) => note('gasto de caja', e));
         }
+        await stamp(spentAt, clock.int(10 * 60, 16 * 60));
       }
 
+      // Al final de la jornada: consumo interno, el conteo del domingo, los
+      // servicios del mes y, a mitad y a fin de período, el extracto.
+      const eveningAt = new Date();
       await internalConsumption(services, ids, branch.codigo, staff.keeper, dayKey, side, note);
       if (weekday === 0) {
         await weeklyCount(db, services, ids, branch.codigo, staff.keeper, side).catch((e) =>
           note('conteo físico', e),
         );
       }
-
-      // Tesorería: los servicios del mes salen del banco, y finanzas importa el
-      // extracto a mitad de mes y al cierre, y lo concilia.
       await monthlyBills(services, ids, branch.codigo, branchId, staff.manager, admin, index, dayKey, side, duplicates, note);
       const midMonth = index === 14 && days.length > 15;
       const monthEnd = index === days.length - 1;
@@ -1014,37 +1067,15 @@ export async function runHistory(
           note('extracto bancario', error);
         }
       }
+      await stamp(eveningAt, 18 * 60 + 50 + clock.int(0, 5));
 
-      if (rng.chance(0.3)) {
-        // El operationId no se inventa: lo emite el servicio financiero y queda
-        // atado al actor, la sucursal y la acción. Un `FIN:<uuid>` propio no
-        // corresponde a ninguna intención registrada y se rechaza.
-        // Lo registra el cajero, no el administrador: el turno es suyo.
-        const intent = (await services.finance
-          .issueIntent(staff.cashier, { sucursalId: branchId, accion: 'FIN_EXPENSE_CREATE' })
-          .catch((e: unknown) => (note('intención de gasto', e), null))) as
-          | { operationId: string }
-          | null;
-        if (intent) {
-          await services.finance
-            .createExpense(staff.cashier, {
-              sucursalId: branchId,
-              // Paid out of the till, which is what ties the expense to the
-              // shift and makes it show up in the day's cash difference.
-              origen: 'CAJA',
-              turnoId: shift!.shiftId,
-              categoria: rng.pick(['SERVICIOS', 'MANTENIMIENTO', 'LIMPIEZA', 'TRANSPORTE']),
-              descripcion: rng.pick(['Pago de energía', 'Mantenimiento de equipo', 'Insumos de limpieza', 'Flete de proveedor']),
-                // Acotado a lo que cabe en la caja: el fondo inicial son Q500 y
-              // las ventas del día apenas suman, así que un gasto de Q900 se
-              // rechaza por efectivo insuficiente.
-              monto: money(rng.int(25, 150)),
-              operationId: intent.operationId,
-            })
-            .catch((e) => note('gasto operativo', e));
-        }
-      }
-
+      // El cierre de caja. Es el tramo que mueve también las columnas de solo
+      // fecha —el día operativo del turno, la emisión de las facturas, la
+      // elaboración de los lotes—: hasta aquí el turno tenía que seguir siendo
+      // de hoy, porque cobrar y gastar contra él comparan con la fecha real.
+      // Cerrarlo no compara, y el cierre del día que sigue necesita encontrarlo
+      // ya en su día para resumirlo.
+      const closingAt = new Date();
       await services.cash
         .close(staff.cashier, shift!.shiftId, {
           // Counted cash drifts from expected by a few quetzales, which is what
@@ -1056,9 +1087,15 @@ export async function runHistory(
         // Hiding this one cost the whole week: with the shift left open, every
         // later day failed to open one and was skipped.
         .catch((e) => note('cierre de turno', e));
+      await stamp(closingAt, 19 * 60 + 5 + clock.int(0, 5), true);
 
+      // El cierre del día lo firma el dueño. Su resumen suma por rango de horas
+      // del día —ventas, pagos, gastos, movimientos de banco— y por turnos con
+      // ese día operativo: con cada cosa ya en su hora, el resumen guardado
+      // trae los montos reales del día.
       // FinanceClosingService exposes confirm(); the controller's close()
       // route is just its HTTP name.
+      const confirmAt = new Date();
       const closeIntent = (await services.finance
         .issueIntent(admin, { sucursalId: branchId, accion: 'FIN_DAY_CLOSE' })
         .catch((e: unknown) => (note('intención de cierre', e), null))) as
@@ -1073,17 +1110,8 @@ export async function runHistory(
           })
           .catch((e) => note('cierre operativo', e));
       }
-
-      // Move the whole day back as a unit, preserving the order within it.
-      const back = Math.round((today.getTime() - day.getTime()) / 86400000);
-      const seconds = -rng.int(0, 3600 * 6);
-      const until = new Date();
-      await shiftSince(db, mark, back, seconds);
-      // El horario de una reserva del día se creó a minutos de ahora, en el
-      // futuro, y el reajuste solo mueve lo que ya pasó. Se mueve aquí con el
-      // mismo intervalo, para que la reserva caiga en su día y no en hoy.
-      await shiftReservations(db, moved, until, back, seconds);
-      await alignSelfServiceExpiry(db, mark, until);
+      await stamp(confirmAt, 19 * 60 + 20 + clock.int(0, 10));
+      await alignSelfServiceExpiry(db, mark, new Date());
       totalSold += sold;
       progress('historia', `${branch.codigo} ${dayKey}: ${sold}/${target} tickets, ${batches} lotes`);
     }

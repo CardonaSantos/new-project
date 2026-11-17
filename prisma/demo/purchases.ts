@@ -13,7 +13,7 @@
  */
 import type { PrismaClient } from '../../src/generated/prisma/client.js';
 import type { Principal } from '../../src/modules/auth/application/auth.service.js';
-import { articles, INTERNAL_USE } from './articles.js';
+import { articles, baseQty, INTERNAL_USE } from './articles.js';
 import { modifierGroups, products } from './products.js';
 import { branches, menus } from './branches.js';
 import { packagingRules, suppliers, type DemoPresentation } from './supply.js';
@@ -140,7 +140,7 @@ export function demandFor(branchCode: string, weeks: number, ticketsPerDay: numb
     const recipe = productionRecipes.find((r) => r.resultado === code)!;
     const batches = batchChance(recipe.vidaUtilDias) * days;
     for (const component of recipe.componentes) {
-      add(component.articulo, batches * component.cantidad * (1 + (component.merma ?? 0) / 100));
+      add(component.articulo, batches * baseQty(component) * (1 + (component.merma ?? 0) / 100));
     }
   }
 
@@ -148,10 +148,42 @@ export function demandFor(branchCode: string, weeks: number, ticketsPerDay: numb
   const perSku = offered.size ? (ticketsPerDay * days * 2) / offered.size : 0;
   for (const sku of offered) {
     for (const component of saleRecipes.find((r) => r.sku === sku)?.componentes ?? []) {
-      add(component.articulo, perSku * component.cantidad * (1 + (component.merma ?? 0) / 100));
+      add(component.articulo, perSku * baseQty(component) * (1 + (component.merma ?? 0) / 100));
     }
     const variant = products.flatMap((pr) => pr.variantes).find((v) => v.sku === sku);
     if (variant?.articulo) add(variant.articulo, perSku);
+  }
+  // Los toppings también consumen, y algunos son la única vía de un artículo:
+  // el pan francés y las tortillas solo salen por «Pan o tortillas», que es
+  // obligatorio en el desayuno. Uno obligatorio se elige siempre; uno opcional,
+  // en una de cada cinco líneas, repartido entre sus opciones.
+  for (const sku of offered) {
+    const variant = products.flatMap((pr) => pr.variantes).find((v) => v.sku === sku);
+    for (const groupCode of variant?.modificadores ?? []) {
+      const group = modifierGroups.find((g) => g.codigo === groupCode)!;
+      const chance = group.minimo > 0 ? 1 : 0.22;
+      for (const option of group.opciones) {
+        if (!option.componente || option.componente.efecto === 'RESTAR') continue;
+        add(option.componente.articulo, perSku * (chance / group.opciones.length) * baseQty(option.componente));
+      }
+    }
+  }
+
+  // El empaque, por modalidad: sin esto el vaso de 12 oz solo tenía su stock
+  // mínimo como objetivo, y una cafetería que despacha catorce vasos al día
+  // se quedaba sin ellos a media semana y la venta para llevar fallaba.
+  const tickets = ticketsPerDay * days;
+  for (const rule of packagingRules) {
+    if (rule.sucursal && rule.sucursal !== branchCode) continue;
+    const share = branch.modalidades[rule.modalidad] ?? 0;
+    if (!share) continue;
+    const times =
+      rule.alcance === 'ORDEN'
+        ? tickets * share
+        : rule.sku
+          ? offered.has(rule.sku) ? perSku * share : 0
+          : tickets * 2 * share;
+    for (const line of rule.lineas) add(line.articulo, times * line.cantidad);
   }
   // Lo que la operación gasta sin vender: el consumo interno diario.
   for (const [articleCode, use] of Object.entries(INTERNAL_USE)) add(articleCode, use.porDia * days);

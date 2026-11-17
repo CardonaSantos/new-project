@@ -57,6 +57,8 @@ export async function coverage(db: Db, ids: MasterIds, options: DemoOptions): Pr
     ['Líneas conciliadas', db.lineaExtractoBancario.count({ where: { cuentaFinanciera: { sucursalId: b }, movimientoFinancieroId: { not: null } } }), true],
     ['Reversas financieras', db.reversaFinanciera.count({ where: { sucursalId: b } }), days > 5],
     ['Dispositivos', db.dispositivo.count({ where: { sucursalId: b } }), true],
+    // Sin foto confirmada, el POS y el QR no muestran el producto.
+    ['Productos con foto', db.productoMedia.count({ where: { media: { confirmadaEn: { not: null }, tipo: 'IMAGEN' } } }), true],
     ['QR de mesa vigentes', db.accesoMesaQR.count({ where: { activo: true, mesa: { sala: { sucursalId: b } } } }), true],
   ];
   const counts = await Promise.all(rows.map(([, count]) => count));

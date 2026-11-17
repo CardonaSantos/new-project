@@ -392,7 +392,7 @@ KEYWORDS = {
 }
 GLOBALS = {
     'console','Math','JSON','Object','Array','Map','Set','Number','String','Boolean',
-    'Date','Error','Promise','process','Buffer','Symbol','BigInt','RegExp','parseInt',
+    'Date','Error','Promise','process','Buffer','Float32Array','Uint32Array','Uint8Array','Symbol','BigInt','RegExp','parseInt',
     'parseFloat','isNaN','structuredClone','crypto','globalThis','require','TextEncoder',
     'TextDecoder','URL','AbortController','setTimeout','clearTimeout','setInterval',
 }

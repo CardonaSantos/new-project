@@ -57,6 +57,25 @@ prefijo DEMO-. `--reset` ya no existe.
   doble cobertura.
 - Costo de receta entre 10 % y 38 % del precio.
 
+## Fotos: sin ellas no hay carta
+
+El POS y el menú del QR solo muestran un producto con **imagen confirmada**
+(`catalog-menu.store`, `branchMenu`). Sin fotos, la carta publicada sale
+vacía: «No hay carta publicada para esta sucursal y horario». La semilla
+dibuja una ilustración por producto (`images.ts`: taza, jarro de barro, vaso
+con hielo, plato; PNG sin dependencias) y la sube como desde la pantalla de
+producto: `MediaService.upload` (contexto PRODUCTO, global, pública para el
+QR) y `CatalogService.replaceMedia`. Necesita las variables `DO_SPACES_*`
+del `.env`, las mismas que la app exige para arrancar. Al final, la semilla
+consulta la carta del POS con la misma función y falla si sale vacía.
+
+## Hoy, listo para vender
+
+La historia termina ayer. Hoy, con el reloj real, llega la reposición de la
+semana y la gerente hace la producción de la mañana (atol fresco, pan de
+banano, jarabes…), para que el cajero pueda vender en vivo. El turno de caja
+queda cerrado: abrirlo es lo primero que se muestra.
+
 ## La operación de cada día
 
 | Hora local | Quién | Qué |

@@ -916,7 +916,7 @@ export async function runHistory(
   options: DemoOptions,
   admin: Principal,
   restock?: (branchCode: string, week: number) => Promise<void>,
-): Promise<void> {
+): Promise<Date> {
   const days = operationalDays(options.semanas);
   let totalSold = 0;
   names = new Map([
@@ -1162,6 +1162,21 @@ export async function runHistory(
     }
   }
 
+  // Hoy. La historia termina ayer por la noche; la demo se abre hoy, y el
+  // cajero tiene que poder vender en vivo: llega la reposición de la semana y
+  // la gerente hace la producción de la mañana —el atol fresco, el pan de
+  // banano, los jarabes—, con el reloj de hoy, sin moverlo. El turno de caja
+  // se deja cerrado: abrirlo es lo primero que se muestra.
+  const todayFrom = new Date();
+  for (const { branch, staff, sellables } of contexts) {
+    if (restock) await restock(branch.codigo, Math.floor(days.length / 7) + 1);
+    const batches = await runProduction(
+      db, services, staff.keeper, branch.codigo, ids, localDay(), new Rng(0x70da7),
+      true, Math.round(options.tickets * 1.5), sellables,
+    );
+    progress('historia', `${branch.codigo} hoy: reposición recibida y ${batches} lotes producidos, lista para vender`);
+  }
+
   const reported = historyFailures();
   if (reported.length) {
     process.stderr.write(
@@ -1178,4 +1193,5 @@ export async function runHistory(
         'el demo no sirve sin operación, así que esto se trata como un fallo.',
     );
   }
+  return todayFrom;
 }

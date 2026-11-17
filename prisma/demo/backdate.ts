@@ -175,6 +175,7 @@ export async function auditDates(
   db: Db,
   from: Date,
   allow: ReadonlySet<string> = new Set(),
+  until: Date = new Date(),
 ): Promise<{ table: string; column: string; rows: number }[]> {
   const columns = await dateColumns(db);
   const leftovers: { table: string; column: string; rows: number }[] = [];
@@ -186,7 +187,7 @@ export async function auditDates(
       `SELECT count(*)::bigint AS count FROM "${table}"` +
         ` WHERE "${column}" >= $1 AND "${column}" <= $2`,
       from,
-      new Date(),
+      until,
     );
     if (count > 0n) leftovers.push({ table, column, rows: Number(count) });
   }

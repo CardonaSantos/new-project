@@ -43,6 +43,10 @@ import { PurchasePaymentsService } from '../../src/modules/purchases/application
 import { SelfServiceService } from '../../src/modules/self-service/application/self-service.service.js';
 import { InventoryInternalConsumptionService } from '../../src/modules/inventory/application/inventory-internal-consumption.service.js';
 import { InventoryOperationsService } from '../../src/modules/inventory/application/inventory-operations.service.js';
+import { MediaService } from '../../src/modules/media/application/media.service.js';
+import { CatalogService } from '../../src/modules/catalog/application/catalog.service.js';
+import { productImage } from './images.js';
+import { products } from './products.js';
 import { assertAllowed, parseOptions, progress } from './runtime.js';
 import { validateDemoData } from './validate.js';
 import { writeMasters } from './masters.js';
@@ -107,6 +111,9 @@ async function main(): Promise<void> {
     // Se informa al final, después de la auditoría de fechas: si falta algo,
     // las dos cosas ayudan a encontrar por qué.
     let uncovered: string[] = [];
+    // Lo de hoy —la reposición y la producción de la mañana— es de hoy a
+    // propósito: la auditoría de fechas termina donde empieza.
+    let todayFrom: Date | undefined;
     let ids = null as Awaited<ReturnType<typeof writeMasters>> | null;
 
     if (options.fases.includes('maestros')) {
@@ -115,6 +122,41 @@ async function main(): Promise<void> {
       // operación, como un negocio que abrió, configuró y después vendió.
       const company = await db.empresaConfiguracion.findFirst({ select: { creadoEn: true } });
       ids = await writeMasters(db, options, process.env.DEMO_SEED_PASSWORD!);
+
+      // Las fotos del catálogo. El POS y el autoservicio solo muestran un
+      // producto con imagen confirmada: sin esto la carta publicada sale vacía
+      // («No hay carta publicada para esta sucursal y horario»). Se suben y se
+      // vinculan como desde la pantalla de producto: MediaService.upload,
+      // pública para que el menú del QR la vea, y CatalogService.replaceMedia.
+      const media = app.get(MediaService);
+      const catalog = app.get(CatalogService);
+      let photos = 0;
+      for (const product of products) {
+        const png = productImage(product.codigo);
+        if (!png) continue;
+        const row = await db.producto.findUnique({ where: { codigo: product.codigo }, select: { id: true } });
+        if (!row) continue;
+        try {
+          const uploaded = await media.upload(admin, {
+            file: png,
+            declaredMime: 'image/png',
+            name: `${product.codigo.toLowerCase()}.png`,
+            contexto: 'PRODUCTO',
+            sucursalId: null,
+            publico: true,
+          });
+          await catalog.replaceMedia(admin, 'product', row.id, [uploaded.id]);
+          photos++;
+        } catch (error) {
+          throw Error(
+            `No se pudo subir la foto de ${product.nombre} a DigitalOcean Spaces: ${(error as Error).message}. ` +
+              'Revise DO_SPACES_* en el .env: sin fotos el POS no muestra la carta.',
+            { cause: error },
+          );
+        }
+      }
+      progress('maestros', `${photos} fotos de producto subidas y vinculadas`);
+
       if (company) {
         const setupFrom = new Date(company.creadoEn.getTime() - 5000);
         const opened = options.semanas * 7 + 10;
@@ -174,7 +216,7 @@ async function main(): Promise<void> {
     if (options.fases.includes('historia')) {
       if (![...ids.qrTokens.values()].some((l) => l.length)) await issueQr();
       const payments = app.get(PaymentsService) as never;
-      await runHistory(
+      todayFrom = await runHistory(
         db,
         {
           orders: app.get(OrderService) as never,
@@ -202,7 +244,18 @@ async function main(): Promise<void> {
 
       // Lo que el cliente debería encontrar, contado. Una tabla vacía que la
       // corrida tenía que llenar es un fallo, no un «listo».
-      const report = coverageReport(await coverage(db, ids, options));
+      // Lo que el cajero verá al abrir el POS: la misma consulta que usan el
+      // punto de venta y el menú del QR, con el reloj de ahora.
+      const rows = await coverage(db, ids, options);
+      for (const [branchCode, branchId] of ids.branches) {
+        if (options.sucursales.length && !options.sucursales.includes(branchCode)) continue;
+        const menu = (await app.get(CatalogService).branchMenu(admin, branchId)) as {
+          menus?: { secciones?: { items?: unknown[] }[] }[];
+        };
+        const visible = (menu?.menus ?? []).flatMap((m) => (m.secciones ?? []).flatMap((sec) => sec.items ?? [])).length;
+        rows.push({ label: 'Productos en la carta del POS ahora', count: visible, required: true });
+      }
+      const report = coverageReport(rows);
       process.stdout.write(`\nCobertura del demo:\n${report.text}\n`);
       uncovered = report.missing;
     }
@@ -211,7 +264,7 @@ async function main(): Promise<void> {
     // and it shows up as one corner of the demo dated today while everything
     // around it sits weeks back. Reported rather than thrown: the data is
     // usable, and knowing which table is off is what makes it fixable.
-    const leftovers = await auditDates(db, started);
+    const leftovers = await auditDates(db, started, new Set(), todayFrom);
     if (leftovers.length) {
       process.stdout.write('\nColumnas que quedaron con fecha de esta corrida:\n');
       for (const { table, column, rows } of leftovers)

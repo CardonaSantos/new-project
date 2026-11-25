@@ -11,6 +11,6 @@
     "declaration": false,
     "tsBuildInfoFile": "./dist-seed/.tsbuildinfo"
   },
-  "include": ["src", "prisma/demo"],
+  "include": ["src", "prisma/demo", "prisma/cliente"],
   "exclude": ["node_modules", "test", "dist", "dist-seed", "**/*spec.ts"]
 }

@@ -3,7 +3,7 @@ import {CurrentUser} from '../../../auth/presentation/http/decorators/auth.decor
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {InventoryOperationsService} from '../../application/inventory-operations.service.js';
 import {InventoryInternalConsumptionService} from '../../application/inventory-internal-consumption.service.js';
-import {ManualPostingDto,LotCreateDto,LotStatusDto,StockBranchDto,LotsListDto,CountCreateDto,TransferCreateDto,CountListDto,TransferListDto,OperationKeyDto,InternalConsumptionDto,BatchInboundDto} from './dto/inventory-operations.dto.js';
+import {ManualPostingDto,LotCreateDto,LotStatusDto,StockBranchDto,LotsListDto,CountCreateDto,TransferCreateDto,CountListDto,TransferListDto,OperationKeyDto,InternalConsumptionDto,BatchInboundDto,EntryOptionsDto} from './dto/inventory-operations.dto.js';
 @Controller('inventory/stock')
 export class InventoryStockController{
  constructor(private readonly store:InventoryOperationsService){}
@@ -28,6 +28,9 @@ export class InventoryMovementsController{
 @Controller('inventory/operations')
 export class InventoryManualController{
  constructor(private readonly store:InventoryOperationsService){}
+ @Get('entry-options') entryOptions(@CurrentUser() u:Principal,@Query() q:EntryOptionsDto){
+  return this.store.entryOptions(u,q);
+ }
  @Post('opening') opening(@CurrentUser() u:Principal,@Body() dto:ManualPostingDto){return this.store.manual(u,'OPENING',dto);}
  @Post('inbound') inbound(@CurrentUser() u:Principal,@Body() dto:ManualPostingDto){return this.store.manual(u,'INBOUND',dto);}
  @Post('inbound/batch') inboundBatch(@CurrentUser() u:Principal,@Body() dto:BatchInboundDto){

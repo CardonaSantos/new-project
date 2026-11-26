@@ -45,8 +45,14 @@ export class ManualPostingDto{
  @IsString() articuloId!:string;
  @IsString() ubicacionId!:string;
  @IsOptional() @IsString() loteId?:string;
+ /** In `unidadId` / `presentacionId` when given; otherwise in the article's base unit. */
  @IsString() @Matches(qty) cantidad!:string;
+ /** Per chosen unit (base unit when none is chosen). Exclusive with costoTotal. */
  @IsOptional() @IsString() @Matches(money) costoUnitario?:string;
+ /** Whole line cost («Q40 for all of it»). Exclusive with costoUnitario. */
+ @IsOptional() @IsString() @Matches(money) costoTotal?:string;
+ @IsOptional() @IsString() unidadId?:string;
+ @IsOptional() @IsString() presentacionId?:string;
  @IsString() @MaxLength(120) claveOperacion!:string;
  @IsString() @MaxLength(500) motivo!:string;
 }
@@ -55,8 +61,16 @@ export class BatchInboundLineDto{
  @IsString() articuloId!:string;
  @IsString() ubicacionId!:string;
  @IsOptional() @IsString() loteId?:string;
+ /** Same meaning as in ManualPostingDto. One of costoUnitario / costoTotal is required. */
  @IsString() @Matches(qty) cantidad!:string;
- @IsString() @Matches(money) costoUnitario!:string;
+ @IsOptional() @IsString() @Matches(money) costoUnitario?:string;
+ @IsOptional() @IsString() @Matches(money) costoTotal?:string;
+ @IsOptional() @IsString() unidadId?:string;
+ @IsOptional() @IsString() presentacionId?:string;
+}
+export class EntryOptionsDto{
+ @IsString() sucursalId!:string;
+ @IsString() articuloId!:string;
 }
 export class BatchInboundDto{
  @IsString() @MaxLength(100) claveOperacion!:string;

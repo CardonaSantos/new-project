@@ -23,6 +23,7 @@ export class InventoryOperationsService {
  lots(actor:Principal,...args:any[]){return this.port.lots(actor,...args);}
  createLot(actor:Principal,...args:any[]){return this.port.createLot(actor,...args);}
  blockLot(actor:Principal,...args:any[]){return this.port.blockLot(actor,...args);}
+ entryOptions(actor:Principal,...args:any[]){return this.port.entryOptions(actor,...args);}
  manual(actor:Principal,...args:any[]){return this.port.manual(actor,...args);}
  inboundBatch(actor:Principal,...args:any[]){return this.port.inboundBatch(actor,...args);}
  async movements(actor:Principal,...args:any[]){

@@ -8,8 +8,9 @@ import {amount,cost,price,qty,requireReference,validDay} from '../../domain/stoc
 import {InventoryPostingEngine} from './inventory-posting.engine.js';
 import {InventoryDocumentsStore} from './inventory-documents.store.js';
 import {locationBookValues} from './inventory-ledger.js';
+import {convertEntry,entryOptions} from './entry-units.js';
 import {bookKey,allocatePoolBookValues} from '../../domain/inventory-valuation.policy.js';
-import type {StockBranchDto,LotCreateDto,LotStatusDto,ManualPostingDto,CountCreateDto,TransferCreateDto,CountListDto,TransferListDto,LotsListDto,BatchInboundDto} from '../../presentation/http/dto/inventory-operations.dto.js';
+import type {StockBranchDto,LotCreateDto,LotStatusDto,ManualPostingDto,CountCreateDto,TransferCreateDto,CountListDto,TransferListDto,LotsListDto,BatchInboundDto,EntryOptionsDto} from '../../presentation/http/dto/inventory-operations.dto.js';
 type StockQuery=StockBranchDto;
 const meta=(page:number,limit:number,total:number)=>({page,limit,total,totalPages:Math.ceil(total/limit)});
 function sanitize<T>(value:T,allowed:boolean):T{
@@ -215,7 +216,11 @@ export class InventoryOperationsStore{
   if(!dto.motivo?.trim()||dto.motivo.trim().length<3)
    throw new BadRequestException('Motivo mínimo 3 caracteres');
   for(const line of dto.lineas){
-   amount(line.cantidad);cost(line.costoUnitario);
+   amount(line.cantidad);
+   if(line.costoUnitario===undefined&&line.costoTotal===undefined)
+    throw new BadRequestException('Cada artículo requiere costoUnitario o costoTotal');
+   if(line.costoUnitario!==undefined)cost(line.costoUnitario);
+   if(line.costoTotal!==undefined)cost(line.costoTotal);
   }
   const op='INVENTORY_INBOUND_BATCH';
   const payload={kind:'INBOUND_BATCH',...dto,actor:u.id};
@@ -246,11 +251,14 @@ export class InventoryOperationsStore{
     // Per-line keys cannot collide with the batch's idempotency key or another line.
     const key='IB-'+createHash('sha256')
      .update(dto.claveOperacion+':'+index).digest('hex').slice(0,48);
+    const entry=await convertEntry(tx,line.articuloId,line);
     movimientos.push(await this.engine.post(tx,{
      actorId:u.id,articuloId:line.articuloId,ubicacionId:line.ubicacionId,
-     loteId:line.loteId,cantidad:line.cantidad,costoUnitario:line.costoUnitario,
+     loteId:line.loteId,cantidad:entry.cantidad,costoUnitario:entry.costoUnitario,
+     ...(entry.costoTotal!==undefined?{costoTotalOverride:entry.costoTotal}:{}),
      direction:'IN',tipo:'AJUSTE_ENTRADA',claveOperacion:key,
-     referenciaTipo:op,referenciaId:dto.claveOperacion,nota:dto.motivo.trim(),
+     referenciaTipo:op,referenciaId:dto.claveOperacion,
+     nota:entry.detalle?dto.motivo.trim()+' · '+entry.detalle:dto.motivo.trim(),
      permission:'inventory.adjust'
     }));
    }
@@ -266,12 +274,20 @@ export class InventoryOperationsStore{
   const branch=(posted as {sucursalId?:string}).sucursalId;
   return sanitize(posted,!!branch&&await this.costs(u,branch));
  }
+ /** Units and purchase presentations an entry for this article can be typed in. */
+ async entryOptions(u:Principal,q:EntryOptionsDto){
+  await this.permission(u,q.sucursalId,'inventory.read');
+  return this.db.$transaction(tx=>entryOptions(tx,q.articuloId));
+ }
  async manual(u:Principal,kind:'OPENING'|'INBOUND'|'OUTBOUND'|'WASTE',dto:ManualPostingDto){
   requireReference(dto.claveOperacion);amount(dto.cantidad);
   if(kind==='OPENING'||kind==='INBOUND'){
-   if(dto.costoUnitario===undefined)throw new BadRequestException('Entrada requiere costoUnitario');
-   cost(dto.costoUnitario);
-  }else if(dto.costoUnitario!==undefined)throw new BadRequestException('Salidas usan costo calculado por motor, no costo ingresado');
+   if(dto.costoUnitario===undefined&&dto.costoTotal===undefined)
+    throw new BadRequestException('Entrada requiere costoUnitario o costoTotal');
+   if(dto.costoUnitario!==undefined)cost(dto.costoUnitario);
+   if(dto.costoTotal!==undefined)cost(dto.costoTotal);
+  }else if(dto.costoUnitario!==undefined||dto.costoTotal!==undefined)
+   throw new BadRequestException('Salidas usan costo calculado por motor, no costo ingresado');
   if(dto.motivo.trim().length<3)throw new BadRequestException('Motivo mínimo 3 caracteres');
   const direction=kind==='OPENING'||kind==='INBOUND'?'IN':'OUT';
   const op='INVENTORY_'+kind;
@@ -290,11 +306,16 @@ export class InventoryOperationsStore{
    if(kind==='OPENING'&&await tx.movimientoInventario.count({where:{
      articuloId:dto.articuloId,ubicacionId:dto.ubicacionId,loteId:dto.loteId??null}})>0)
     throw new ConflictException('La posición ya tiene movimientos; saldo inicial no permitido');
+   // «2 L at Q20» → base quantity and base cost; plain base-unit entries pass unchanged.
+   const entry=await convertEntry(tx,dto.articuloId,dto);
    const result=await this.engine.post(tx,{actorId:u.id,articuloId:dto.articuloId,
-    ubicacionId:dto.ubicacionId,loteId:dto.loteId,cantidad:dto.cantidad,direction,
+    ubicacionId:dto.ubicacionId,loteId:dto.loteId,cantidad:entry.cantidad,direction,
     tipo:kind==='WASTE'?'MERMA':direction==='IN'?'AJUSTE_ENTRADA':'AJUSTE_SALIDA',
-    costoUnitario:dto.costoUnitario,claveOperacion:dto.claveOperacion,
-    referenciaTipo:op,referenciaId:dto.claveOperacion,nota:dto.motivo,permission:'inventory.adjust',allowBlocked:kind==='WASTE'});
+    costoUnitario:entry.costoUnitario,
+    ...(direction==='IN'&&entry.costoTotal!==undefined?{costoTotalOverride:entry.costoTotal}:{}),
+    claveOperacion:dto.claveOperacion,referenciaTipo:op,referenciaId:dto.claveOperacion,
+    nota:entry.detalle?dto.motivo+' · '+entry.detalle:dto.motivo,
+    permission:'inventory.adjust',allowBlocked:kind==='WASTE'});
    await tx.operacionIdempotente.create({data:{clave:dto.claveOperacion,operacion:op,hashSolicitud:hash,
     finalizada:true,expiraEn:new Date(Date.now()+365*86400000),resultado:result as unknown as Prisma.InputJsonValue}});
    return result;

@@ -23,7 +23,7 @@ function mocks(){
    findUnique:vi.fn().mockResolvedValue({id:'unit',dimension:'UNIDAD',esBase:true})},
   articuloInventario:{
    create:vi.fn().mockResolvedValue({id:'article1',codigo:'ART-FLAN-001-1',nombre:'Flan terminado',tipo:'PRODUCTO_TERMINADO'}),
-   findUnique:vi.fn().mockResolvedValue({id:'article1',activo:true,tipo:'PRODUCTO_TERMINADO',
+   findUnique:vi.fn().mockResolvedValue({id:'article1',activo:true,tipo:'PRODUCTO_TERMINADO',unidadBaseId:'unit',
     unidadBase:{dimension:'UNIDAD'}})
   },
   producto:{
@@ -33,7 +33,7 @@ function mocks(){
   },
   varianteProducto:{
    create:vi.fn().mockResolvedValue({id:'v1',nombre:'Única'}),
-   findUnique:vi.fn().mockResolvedValue({id:'v1',activo:true,producto:{activo:true}}),
+   findUnique:vi.fn().mockResolvedValue({id:'v1',activo:true,producto:{activo:true,tipo:'PREPARADO'}}),
    findMany:vi.fn().mockResolvedValue([{id:'v1'}])
   },
   precioVariante:{
@@ -42,6 +42,15 @@ function mocks(){
    update:vi.fn()
   },
   eventoAuditoria:{create:vi.fn().mockResolvedValue({})},
+  grupoModificador:{create:vi.fn().mockResolvedValue({id:'g1',nombre:'Toppings',minimo:0,maximo:2})},
+  modificador:{create:vi.fn().mockResolvedValue({
+   id:'opt1',nombre:'Canela',incrementoPrecio:new Prisma.Decimal('2.00'),
+   requiereComposicion:true
+  })},
+  modificadorComponente:{createMany:vi.fn().mockResolvedValue({count:1})},
+  varianteGrupoModificador:{findMany:vi.fn().mockResolvedValue([]),
+   create:vi.fn().mockResolvedValue({})},
+  conversionUnidad:{findMany:vi.fn().mockResolvedValue([])},
   movimientoInventario:{create:stockMovement},
   menu:{
    findUnique:vi.fn().mockResolvedValue({id:'m1',activo:true,version:1,publicadoEn:new Date()}),
@@ -114,5 +123,54 @@ describe('CAT R2 atomic operations',()=>{
   await expect(service.commitMenu('u1','m1',layout)).rejects.toBeInstanceOf(ConflictException);
   expect(tx.menuSeccion.deleteMany).not.toHaveBeenCalled();
   expect(tx.menu.update).not.toHaveBeenCalled();
+ });
+});
+
+
+describe('CAT R3 — atomic modifier setups without accidental inventory movement',()=>{
+ it('creates a group with options and its physical consumption in one transaction',async()=>{
+  const {service,tx,db,stockMovement}=mocks();
+  const result=await service.createModifierGroupWithOptions('u1',{
+   nombre:'Toppings',minimo:0,maximo:1,varianteId:'v1',
+   opciones:[{nombre:'Canela',incrementoPrecio:'2.00',ingredientes:[{
+    articuloId:'article1',unidadId:'unit',cantidad:'0.010',efecto:'SUMAR'
+   }]}]
+  });
+  expect(result.opciones).toHaveLength(1);
+  expect(db.$transaction).toHaveBeenCalledTimes(1);
+  expect(tx.grupoModificador.create).toHaveBeenCalledTimes(1);
+  expect(tx.modificadorComponente.createMany).toHaveBeenCalledTimes(1);
+  expect(tx.varianteGrupoModificador.create).toHaveBeenCalledTimes(1);
+  expect(stockMovement).not.toHaveBeenCalled();
+ });
+ it('blocks incomplete ingredient amounts before writing the option',async()=>{
+  const {service,tx}=mocks();
+  await expect(service.createModifierGroupWithOptions('u1',{
+   nombre:'Toppings',minimo:0,maximo:1,
+   opciones:[{nombre:'Canela',incrementoPrecio:'0.00',ingredientes:[{
+    articuloId:'article1',unidadId:'unit',cantidad:'0',efecto:'SUMAR'
+   }]}]
+  })).rejects.toThrow();
+  expect(tx.modificador.create).not.toHaveBeenCalled();
+ });
+ it('rejects removing ingredient via the guided editor',async()=>{
+  const {service,tx}=mocks();
+  await expect(service.createModifierGroupWithOptions('u1',{
+   nombre:'Toppings',minimo:0,maximo:1,
+   opciones:[{nombre:'Sin azúcar',incrementoPrecio:'0.00',ingredientes:[{
+    articuloId:'article1',unidadId:'unit',cantidad:'1',efecto:'RESTAR' as 'SUMAR'
+   }]}]
+  })).rejects.toThrow();
+  expect(tx.modificador.create).not.toHaveBeenCalled();
+ });
+ it('enforces unique option names and valid choices before transaction',async()=>{
+  const {service,db}=mocks();
+  await expect(service.createModifierGroupWithOptions('u1',{
+   nombre:'Toppings',minimo:0,maximo:2,opciones:[
+    {nombre:'Canela',incrementoPrecio:'0',ingredientes:[]},
+    {nombre:' canela ',incrementoPrecio:'1',ingredientes:[]}
+   ]
+  })).rejects.toBeInstanceOf(ConflictException);
+  expect(db.$transaction).not.toHaveBeenCalled();
  });
 });

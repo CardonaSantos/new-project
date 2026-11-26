@@ -192,3 +192,24 @@ export class VariantPricesBatchDto{
  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(50) @ValidateNested({each:true})
  @Type(()=>PriceCreateDto) precios!:PriceCreateDto[];
 }
+
+export class QuickModifierIngredientDto{
+ @IsString() articuloId!:string;
+ @IsString() unidadId!:string;
+ @IsString() @Matches(/^(?!0(?:\.0{1,6})?$)(?:0|[1-9]\d{0,13})(?:\.\d{1,6})?$/) cantidad!:string;
+ @IsIn(['SUMAR']) efecto:'SUMAR'='SUMAR';
+}
+export class QuickModifierChoiceDto{
+ @IsString() @MinLength(1) @MaxLength(130) nombre!:string;
+ @IsString() @Matches(/^(?:0|[1-9]\d{0,15})(?:\.\d{1,2})?$/) incrementoPrecio!:string;
+ @IsArray() @ArrayMaxSize(30) @ValidateNested({each:true})
+ @Type(()=>QuickModifierIngredientDto) ingredientes!:QuickModifierIngredientDto[];
+}
+export class QuickModifierGroupDto{
+ @IsString() @MinLength(1) @MaxLength(130) nombre!:string;
+ @IsInt() @Min(0) minimo!:number;
+ @IsOptional() @IsInt() @Min(0) maximo?:number|null;
+ @IsOptional() @IsString() varianteId?:string;
+ @IsArray() @ArrayMinSize(1) @ArrayMaxSize(30) @ValidateNested({each:true})
+ @Type(()=>QuickModifierChoiceDto) opciones!:QuickModifierChoiceDto[];
+}

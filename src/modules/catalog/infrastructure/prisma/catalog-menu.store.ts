@@ -122,6 +122,20 @@ export class CatalogMenuStore{
     include:{unidadBase:true}});
    if(unit?.unidadBase.dimension!=='UNIDAD')warnings.push('ARTICULO_UNIDAD_INCOMPATIBLE');
   }
+  // An extra that requires physical composition must never become sellable without its ingredients.
+  // Direct sale and services have no recipe consumption pipeline for physical modifier ingredients.
+  const links=await tx.varianteGrupoModificador.findMany({
+   where:{varianteId:v.id},select:{grupoId:true}});
+  if(links.length){
+   const extras=await tx.modificador.findMany({where:{
+    grupoId:{in:links.map(x=>x.grupoId)},activo:true,grupo:{activo:true}
+   },include:{modificadorComponentesComoModificador:true}});
+   if(extras.some(x=>x.requiereComposicion&&!x.modificadorComponentesComoModificador.length))
+    warnings.push('EXTRA_SIN_COMPOSICION_FISICA');
+   if(v.producto.tipo!=='PREPARADO'&&
+    extras.some(x=>x.modificadorComponentesComoModificador.length))
+    warnings.push('EXTRA_FISICO_REQUIERE_PREPARADO');
+  }
   let recipeState='NO_APLICA',kitchenState='NO_APLICA';
   if(v.producto.tipo==='PREPARADO'){
    const published=await tx.receta.findFirst({where:{tipo:'VENTA',varianteId:v.id,activa:true,

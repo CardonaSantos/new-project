@@ -190,6 +190,87 @@ export class CatalogSetupService{
   },serial);}catch(e){failUnique(e);}
  }
 
+ /**
+  * Read-only review for the actual unsaved menu layout; never publish or mutate.
+  * commitMenu remains the authoritative atomic check in its own transaction.
+  */
+ async previewMenuReadiness(actor:string,id:string,input:MenuLayoutDto){
+  return this.db.$transaction(async tx=>{
+   await permission(tx,actor,'catalog.menus.manage',null);
+   const menu=await tx.menu.findUnique({where:{id},select:{
+    id:true,nombre:true,version:true,activo:true,publicadoEn:true
+   }});
+   if(!menu)throw new NotFoundException('Menú inexistente');
+   if(menu.version!==input.expectedVersion)
+    throw new ConflictException('La carta cambió. Recarga antes de publicarla');
+   type Problem={codigo:string;mensaje:string;varianteId?:string;
+    nombre?:string;sucursalId?:string;seccion?:string;productoId?:string};
+   const problemas:Problem[]=[];
+   if(!menu.activo)problemas.push({codigo:'MENU_INACTIVO',mensaje:'Activa la carta antes de publicarla'});
+   if(!input.sucursalIds.length)
+    problemas.push({codigo:'SIN_SUCURSAL',mensaje:'Selecciona al menos una sucursal'});
+   if(!input.secciones.length)
+    problemas.push({codigo:'SIN_SECCIONES',mensaje:'Agrega una sección a la carta'});
+   const nameSet=new Set<string>();
+   const itemSet=new Set<string>();
+   const sectionNames=new Map<string,string>();
+   for(const section of input.secciones){
+    const name=catalogName(section.nombre);
+    if(nameSet.has(name.toLocaleLowerCase('es')))
+     problemas.push({codigo:'SECCION_REPETIDA',mensaje:'Hay secciones con el mismo nombre',seccion:name});
+    nameSet.add(name.toLocaleLowerCase('es'));
+    if(!section.items.length)problemas.push({codigo:'SECCION_VACIA',
+     mensaje:'Agrega productos a esta sección',seccion:name});
+    const within=new Set<string>();
+    for(const item of section.items){
+     if(within.has(item.varianteId))problemas.push({codigo:'VARIANTE_REPETIDA',
+      mensaje:'La presentación está repetida en la sección',seccion:name,varianteId:item.varianteId});
+     within.add(item.varianteId);itemSet.add(item.varianteId);
+     sectionNames.set(item.varianteId,name);
+    }
+   }
+   if(!itemSet.size)problemas.push({codigo:'SIN_PRODUCTOS',mensaje:'Agrega al menos un producto a la carta'});
+   const branches=await tx.sucursal.findMany({where:{id:{in:input.sucursalIds}},
+    select:{id:true,nombre:true,activa:true}});
+   const branchMap=new Map(branches.map(b=>[b.id,b]));
+   for(const id of input.sucursalIds){
+    const branch=branchMap.get(id);
+    if(!branch?.activa)problemas.push({codigo:'SUCURSAL_INACTIVA',sucursalId:id,
+     mensaje:'Sucursal inexistente o inactiva'});
+   }
+   for(const h of input.horarios)validSchedule(h.diaSemana,h.desde,h.hasta);
+   // Limit read complexity to guard against a malicious editor creating huge preview requests.
+   if(itemSet.size*Math.max(1,input.sucursalIds.length)>300)
+    throw new BadRequestException('La revisión permite hasta 300 combinaciones de presentación y sucursal');
+   const variants=await tx.varianteProducto.findMany({where:{id:{in:[...itemSet]}},
+    select:{id:true,nombre:true,producto:{select:{id:true,nombre:true}}}});
+   const variantMap=new Map(variants.map(v=>[v.id,v]));
+   const checked:Array<{varianteId:string;nombre:string;sucursalId:string;
+    sucursal:string;seccion:string;lista:boolean;advertencias:string[];
+    productoId:string;precio:string|null}>=[];
+   for(const id of itemSet){
+    const v=variantMap.get(id);
+    if(!v){problemas.push({codigo:'VARIANTE_NO_EXISTE',varianteId:id,
+     seccion:sectionNames.get(id),mensaje:'El producto ya no existe. Retíralo de la sección'});continue;}
+    for(const branchId of input.sucursalIds){
+     const branch=branchMap.get(branchId);
+     if(!branch?.activa)continue;
+     const state=await this.menus.readiness(id,branchId,new Date(),tx);
+     checked.push({varianteId:id,nombre:v.producto.nombre+' · '+v.nombre,
+      sucursalId:branchId,sucursal:branch.nombre,seccion:sectionNames.get(id)??'',
+      lista:state.lista,advertencias:state.advertencias,
+      productoId:v.producto.id,precio:state.precio??null});
+     for(const code of state.advertencias)problemas.push({codigo:code,
+      mensaje:code,varianteId:id,nombre:v.producto.nombre+' · '+v.nombre,
+      sucursalId:branchId,seccion:sectionNames.get(id),productoId:v.producto.id});
+    }
+   }
+   return {menuId:id,versionActual:menu.version,publicada:!!menu.publicadoEn,
+    lista:problemas.length===0,problemas,comprobadas:checked,
+    totalPresentaciones:itemSet.size,totalSucursales:input.sucursalIds.length};
+  },serial);
+ }
+
  async commitMenu(actor:string,id:string,input:MenuLayoutDto){
   const allIds=[...new Set(input.secciones.flatMap(s=>s.items.map(x=>x.varianteId)))];
   if(!input.sucursalIds.length||!input.secciones.length||!allIds.length)

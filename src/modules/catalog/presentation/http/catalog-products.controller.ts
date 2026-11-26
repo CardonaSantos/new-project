@@ -1,9 +1,10 @@
 import {Body,Controller,Get,Param,Patch,Post,Put,Query} from '@nestjs/common';
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {CurrentUser} from '../../../auth/presentation/http/decorators/auth.decorators.js';
+import {CatalogSetupService} from '../../application/catalog-setup.service.js';
 import {CatalogService} from '../../application/catalog.service.js';
 import {BranchQueryDto,BranchVariantDto,CategoryCreateDto,CategoryPatchDto,ImageIdsDto,
- OptionsDto,PageDto,ProductCreateDto,ProductListDto,ProductOptionsDto,ProductPatchDto,PriceQueryDto,StatusDto,
+ OptionsDto,PageDto,ProductCreateDto,ProductListDto,ProductOptionsDto,ProductPatchDto,ProductSetupDto,PriceQueryDto,StatusDto,
  VariantInputDto,VariantOptionDto,VariantPatchDto} from './dto/catalog.dto.js';
 
 @Controller('catalog/categories')
@@ -26,7 +27,10 @@ export class CatalogCategoriesController{
 }
 @Controller('catalog/products')
 export class CatalogProductsController{
- constructor(private readonly service:CatalogService){}
+ constructor(private readonly service:CatalogService,private readonly setup:CatalogSetupService){}
+ @Post('setup') setupProduct(@CurrentUser() a:Principal,@Body() v:ProductSetupDto){
+  return this.setup.createProductSetup(a.id,v);
+ }
  @Get('options') options(@CurrentUser() a:Principal,@Query() q:ProductOptionsDto){return this.service.productOptions(a,q);}
  @Get() list(@CurrentUser() a:Principal,@Query() q:ProductListDto){return this.service.products(a,q);}
  @Post() create(@CurrentUser() a:Principal,@Body() v:ProductCreateDto){return this.service.createProduct(a,v);}

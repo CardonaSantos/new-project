@@ -3,6 +3,7 @@ import {AuthModule} from '../auth/auth.module.js';
 import {MediaModule} from '../media/media.module.js';
 import {PrismaModule} from '../../infrastructure/database/prisma/prisma.module.js';
 import {CatalogService} from './application/catalog.service.js';
+import {CatalogSetupService} from './application/catalog-setup.service.js';
 import {CatalogMediaService} from './application/catalog-media.service.js';
 import {CatalogRepositoryPort} from './application/ports/catalog.repository.port.js';
 import {CatalogCommercialStore} from './infrastructure/prisma/catalog-commercial.store.js';
@@ -19,7 +20,7 @@ import {CatalogReportsController} from './presentation/http/catalog-reports.cont
  controllers:[CatalogCategoriesController,CatalogProductsController,CatalogVariantsController,
   CatalogGroupsController,CatalogModifiersController,CatalogVariantGroupsController,CatalogPricesController,
   CatalogMenusController,CatalogMenuProjectionController,CatalogReportsController],
- providers:[CatalogService,CatalogMediaService,
+ providers:[CatalogService,CatalogSetupService,CatalogMediaService,
   CatalogCommercialStore,CatalogPricingStore,CatalogMenuStore,CatalogReportStore,
   {provide:CatalogRepositoryPort,useClass:PrismaCatalogRepository}],
  exports:[CatalogService,CatalogRepositoryPort]

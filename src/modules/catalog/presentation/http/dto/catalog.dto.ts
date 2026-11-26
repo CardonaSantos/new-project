@@ -1,5 +1,5 @@
 import {Type,Transform} from 'class-transformer';
-import {ArrayMaxSize,ArrayUnique,IsArray,IsBoolean,IsIn,IsInt,IsISO8601,IsOptional,
+import {ArrayMaxSize,ArrayMinSize,ArrayUnique,IsArray,IsBoolean,IsIn,IsInt,IsISO8601,IsOptional,
  IsString,Matches,Max,MaxLength,Min,MinLength,ValidateIf,ValidateNested} from 'class-validator';
 import type {CatalogKind} from '../../../application/ports/catalog.repository.port.js';
 const kinds=['PREPARADO','INVENTARIABLE','SERVICIO'] as const;
@@ -165,3 +165,30 @@ export class MenuLayoutDto{
  @IsArray() @ArrayMaxSize(100) @ArrayUnique() @IsString({each:true}) sucursalIds!:string[];
 }
 export class PublishDto{ @IsInt() @Min(1) expectedVersion!:number; }
+
+/** New physical article is created with zero stock, inside the catalog setup transaction. */
+export class InlinePhysicalArticleDto{
+ @IsString() @Matches(/^[A-Za-z][A-Za-z0-9_-]{1,49}$/) codigo!:string;
+ @IsString() @MinLength(1) @MaxLength(160) nombre!:string;
+ @IsOptional() @IsString() unidadBaseId?:string;
+ @IsOptional() @IsBoolean() requiereLote?:boolean;
+ @IsOptional() @IsBoolean() requiereVencimiento?:boolean;
+}
+export class SetupVariantDto extends VariantInputDto{
+ @IsOptional() @IsString() @Matches(/^(?:0|[1-9]\d{0,15})(?:\.\d{1,2})?$/) precio?:string;
+ @IsOptional() @ValidateNested() @Type(()=>InlinePhysicalArticleDto) nuevoArticulo?:InlinePhysicalArticleDto;
+}
+export class ProductSetupDto{
+ @IsString() @Matches(/^[A-Za-z][A-Za-z0-9_-]{0,49}$/) codigo!:string;
+ @IsString() @MinLength(1) @MaxLength(160) nombre!:string;
+ @IsOptional() @IsString() @MaxLength(1500) descripcion?:string|null;
+ @IsOptional() @IsString() categoriaId?:string|null;
+ @IsIn(kinds) tipo!:CatalogKind;
+ @IsOptional() @IsString() sucursalId?:string;
+ @IsArray() @ArrayMinSize(1) @ArrayMaxSize(50) @ValidateNested({each:true})
+ @Type(()=>SetupVariantDto) variantes!:SetupVariantDto[];
+}
+export class VariantPricesBatchDto{
+ @IsArray() @ArrayMinSize(1) @ArrayMaxSize(50) @ValidateNested({each:true})
+ @Type(()=>PriceCreateDto) precios!:PriceCreateDto[];
+}

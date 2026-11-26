@@ -2,8 +2,9 @@ import {Body,Controller,Get,HttpCode,Param,Patch,Post,Put,Query} from '@nestjs/c
 import type {Principal} from '../../../auth/application/auth.service.js';
 import {CurrentUser} from '../../../auth/presentation/http/decorators/auth.decorators.js';
 import {CatalogService} from '../../application/catalog.service.js';
+import {CatalogSetupService} from '../../application/catalog-setup.service.js';
 import {AttachGroupsDto,GroupCreateDto,GroupPatchDto,ModifierCreateDto,ModifierListDto,
- ModifierPatchDto,OptionsDto,PageDto,PriceCreateDto,PriceQueryDto,QuoteDto} from './dto/catalog.dto.js';
+ ModifierPatchDto,OptionsDto,PageDto,PriceCreateDto,PriceQueryDto,QuoteDto,VariantPricesBatchDto} from './dto/catalog.dto.js';
 @Controller('catalog/modifier-groups')
 export class CatalogGroupsController{
  constructor(private readonly service:CatalogService){}
@@ -32,7 +33,10 @@ export class CatalogVariantGroupsController{
 }
 @Controller('catalog/prices')
 export class CatalogPricesController{
- constructor(private readonly service:CatalogService){}
+ constructor(private readonly service:CatalogService,private readonly setup:CatalogSetupService){}
+ @Post('variants/batch') batchVariants(@CurrentUser() a:Principal,@Body() v:VariantPricesBatchDto){
+  return this.setup.batchVariantPrices(a.id,v.precios);
+ }
  @Post('variants') addVariant(@CurrentUser() a:Principal,@Body() v:PriceCreateDto){
   return this.service.createPrice(a,'variant',v);
  }

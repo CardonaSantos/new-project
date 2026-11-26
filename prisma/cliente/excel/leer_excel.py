@@ -171,7 +171,7 @@ class Codigos:
         return cod
 
 
-def leer_catalogo(wb, rep: Reporte):
+def leer_catalogo(wb, rep: Reporte, menu_siempre: bool = False):
     datos: dict = {}
     unidades_usadas: set[str] = set()
 
@@ -546,6 +546,10 @@ def leer_catalogo(wb, rep: Reporte):
                     if clave(v['categoria']) == clave(cat['nombre']) and any(clave(x) == clave(m['nombre']) for x in v['menus'])]
             if skus:
                 m['secciones'].append({'nombre': cat['nombre'], 'skus': skus})
+        if m['horario'] and menu_siempre:
+            rep.ajuste(f'El menú «{m["nombre"]}» se carga sin horario para que esté visible siempre '
+                       '(el Excel traía un horario; se puede poner en Menús cuando se quiera).')
+            m['horario'] = []
         if m['horario']:
             rangos = sorted({(h['desde'], h['hasta']) for h in m['horario']})
             dias_txt = len({h['diaSemana'] for h in m['horario']})
@@ -796,13 +800,15 @@ def main():
     ap.add_argument('catalogo')
     ap.add_argument('config')
     ap.add_argument('--salida', required=True)
+    ap.add_argument('--menu-siempre-visible', action='store_true',
+                    help='carga los menús sin horario: visibles a toda hora')
     ap.add_argument('--dominio', default='sin-correo.local', help='dominio de los correos provisionales')
     a = ap.parse_args()
 
     rep = Reporte()
     cat_wb = openpyxl.load_workbook(a.catalogo, data_only=True)
     cfg_wb = openpyxl.load_workbook(a.config, data_only=True)
-    catalogo = leer_catalogo(cat_wb, rep)
+    catalogo = leer_catalogo(cat_wb, rep, a.menu_siempre_visible)
     config = leer_config(cfg_wb, rep, catalogo, a.dominio)
 
     salida = {'formato': FORMATO, 'generado': dt.date.today().isoformat(),

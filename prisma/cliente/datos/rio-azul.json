@@ -11854,38 +11854,7 @@
   {
    "codigo": "MENU-CARTA",
    "nombre": "Carta",
-   "horario": [
-    {
-     "diaSemana": 2,
-     "desde": "14:00",
-     "hasta": "22:00"
-    },
-    {
-     "diaSemana": 3,
-     "desde": "14:00",
-     "hasta": "22:00"
-    },
-    {
-     "diaSemana": 4,
-     "desde": "14:00",
-     "hasta": "22:00"
-    },
-    {
-     "diaSemana": 5,
-     "desde": "14:00",
-     "hasta": "22:00"
-    },
-    {
-     "diaSemana": 6,
-     "desde": "14:00",
-     "hasta": "22:00"
-    },
-    {
-     "diaSemana": 0,
-     "desde": "14:00",
-     "hasta": "22:00"
-    }
-   ],
+   "horario": [],
    "secciones": [
     {
      "nombre": "Café caliente",
@@ -12898,7 +12867,6 @@
    "101 insumos con costo 0 (se ajusta con la primera compra).",
    "Proveedores sin compras registradas: La universal.",
    "51 insumos se compran a «Por definir».",
-   "El menú «Carta» solo aparece en el POS 6 días, de 14:00 a 22:00. Fuera de ese horario el POS no muestra productos.",
    "60 existencias vencen el 2026-12-31 (fecha de relleno): ajustarlas con el conteo real.",
    "3 usuarios sin correo entran con uno provisional: Loida Camposeco (loida.camposeco@rioazul.local), María Flora Camposeco Hurtado (maria.flora@rioazul.local), Dulce María Hurtado (dulce.maria@rioazul.local). Se puede cambiar después en Usuarios.",
    "Nadie tiene el rol Cajero: cobran los administradores.",
@@ -12908,6 +12876,7 @@
    "«Matcha fantasy – Chocolate»: el sistema guarda una descripción por producto; se usa la de la primera variante de «Matcha fantasy».",
    "«Matcha fantasy – Vainilla»: el sistema guarda una descripción por producto; se usa la de la primera variante de «Matcha fantasy».",
    "«Pannacotta – Maracuyá»: el sistema guarda una descripción por producto; se usa la de la primera variante de «Pannacotta».",
+   "El menú «Carta» se carga sin horario para que esté visible siempre (el Excel traía un horario; se puede poner en Menús cuando se quiera).",
    "61 existencias traían lote «INICIAL» en insumos que no vencen; el sistema solo guarda lote en los que vencen, así que se cargan sin lote.",
    "La estación «Caja» no prepara ninguna categoría (Computadora central: música y administración general.); no se crea como estación de preparación.",
    "«Superadministrador» no está en la lista de roles; se asigna el rol de administración general."

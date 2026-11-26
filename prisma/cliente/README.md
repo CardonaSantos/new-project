@@ -14,8 +14,11 @@ genérica `datos/foto-generica.png`. Solo hay que volver a generarlo si el
 cliente manda otro Excel:
 
 ```
-python prisma/cliente/excel/leer_excel.py CATALOGO.xlsx CONFIG.xlsx --salida prisma/cliente/datos/rio-azul.json --dominio rioazul.local
+python prisma/cliente/excel/leer_excel.py CATALOGO.xlsx CONFIG.xlsx --salida prisma/cliente/datos/rio-azul.json --dominio rioazul.local --menu-siempre-visible
 ```
+
+`--menu-siempre-visible` deja el menú sin horario (visible a toda hora), como
+pidió Río Azul; sin esa opción se usa el horario de la hoja Menús.
 
 ## Cargar en la base local (Windows, cmd)
 

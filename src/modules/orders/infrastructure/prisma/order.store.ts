@@ -347,7 +347,8 @@ export class OrderStore{
     const current=await tx.orden.findUniqueOrThrow({where:{id:created.orderId}});
     if(current.estado==='ABIERTA'){
      // In branches requiring payment first, only now may stock be consumed.
-     await this.kitchen.sendTx(tx,u,created.orderId,'orders.create');
+     // Express sale: the cashier hands the item over now, nothing for a station to do.
+     await this.kitchen.sendTx(tx,u,created.orderId,'orders.create',{toStation:false});
      await this.payments.settleAfterProcessingTx(tx,u,created.orderId);
     }
     const final=await tx.orden.findUniqueOrThrow({where:{id:created.orderId}});

@@ -76,8 +76,8 @@ export class KitchenStore{
     throw new ConflictException('Ruta requiere varianteId o categoriaId, exclusivamente');
    if(d.varianteId){
     const variant=await tx.varianteProducto.findUnique({where:{id:d.varianteId},include:{producto:true}});
-    if(!variant||variant.producto.tipo!=='PREPARADO')
-     throw new ConflictException('La ruta de variante debe ser para PREPARADO');
+    if(!variant||!['PREPARADO','INVENTARIABLE'].includes(variant.producto.tipo))
+     throw new ConflictException('La ruta de variante debe ser para un producto preparado o de venta directa');
    }else if(!await tx.categoria.findUnique({where:{id:d.categoriaId!}}))
     throw new NotFoundException('Categoría inexistente');
    const duplicate=await tx.rutaPreparacion.findFirst({where:{
@@ -144,6 +144,10 @@ export class KitchenStore{
    return {data,meta:{hasMore:more,nextCursor:more?data[data.length-1].id:null}};
   });
  }
+ private async chooseOptional(tx:Tx,branch:string,varianteId:string,categoriaId:string|null){
+  try{return await this.choose(tx,branch,varianteId,categoriaId)}
+  catch(error){if(error instanceof ConflictException)return null;throw error}
+ }
  private async choose(tx:Tx,branch:string,varianteId:string,categoriaId:string|null){
   const routes=await tx.rutaPreparacion.findMany({where:{
    estacion:{sucursalId:branch,activa:true},
@@ -164,7 +168,16 @@ export class KitchenStore{
   }
   throw new ConflictException('Falta configurar la ruta de cocina o ubicación de consumo');
  }
- async sendTx(tx:Tx,u:Principal,orderId:string,permission:Perm){
+ /**
+  * Sends the order's pending lines to their stations.
+  * PREPARADO lines consume their recipe when the station starts them. INVENTARIABLE lines
+  * (sold as is: a bottle of water, a ready-made dessert) consume their stock right here, and
+  * also go on the station's ticket so whoever assembles the order sees them; starting them
+  * at the station consumes nothing more. `toStation:false` (the cashier's express sale, which
+  * hands the item over on the spot) skips that ticket.
+  */
+ async sendTx(tx:Tx,u:Principal,orderId:string,permission:Perm,opts:{toStation?:boolean}={}){
+  const toStation=opts.toStation??true;
   const order=await tx.orden.findUnique({where:{id:orderId},include:{
    ordenLineasComoOrden:{include:{variante:{include:{producto:true}}}},
    cuentasComoOrden:true
@@ -195,6 +208,15 @@ export class KitchenStore{
     if(!article||article.unidadBase.dimension!=='UNIDAD')
      throw new ConflictException('Venta directa requiere artículo activo con unidad base UNIDAD');
     await this.consumption.direct(tx,u,order.id,line.id,articleId,order.sucursalId,delta,permission);
+    if(toStation){
+     // No route and several stations: the sale goes through, just without a ticket line.
+     const station=await this.chooseOptional(tx,order.sucursalId,line.varianteId,line.variante.producto.categoriaId);
+     if(station){
+      const group=byStation.get(station.id)??{id:station.id,name:station.nombre,rows:[]};
+      group.rows.push({id:line.id,delta,notas:line.notasCocina});
+      byStation.set(station.id,group);
+     }
+    }
    }
    await tx.ordenLinea.update({where:{id:line.id},data:{cantidadEnviada:line.cantidad}});
   }
@@ -298,7 +320,8 @@ export class KitchenStore{
    // rather than widening ticketInclude, so list()/queue() (the live board, many tickets at
    // once) don't carry this extra payload on every row.
    const extraRows=await tx.ordenLinea.findMany({where:{ordenId:ticket.ordenId,canceladaEn:null,
-    cantidadEnviada:{gt:0},variante:{producto:{tipo:'INVENTARIABLE'}}},
+    cantidadEnviada:{gt:0},variante:{producto:{tipo:'INVENTARIABLE'}},
+    comandaLineasComoOrdenLinea:{none:{}}},
     select:{id:true,nombreSnapshot:true,cantidadEnviada:true}});
    const tambienEntregar=extraRows.map(r=>({id:r.id,nombreSnapshot:r.nombreSnapshot,
     cantidad:r.cantidadEnviada}));
@@ -348,10 +371,12 @@ export class KitchenStore{
  private async startLineTx(tx:Tx,u:Principal,lineId:string,count?:Prisma.Decimal){
   const row=await tx.comandaLinea.findUnique({where:{id:lineId},include:{
    comanda:{include:{estacion:true,orden:true}},
-   ordenLinea:{include:{ordenLineaModificadoresComoOrdenLinea:true}}
+   ordenLinea:{include:{ordenLineaModificadoresComoOrdenLinea:true,
+    variante:{select:{producto:{select:{tipo:true}}}}}}
   }});
   if(!row)throw new NotFoundException('Línea de comanda inexistente');
   const ticket=row.comanda,order=ticket.orden;
+  const directSale=row.ordenLinea.variante.producto.tipo==='INVENTARIABLE';
   await this.engine.allowed(tx,u.id,'kitchen.manage',order.sucursalId);
   if(ticket.estado==='CANCELADA'||order.estado!=='ABIERTA'||row.canceladaEn)
    throw new ConflictException('Comanda o línea cancelada');
@@ -363,11 +388,14 @@ export class KitchenStore{
    throw new ConflictException('Cantidad solicitada excede pendiente de preparación');
   if(!ticket.estacion.ubicacionConsumoId)
    throw new ConflictException('Estación sin ubicación de consumo');
-  const modifiers=row.ordenLinea.ordenLineaModificadoresComoOrdenLinea.flatMap(x=>
-   Array.from({length:x.cantidad},()=>x.modificadorId));
-  await this.consumption.recipe(tx,u,order.id,row.ordenLineaId,row.id,
-   row.ordenLinea.recetaVersionId!,amount,ticket.estacion.ubicacionConsumoId,
-   modifiers,order.modalidad,row.cantidadPreparada,row.ordenLinea.composicionSnapshot);
+  // A direct-sale line already took its stock when the order was sent (sendTx).
+  if(!directSale){
+   const modifiers=row.ordenLinea.ordenLineaModificadoresComoOrdenLinea.flatMap(x=>
+    Array.from({length:x.cantidad},()=>x.modificadorId));
+   await this.consumption.recipe(tx,u,order.id,row.ordenLineaId,row.id,
+    row.ordenLinea.recetaVersionId!,amount,ticket.estacion.ubicacionConsumoId,
+    modifiers,order.modalidad,row.cantidadPreparada,row.ordenLinea.composicionSnapshot);
+  }
   await this.consumption.packaging(tx,u,order.id,order.sucursalId,order.modalidad);
   await tx.comandaLinea.update({where:{id:lineId},data:{
    cantidadPreparada:row.cantidadPreparada.plus(amount)}});
